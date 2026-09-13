@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="HomeApplianceManualRag.Tests/HomeApplianceManualRag.Tests.csproj" />
+  <Project Path="HomeApplianceManualRag.Web/HomeApplianceManualRag.Web.csproj" />
+</Solution>

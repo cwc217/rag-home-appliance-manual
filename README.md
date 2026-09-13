@@ -57,11 +57,10 @@ SeedAdmin__Password
 
 ```powershell
 docker compose up -d postgres
-dotnet ef database update
-dotnet run
+dotnet run --project HomeApplianceManualRag.Web
 ```
 
-The application must not call Azure OpenAI during database migrations. Indexing starts only after an upload is stored and a background job is queued.
+Phase 0 provides the database and Identity foundation; migrations and indexing are added in later phases. The application must not call Azure OpenAI during database migrations. Indexing starts only after an upload is stored and a background job is queued.
 
 ## Repository conventions
 

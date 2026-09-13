@@ -4,13 +4,13 @@
 
 ## Phase 0 — Project foundation
 
-- [ ] Create a .NET 10 Blazor Web App using Interactive Server.
-- [ ] Add EF Core PostgreSQL provider, ASP.NET Core Identity, pgvector support, PDF text extraction library, Azure OpenAI client abstraction, and test projects.
-- [ ] Add Docker Compose PostgreSQL image with pgvector.
-- [ ] Add strongly typed options for database, Azure OpenAI, upload limits, retrieval, rate limiting, and seed admin.
-- [ ] Add safe configuration validation at startup; fail clearly for missing production-required settings.
-- [ ] Add `.env.example` with placeholders only.
-- [ ] Add initial xUnit test project and a deterministic fake chat/embedding provider.
+- [x] Create a .NET 10 Blazor Web App using Interactive Server.
+- [x] Add EF Core PostgreSQL provider, ASP.NET Core Identity, pgvector support, PDF text extraction library, Azure OpenAI client abstraction, and test projects.
+- [x] Add Docker Compose PostgreSQL image with pgvector.
+- [x] Add strongly typed options for database, Azure OpenAI, upload limits, retrieval, rate limiting, and seed admin.
+- [x] Add safe configuration validation at startup; fail clearly for missing production-required settings.
+- [x] Add `.env.example` with placeholders only.
+- [x] Add initial xUnit test project and a deterministic fake chat/embedding provider.
 
 ## Phase 1 — Identity and roles
 
