@@ -30,6 +30,28 @@ public sealed class ConfigurationValidationTests
         ConfigurationValidation.ValidateProduction(configuration, environment);
     }
 
+    [Fact]
+    public void Production_with_present_settings_does_not_throw()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:Default"] = "Host=localhost;Database=manuals",
+                ["AzureOpenAI:Endpoint"] = "https://example.openai.azure.com/",
+                ["AzureOpenAI:ApiKey"] = "test-key",
+                ["AzureOpenAI:ChatDeployment"] = "chat",
+                ["AzureOpenAI:EmbeddingDeployment"] = "embedding",
+                ["AzureOpenAI:ApiVersion"] = "2024-10-21",
+                ["AzureOpenAI:EmbeddingDimensions"] = "1536",
+                ["SeedAdmin:Email"] = "admin@example.invalid",
+                ["SeedAdmin:Password"] = "strong-test-password"
+            })
+            .Build();
+        var environment = new TestEnvironment { EnvironmentName = Environments.Production };
+
+        ConfigurationValidation.ValidateProduction(configuration, environment);
+    }
+
     private sealed class TestEnvironment : IHostEnvironment
     {
         public string EnvironmentName { get; set; } = string.Empty;

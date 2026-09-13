@@ -7,14 +7,14 @@ using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 ConfigurationValidation.ValidateProduction(builder.Configuration, builder.Environment);
 
-builder.Services.AddOptions<DatabaseOptions>().BindConfiguration(DatabaseOptions.SectionName).ValidateDataAnnotations();
-builder.Services.AddOptions<AzureOpenAiOptions>().BindConfiguration(AzureOpenAiOptions.SectionName).ValidateDataAnnotations();
-builder.Services.AddOptions<UploadOptions>().BindConfiguration(UploadOptions.SectionName).ValidateDataAnnotations();
-builder.Services.AddOptions<RetrievalOptions>().BindConfiguration(RetrievalOptions.SectionName).ValidateDataAnnotations();
-builder.Services.AddOptions<RateLimitingOptions>().BindConfiguration(RateLimitingOptions.SectionName).ValidateDataAnnotations();
-builder.Services.AddOptions<SeedAdminOptions>().BindConfiguration(SeedAdminOptions.SectionName).ValidateDataAnnotations();
+builder.Services.AddOptions<DatabaseOptions>().BindConfiguration(DatabaseOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
+builder.Services.AddOptions<AzureOpenAiOptions>().BindConfiguration(AzureOpenAiOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
+builder.Services.AddOptions<UploadOptions>().BindConfiguration(UploadOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
+builder.Services.AddOptions<RetrievalOptions>().BindConfiguration(RetrievalOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
+builder.Services.AddOptions<RateLimitingOptions>().BindConfiguration(RateLimitingOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
+builder.Services.AddOptions<SeedAdminOptions>().BindConfiguration(SeedAdminOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("Default") ?? "Host=localhost;Database=manuals;Username=postgres;Password=postgres",
+    options.UseNpgsql(builder.Configuration.GetConnectionString("Default"),
         npgsql => npgsql.UseVector()));
 builder.Services.AddIdentity<ApplicationUser, Microsoft.AspNetCore.Identity.IdentityRole>()
     .AddEntityFrameworkStores<ApplicationDbContext>();
