@@ -57,10 +57,11 @@ SeedAdmin__Password
 
 ```powershell
 docker compose up -d postgres
+dotnet ef database update --project HomeApplianceManualRag.Web --startup-project HomeApplianceManualRag.Web
 dotnet run --project HomeApplianceManualRag.Web
 ```
 
-Phase 0 provides the database and Identity foundation; migrations and indexing are added in later phases. The application must not call Azure OpenAI during database migrations. Indexing starts only after an upload is stored and a background job is queued.
+The Docker Compose PostgreSQL service creates the `manuals` database on first initialization. The EF Core migration then creates the PostgreSQL `pgvector` extension, ASP.NET Core Identity tables, and the initial manual document/chunk tables. Run `dotnet ef database update` after starting PostgreSQL and before the first application run. If PostgreSQL is managed outside Docker, create the configured database first, then run the migration. The application must not call Azure OpenAI during database migrations. Indexing starts only after an upload is stored and a background job is queued.
 
 ## Repository conventions
 
