@@ -4,7 +4,7 @@ services:
     environment:
       POSTGRES_DB: manuals
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     ports:
       - "5432:5432"
     volumes:
@@ -26,7 +26,7 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_HTTP_PORTS: 8080
       HttpsRedirection__Enabled: "false"
-      ConnectionStrings__Default: Host=postgres;Port=5432;Database=manuals;Username=postgres;Password=postgres
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=manuals;Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env};Username=postgres
       AzureOpenAI__Endpoint: ${AzureOpenAI__Endpoint:-https://development.invalid/}
       AzureOpenAI__ApiKey: ${AzureOpenAI__ApiKey:-development-placeholder}
       AzureOpenAI__ChatDeployment: ${AzureOpenAI__ChatDeployment:-development-chat}
@@ -34,7 +34,7 @@ services:
       AzureOpenAI__ApiVersion: ${AzureOpenAI__ApiVersion:-2024-10-21}
       AzureOpenAI__EmbeddingDimensions: ${AzureOpenAI__EmbeddingDimensions:-1536}
       SeedAdmin__Email: ${SeedAdmin__Email:-admin@example.invalid}
-      SeedAdmin__Password: ${SeedAdmin__Password:-development-password-123}
+      SeedAdmin__Password: ${SeedAdmin__Password:?Set SeedAdmin__Password in .env}
     ports:
       - "8080:8080"
 

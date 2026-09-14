@@ -7,6 +7,8 @@ namespace HomeApplianceManualRag.Web.Data;
 public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
     : IdentityDbContext<ApplicationUser>(options)
 {
+    public const int EmbeddingDimensions = 1536;
+
     public DbSet<ManualDocument> ManualDocuments => Set<ManualDocument>();
     public DbSet<ManualChunk> ManualChunks => Set<ManualChunk>();
 
@@ -16,7 +18,7 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
         builder.HasPostgresExtension("vector");
         builder.Entity<ManualDocument>().HasIndex(x => new { x.Status, x.OwnerUserId });
         builder.Entity<ManualChunk>().HasIndex(x => x.DocumentId);
-        builder.Entity<ManualChunk>().Property(x => x.Embedding).HasColumnType("vector");
+        builder.Entity<ManualChunk>().Property(x => x.Embedding).HasColumnType($"vector({EmbeddingDimensions})");
     }
 }
 

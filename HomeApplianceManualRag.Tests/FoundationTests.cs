@@ -1,4 +1,5 @@
 using HomeApplianceManualRag.Web.Configuration;
+using HomeApplianceManualRag.Web.Data;
 using HomeApplianceManualRag.Web.Providers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -28,6 +29,36 @@ public sealed class ConfigurationValidationTests
         var environment = new TestEnvironment { EnvironmentName = Environments.Development };
 
         ConfigurationValidation.ValidateProduction(configuration, environment);
+    }
+
+    [Fact]
+    public void Development_settings_bind_from_root_configuration_sections()
+    {
+        var configuration = new ConfigurationBuilder()
+            .SetBasePath(AppContext.BaseDirectory)
+            .AddJsonFile("appsettings.Development.json", optional: false)
+            .Build();
+
+        var azure = configuration.GetSection(AzureOpenAiOptions.SectionName).Get<AzureOpenAiOptions>();
+        var connectionString = configuration.GetConnectionString("Default");
+
+        Assert.NotNull(azure);
+        Assert.Equal("Host=localhost;Port=5432;Database=manuals;Username=postgres;Password=postgres", connectionString);
+        Assert.Equal("development-chat", azure.ChatDeployment);
+        Assert.Equal(1536, azure.EmbeddingDimensions);
+        Assert.True(configuration.GetValue<bool>("HttpsRedirection:Enabled"));
+    }
+
+    [Fact]
+    public void Development_embedding_dimension_matches_database_schema()
+    {
+        Assert.Equal(
+            ApplicationDbContext.EmbeddingDimensions,
+            new ConfigurationBuilder()
+                .SetBasePath(AppContext.BaseDirectory)
+                .AddJsonFile("appsettings.Development.json", optional: false)
+                .Build()
+                .GetValue<int>("AzureOpenAI:EmbeddingDimensions"));
     }
 
     [Fact]
