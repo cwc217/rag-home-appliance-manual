@@ -31,11 +31,15 @@
 
 ### Configuration
 
-Copy the example configuration and set values locally. Never commit real secrets.
+Copy the example configuration for reference and set local secrets with User Secrets. Never commit real secrets.
 
 ```powershell
-Copy-Item .env.example .env
+dotnet user-secrets set "ConnectionStrings:Default" "Host=localhost;Port=5432;Database=manuals;Username=postgres;Password=postgres" --project HomeApplianceManualRag.Web
+dotnet user-secrets set "SeedAdmin:Email" "admin@example.invalid" --project HomeApplianceManualRag.Web
+dotnet user-secrets set "SeedAdmin:Password" "replace-with-a-strong-development-password" --project HomeApplianceManualRag.Web
 ```
+
+The `.env.example` file documents Docker Compose environment variables. ASP.NET Core does not load a `.env` file automatically; Docker Compose loads `.env` for Compose variable substitution.
 
 Required settings:
 
@@ -51,13 +55,15 @@ SeedAdmin__Email
 SeedAdmin__Password
 ```
 
-`AzureOpenAI__EmbeddingDimensions` must match the selected embedding deployment and the PostgreSQL vector column.
+`AzureOpenAI__EmbeddingDimensions` must be `1536` for the current migration and match the selected embedding deployment. Changing the embedding deployment dimension requires a new migration and compatible embedding configuration.
 
 ### Run
 
 To run PostgreSQL and the website together in Docker for local debugging:
 
 ```powershell
+Copy-Item .env.example .env
+# Replace placeholder passwords in .env before starting the stack.
 docker compose up --build
 ```
 

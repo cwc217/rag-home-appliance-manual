@@ -107,7 +107,7 @@ namespace HomeApplianceManualRag.Web.Data.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<Vector>("Embedding")
-                        .HasColumnType("vector");
+                        .HasColumnType("vector(1536)");
 
                     b.Property<int>("PageNumber")
                         .HasColumnType("integer");

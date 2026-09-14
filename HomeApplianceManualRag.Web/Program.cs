@@ -8,7 +8,12 @@ var builder = WebApplication.CreateBuilder(args);
 ConfigurationValidation.ValidateProduction(builder.Configuration, builder.Environment);
 
 builder.Services.AddOptions<DatabaseOptions>().BindConfiguration(DatabaseOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
-builder.Services.AddOptions<AzureOpenAiOptions>().BindConfiguration(AzureOpenAiOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
+builder.Services.AddOptions<AzureOpenAiOptions>()
+    .BindConfiguration(AzureOpenAiOptions.SectionName)
+    .ValidateDataAnnotations()
+    .Validate(options => options.EmbeddingDimensions == ApplicationDbContext.EmbeddingDimensions,
+        $"AzureOpenAI:EmbeddingDimensions must be {ApplicationDbContext.EmbeddingDimensions} to match the database vector column.")
+    .ValidateOnStart();
 builder.Services.AddOptions<UploadOptions>().BindConfiguration(UploadOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<RetrievalOptions>().BindConfiguration(RetrievalOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<RateLimitingOptions>().BindConfiguration(RateLimitingOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
