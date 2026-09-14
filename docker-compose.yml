@@ -18,7 +18,7 @@ services:
   web:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: HomeApplianceManualRag.Web/Dockerfile
     depends_on:
       postgres:
         condition: service_healthy
