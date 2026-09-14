@@ -1,6 +1,7 @@
 using HomeApplianceManualRag.Web.Configuration;
 using HomeApplianceManualRag.Web.Data;
 using HomeApplianceManualRag.Web.Providers;
+using System.ComponentModel.DataAnnotations;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 
@@ -8,6 +9,19 @@ namespace HomeApplianceManualRag.Tests;
 
 public sealed class ConfigurationValidationTests
 {
+    [Fact]
+    public void Seed_admin_password_accepts_eight_characters()
+    {
+        var options = new SeedAdminOptions
+        {
+            Email = "admin@example.invalid",
+            Password = "12345678"
+        };
+        var results = new List<ValidationResult>();
+
+        Assert.True(Validator.TryValidateObject(options, new ValidationContext(options), results, validateAllProperties: true));
+    }
+
     [Fact]
     public void Production_with_missing_settings_reports_all_missing_keys()
     {
