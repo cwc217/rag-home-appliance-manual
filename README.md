@@ -55,6 +55,16 @@ SeedAdmin__Password
 
 ### Run
 
+To run PostgreSQL and the website together in Docker for local debugging:
+
+```powershell
+docker compose up --build
+```
+
+Open `http://localhost:8080`. The web container waits for PostgreSQL to become healthy and applies EF Core migrations automatically in the Development environment. Stop the stack with `docker compose down`; add `-v` if you also want to remove the PostgreSQL data volume.
+
+For running the website directly on the host:
+
 ```powershell
 docker compose up -d postgres
 dotnet ef database update --project HomeApplianceManualRag.Web --startup-project HomeApplianceManualRag.Web

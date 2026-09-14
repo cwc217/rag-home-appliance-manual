@@ -9,5 +9,33 @@ services:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d manuals"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: 8080
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=manuals;Username=postgres;Password=postgres
+      AzureOpenAI__Endpoint: ${AzureOpenAI__Endpoint:-https://development.invalid/}
+      AzureOpenAI__ApiKey: ${AzureOpenAI__ApiKey:-development-placeholder}
+      AzureOpenAI__ChatDeployment: ${AzureOpenAI__ChatDeployment:-development-chat}
+      AzureOpenAI__EmbeddingDeployment: ${AzureOpenAI__EmbeddingDeployment:-development-embedding}
+      AzureOpenAI__ApiVersion: ${AzureOpenAI__ApiVersion:-2024-10-21}
+      AzureOpenAI__EmbeddingDimensions: ${AzureOpenAI__EmbeddingDimensions:-1536}
+      SeedAdmin__Email: ${SeedAdmin__Email:-admin@example.invalid}
+      SeedAdmin__Password: ${SeedAdmin__Password:-development-password-123}
+    ports:
+      - "8080:8080"
+
 volumes:
   postgres-data:
