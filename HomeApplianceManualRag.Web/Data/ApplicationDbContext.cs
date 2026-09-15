@@ -12,6 +12,7 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
 
     public DbSet<ManualDocument> ManualDocuments => Set<ManualDocument>();
     public DbSet<ManualChunk> ManualChunks => Set<ManualChunk>();
+    public DbSet<StorageCleanup> StorageCleanups => Set<StorageCleanup>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -29,6 +30,20 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
 }
 
 public enum DocumentStatus { Pending, Processing, Ready, Failed }
+
+public enum StorageCleanupStatus { Pending, Completed }
+
+public sealed class StorageCleanup
+{
+    public Guid Id { get; set; }
+    public string StorageKey { get; set; } = string.Empty;
+    public StorageCleanupStatus Status { get; set; } = StorageCleanupStatus.Pending;
+    public int Attempts { get; set; }
+    public string? LastError { get; set; }
+    public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+    public DateTime? CompletedAtUtc { get; set; }
+    public DateTime? NextAttemptAtUtc { get; set; }
+}
 
 public sealed class ManualDocument
 {

@@ -8,6 +8,7 @@ public interface IFileStorage
     Task StoreAsync(string storageKey, Stream content, CancellationToken cancellationToken = default);
     Task<Stream> OpenReadAsync(string storageKey, CancellationToken cancellationToken = default);
     Task DeleteAsync(string storageKey, CancellationToken cancellationToken = default);
+    Task<IReadOnlyCollection<StoredFile>> ListAsync(CancellationToken cancellationToken = default);
 }
 
 public sealed class LocalFileStorage(IOptions<LocalStorageOptions> options) : IFileStorage
@@ -34,6 +35,18 @@ public sealed class LocalFileStorage(IOptions<LocalStorageOptions> options) : IF
         return Task.FromResult(stream);
     }
 
+    public Task<IReadOnlyCollection<StoredFile>> ListAsync(CancellationToken cancellationToken = default)
+    {
+        var root = Path.GetFullPath(options.Value.RootPath);
+        if (!Directory.Exists(root))
+            return Task.FromResult<IReadOnlyCollection<StoredFile>>([]);
+
+        IReadOnlyCollection<StoredFile> files = Directory.EnumerateFiles(root, "*.pdf", SearchOption.TopDirectoryOnly)
+            .Select(path => new StoredFile(Path.GetFileName(path), File.GetLastWriteTimeUtc(path)))
+            .ToArray();
+        return Task.FromResult(files);
+    }
+
     private string Resolve(string key)
     {
         if (string.IsNullOrWhiteSpace(key) || key.Contains('/') || key.Contains('\\') ||
@@ -45,4 +58,7 @@ public sealed class LocalFileStorage(IOptions<LocalStorageOptions> options) : IF
             throw new ArgumentException("Storage key escapes storage root.", nameof(key));
         return path;
     }
+
 }
+
+public sealed record StoredFile(string StorageKey, DateTime LastWriteTimeUtc);
