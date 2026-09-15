@@ -1,0 +1,13 @@
+@page "/register"
+@using HomeApplianceManualRag.Web.Resources
+<PageTitle>Register</PageTitle>
+<h1>Register</h1>
+<form method="post" action="/account/register">
+    <AntiforgeryToken />
+    <div class="mb-3"><label for="email">Email</label><input id="email" name="email" type="email" required class="form-control" /></div>
+    <div class="mb-3"><label for="password">Password</label><input id="password" name="password" type="password" minlength="8" required class="form-control" /></div>
+    <div class="mb-3"><label for="confirmPassword">Confirm password</label><input id="confirmPassword" name="confirmPassword" type="password" minlength="8" required class="form-control" /></div>
+    @if (!string.IsNullOrWhiteSpace(Error)) { <div class="text-danger" role="alert">@Error</div> }
+    <button class="btn btn-primary" type="submit">Register</button>
+</form>
+@code { [SupplyParameterFromQuery] public string? Error { get; set; } }

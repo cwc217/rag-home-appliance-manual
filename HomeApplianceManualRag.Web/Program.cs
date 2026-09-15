@@ -3,6 +3,9 @@ using HomeApplianceManualRag.Web.Configuration;
 using HomeApplianceManualRag.Web.Data;
 using HomeApplianceManualRag.Web.Providers;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using HomeApplianceManualRag.Web.Resources;
 
 var builder = WebApplication.CreateBuilder(args);
 ConfigurationValidation.ValidateProduction(builder.Configuration, builder.Environment);
@@ -22,7 +25,20 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Default"),
         npgsql => npgsql.UseVector()));
 builder.Services.AddIdentity<ApplicationUser, Microsoft.AspNetCore.Identity.IdentityRole>()
-    .AddEntityFrameworkStores<ApplicationDbContext>();
+    .AddEntityFrameworkStores<ApplicationDbContext>()
+    .AddDefaultTokenProviders();
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.LoginPath = "/login";
+    options.AccessDeniedPath = "/forbidden";
+});
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentUser, CurrentUser>();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("AdminOnly", policy => policy.RequireRole(ApplicationRoles.Admin));
+    options.AddPolicy("RegisteredUser", policy => policy.RequireAuthenticatedUser());
+});
 builder.Services.AddScoped<IChatProvider, AzureOpenAiChatProvider>();
 builder.Services.AddScoped<IEmbeddingProvider, AzureOpenAiEmbeddingProvider>();
 
@@ -39,6 +55,9 @@ if (app.Environment.IsDevelopment())
     await db.Database.MigrateAsync();
 }
 
+await using (var scope = app.Services.CreateAsyncScope())
+    await IdentitySeeder.SeedAsync(scope.ServiceProvider);
+
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
@@ -53,6 +72,56 @@ if (builder.Configuration.GetValue("HttpsRedirection:Enabled", true))
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
+
+app.MapPost("/account/login", async (
+    HttpContext context,
+    SignInManager<ApplicationUser> signInManager,
+    [FromForm] string? email,
+    [FromForm] string? password,
+    [FromForm] string? returnUrl,
+    [FromForm] string? culture) =>
+{
+    culture ??= context.Request.Headers.AcceptLanguage.ToString();
+    if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+        return Results.Redirect($"/login?error={Uri.EscapeDataString(IdentityMessages.Required("Email and password", culture))}");
+    var result = await signInManager.PasswordSignInAsync(email, password, isPersistent: false, lockoutOnFailure: false);
+    if (result.Succeeded)
+        return Results.LocalRedirect(string.IsNullOrWhiteSpace(returnUrl) || !returnUrl.StartsWith('/') ? "/" : returnUrl);
+    return Results.Redirect($"/login?error={Uri.EscapeDataString(IdentityMessages.InvalidCredentials(culture))}");
+}).AllowAnonymous();
+
+app.MapPost("/account/register", async (
+    HttpContext context,
+    UserManager<ApplicationUser> userManager,
+    SignInManager<ApplicationUser> signInManager,
+    [FromForm] string? email,
+    [FromForm] string? password,
+    [FromForm] string? confirmPassword,
+    [FromForm] string? culture) =>
+{
+    culture ??= context.Request.Headers.AcceptLanguage.ToString();
+    if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password) || password != confirmPassword)
+        return Results.Redirect($"/register?error={Uri.EscapeDataString(IdentityMessages.RegistrationFailed(culture))}");
+    if (await userManager.FindByEmailAsync(email) is not null)
+        return Results.Redirect($"/register?error={Uri.EscapeDataString(IdentityMessages.EmailTaken(culture))}");
+    var user = new ApplicationUser { UserName = email, Email = email, EmailConfirmed = true };
+    var result = await userManager.CreateAsync(user, password);
+    if (!result.Succeeded)
+        return Results.Redirect($"/register?error={Uri.EscapeDataString(IdentityMessages.RegistrationFailed(culture))}");
+    await userManager.AddToRoleAsync(user, ApplicationRoles.User);
+    await signInManager.SignInAsync(user, isPersistent: false);
+    return Results.Redirect("/");
+}).AllowAnonymous();
+
+app.MapPost("/account/logout", async (SignInManager<ApplicationUser> signInManager) =>
+{
+    await signInManager.SignOutAsync();
+    return Results.Redirect("/");
+}).RequireAuthorization("RegisteredUser");
+
+app.MapGet("/admin", () => Results.Ok(new { message = "Admin area" })).RequireAuthorization("AdminOnly");
+app.MapGet("/account/me", (ICurrentUser currentUser) => Results.Ok(new { currentUser.UserId, currentUser.Email }))
+    .RequireAuthorization("RegisteredUser");
 
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
