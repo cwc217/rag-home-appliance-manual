@@ -10,13 +10,17 @@ public static class IdentitySeeder
     {
         var roles = services.GetRequiredService<RoleManager<IdentityRole>>();
         foreach (var role in new[] { ApplicationRoles.Admin, ApplicationRoles.User })
+        {
+            cancellationToken.ThrowIfCancellationRequested();
             if (!await roles.RoleExistsAsync(role))
             {
                 var result = await roles.CreateAsync(new IdentityRole(role));
                 if (!result.Succeeded && !await roles.RoleExistsAsync(role))
                     result.ThrowIfFailed();
             }
+        }
 
+        cancellationToken.ThrowIfCancellationRequested();
         var options = services.GetRequiredService<IOptions<SeedAdminOptions>>().Value;
         var users = services.GetRequiredService<UserManager<ApplicationUser>>();
         var admin = await users.FindByEmailAsync(options.Email);
@@ -26,6 +30,7 @@ public static class IdentitySeeder
             (await users.CreateAsync(admin, options.Password)).ThrowIfFailed();
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         if (!await users.IsInRoleAsync(admin, ApplicationRoles.Admin))
             (await users.AddToRoleAsync(admin, ApplicationRoles.Admin)).ThrowIfFailed();
     }

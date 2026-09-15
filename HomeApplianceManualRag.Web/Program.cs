@@ -93,7 +93,7 @@ app.MapPost("/account/login", async (
         return Results.Redirect($"/login?error={Uri.EscapeDataString(IdentityMessages.Required("Email and password", culture))}");
     var result = await signInManager.PasswordSignInAsync(email, password, isPersistent: false, lockoutOnFailure: false);
     if (result.Succeeded)
-        return Results.LocalRedirect(string.IsNullOrWhiteSpace(returnUrl) || !returnUrl.StartsWith('/') ? "/" : returnUrl);
+        return Results.LocalRedirect(IsSafeLocalReturnUrl(returnUrl) ? returnUrl! : "/");
     return Results.Redirect($"/login?error={Uri.EscapeDataString(IdentityMessages.InvalidCredentials(culture))}");
 }).AllowAnonymous();
 
@@ -117,7 +117,13 @@ app.MapPost("/account/register", async (
         return Results.Redirect($"/register?error={Uri.EscapeDataString(IdentityMessages.RegistrationFailed(culture))}");
     var roleResult = await userManager.AddToRoleAsync(user, ApplicationRoles.User);
     if (!roleResult.Succeeded)
+    {
+        var deleteResult = await userManager.DeleteAsync(user);
+        if (!deleteResult.Succeeded)
+            throw new InvalidOperationException(
+                $"Registration role assignment failed and cleanup failed: {string.Join("; ", deleteResult.Errors.Select(x => x.Description))}");
         return Results.Redirect($"/register?error={Uri.EscapeDataString(IdentityMessages.RegistrationFailed(culture))}");
+    }
     await signInManager.SignInAsync(user, isPersistent: false);
     return Results.Redirect("/");
 }).AllowAnonymous();
@@ -137,3 +143,9 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 app.Run();
+
+static bool IsSafeLocalReturnUrl(string? returnUrl) =>
+    !string.IsNullOrWhiteSpace(returnUrl)
+    && returnUrl.StartsWith("/", StringComparison.Ordinal)
+    && !returnUrl.StartsWith("//", StringComparison.Ordinal)
+    && !returnUrl.Contains('\\', StringComparison.Ordinal);
