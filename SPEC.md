@@ -14,10 +14,8 @@ This is a demo, not a billing, enterprise document-management, or OCR product.
 | Query admin public manuals | Yes | No | Yes |
 | Query own manuals | No | Yes | Yes |
 | Register | Yes | N/A | N/A |
-| Upload own manuals | No | Yes, maximum 3 | N/A |
-| Manage own manuals | No | List/delete | N/A |
-| Upload admin manuals | No | No | Unlimited count |
-| Delete/re-index admin manuals | No | No | Yes |
+| Upload manuals | No | Yes, maximum 3 active | Unlimited count |
+| Manage manuals | No | Own list/retry/delete | All documents: list/retry/delete/re-index |
 
 The selected scope is intentional: after login, a normal user searches only their own manuals, not admin manuals.
 
@@ -127,8 +125,10 @@ The application must not claim that an answer is grounded when no chunk was retr
 - `/`: Chat Room.
 - `/login`: Identity login.
 - `/register`: User registration.
-- `/my-documents`: authenticated user list, upload, status, retry, and delete.
-- `/admin/documents`: admin list, upload, status, retry, delete, and re-index.
+- `/my-documents`: authenticated, role-aware document list, upload, status, retry, and
+  delete. Normal users see only their own documents and have a three-active quota.
+  Admins see all documents with owner information, have unlimited uploads, and can
+  retry, delete, and re-index any document. There is no separate admin document route.
 
 Every upload page must show the 10 MB limit, accepted PDF requirement, current quota, and processing status.
 

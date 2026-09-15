@@ -2,6 +2,8 @@ using HomeApplianceManualRag.Web.Configuration;
 using HomeApplianceManualRag.Web.Documents;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
+using HomeApplianceManualRag.Web.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace HomeApplianceManualRag.Tests;
 
@@ -17,6 +19,83 @@ public sealed class DocumentValidationTests
         "%PDF-"u8.CopyTo(bytes);
         var result = await new PdfValidator(Options.Create(new UploadOptions())).ValidateAsync(File("manual.PDF", "application/pdf", bytes));
         Assert.True(result.IsValid);
+    }
+
+    public sealed class DocumentAuthorizationTests
+    {
+        [Fact]
+        public async Task Normal_users_only_list_documents_they_own()
+        {
+            await using var db = CreateDb();
+            db.ManualDocuments.AddRange(
+                Document("mine", "user-1"),
+                Document("other", "user-2"),
+                Document("public", null));
+            await db.SaveChangesAsync();
+
+            var service = Service(db, new TestCurrentUser("user-1", false));
+            var result = await service.ListAsync();
+
+            var document = Assert.Single(result);
+            Assert.Equal("mine", document.DisplayName);
+        }
+
+        [Fact]
+        public async Task Admins_list_every_document_and_can_retry_failed_documents()
+        {
+            await using var db = CreateDb();
+            var failed = Document("failed", "user-1");
+            failed.Status = DocumentStatus.Failed;
+            db.ManualDocuments.AddRange(failed, Document("public", null));
+            await db.SaveChangesAsync();
+
+            var service = Service(db, new TestCurrentUser("admin", true));
+            Assert.Equal(2, (await service.ListAsync()).Count);
+            await service.RetryAsync(failed.Id);
+
+            Assert.Equal(DocumentStatus.Pending, (await db.ManualDocuments.FindAsync(failed.Id))!.Status);
+        }
+
+        [Fact]
+        public async Task Normal_users_cannot_retry_another_owners_document()
+        {
+            await using var db = CreateDb();
+            var failed = Document("other", "user-2");
+            failed.Status = DocumentStatus.Failed;
+            db.ManualDocuments.Add(failed);
+            await db.SaveChangesAsync();
+
+            var service = Service(db, new TestCurrentUser("user-1", false));
+            await Assert.ThrowsAsync<DocumentForbiddenException>(() => service.RetryAsync(failed.Id));
+        }
+
+        private static ApplicationDbContext CreateDb() =>
+            new(new DbContextOptionsBuilder<ApplicationDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .Options);
+
+        private static ManualDocument Document(string name, string? owner) => new()
+        {
+            Id = Guid.NewGuid(), DisplayName = name, OwnerUserId = owner,
+            StorageKey = $"{name}.pdf", CreatedAtUtc = DateTime.UtcNow
+        };
+
+        private static DocumentService Service(ApplicationDbContext db, ICurrentUser user) =>
+            new(db, user, new PdfValidator(Options.Create(new UploadOptions())), new NoopStorage());
+
+        private sealed class TestCurrentUser(string? id, bool admin) : ICurrentUser
+        {
+            public string? UserId => id;
+            public string? Email => null;
+            public bool IsAuthenticated => id is not null;
+            public bool IsInRole(string role) => admin && role == ApplicationRoles.Admin;
+        }
+
+        private sealed class NoopStorage : IFileStorage
+        {
+            public Task StoreAsync(string key, Stream content, CancellationToken ct = default) => Task.CompletedTask;
+            public Task DeleteAsync(string key, CancellationToken ct = default) => Task.CompletedTask;
+        }
     }
 
     [Theory]
