@@ -21,7 +21,13 @@
   any document. Uploads are server-validated PDFs (extension, `application/pdf`
   content type, `%PDF-` signature) up to 10 MB and stored beneath `Storage:RootPath`
   with generated keys. Failed and deleted records do not consume a normal user's
-  quota. Phase 2 creates Pending records; indexing is intentionally deferred to Phase 3.
+  quota. There is no separate `/admin/documents` route. Phase 2 creates Pending
+  records; indexing is intentionally deferred to Phase 3.
+
+Phase 2 storage ordering is deliberately simple: upload writes the PDF to local
+storage before saving the database record; delete removes the database record before
+deleting the stored file. A failure between these operations can leave an orphaned
+file or record and is a known local-storage consistency limitation for this phase.
 
 ## Stack
 
@@ -110,7 +116,8 @@ The Docker Compose PostgreSQL service creates the `manuals` database on first in
 ## Delivery phases
 
 1. Foundation: project, Identity, roles, PostgreSQL, pgvector, configuration, migrations.
-2. Documents: PDF validation, storage, ownership/quota rules, admin and user pages.
+2. Documents: PDF validation, storage, ownership/quota rules, and the unified
+   role-aware `/my-documents` page.
 3. Indexing: page extraction, chunking, embeddings, worker, lifecycle statuses.
 4. Chat: filtered retrieval, grounded prompt, streaming response, citations, anonymous/user behavior.
 5. UX and quality: localization, empty/error states, rate limit, tests, Docker and deployment documentation.
