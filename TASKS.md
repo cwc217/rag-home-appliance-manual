@@ -14,13 +14,13 @@
 
 ## Phase 1 — Identity and roles
 
-- [ ] Create `ApplicationUser` and Identity DbContext.
-- [ ] Add `Admin` and `User` roles.
-- [ ] Implement idempotent admin seed from environment variables.
-- [ ] Implement registration that always creates `User`.
-- [ ] Add login, logout, registration, and localized validation messages.
-- [ ] Add authorization policies and a current-user abstraction.
-- [ ] Test role seed, registration role, login, and unauthorized/forbidden behavior.
+- [x] Create `ApplicationUser` and Identity DbContext.
+- [x] Add `Admin` and `User` roles.
+- [x] Implement idempotent admin seed from environment variables.
+- [x] Implement registration that always creates `User`.
+- [x] Add login, logout, registration, and localized validation messages.
+- [x] Add authorization policies and a current-user abstraction.
+- [x] Test role seed, registration role, login, and unauthorized/forbidden behavior.
 
 ## Phase 2 — Documents and quotas
 

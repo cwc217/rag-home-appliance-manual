@@ -46,6 +46,18 @@ public sealed class SeedAdminOptions
     [Required, MinLength(8)] public string Password { get; init; } = string.Empty;
 }
 
+public static class ApplicationRoles
+{
+    public const string Admin = "Admin";
+    public const string User = "User";
+}
+
+public static class ApplicationPolicies
+{
+    public const string AdminOnly = "AdminOnly";
+    public const string RegisteredUser = "RegisteredUser";
+}
+
 public static class ConfigurationValidation
 {
     public static void ValidateProduction(IConfiguration configuration, IHostEnvironment environment)
