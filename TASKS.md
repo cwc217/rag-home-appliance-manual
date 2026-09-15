@@ -25,7 +25,7 @@
 ## Phase 2 — Documents and quotas
 
 - [x] Create `ManualDocument` and `ManualChunk` entities with UTC audit fields.
-- [ ] Add migrations for Identity, documents, chunks, pgvector extension, vector dimension, and indexes.
+- [x] Add migrations for Identity, documents, chunks, pgvector extension, vector dimension, and indexes.
 - [x] Implement server-side PDF signature/type validation and 10 MB limit.
 - [x] Implement safe file storage abstraction; keep local storage as the initial development provider.
 - [x] Implement transactional user quota enforcement for active/processing documents.

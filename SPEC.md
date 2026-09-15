@@ -64,6 +64,7 @@ Pending -> Processing -> Ready
 - `Pending`, `Processing`, and `Failed` documents must not participate in retrieval.
 - `Failed` documents do not count toward the normal user's active document quota.
 - Upload stores metadata and the original PDF, then queues background indexing.
+- During Phase 2, uploads are stored as `Pending`; durable queueing and background indexing begin in Phase 3.
 - Only `Ready` documents participate in retrieval.
 - Retry is allowed for `Failed` documents by admin or the owning user.
 - Deleting a document must cancel/ignore outstanding work and remove its chunks from retrieval.

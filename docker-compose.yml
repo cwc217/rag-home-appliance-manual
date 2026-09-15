@@ -26,7 +26,7 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_HTTP_PORTS: 8080
       HttpsRedirection__Enabled: "false"
-      ConnectionStrings__Default: Host=postgres;Port=5432;Database=manuals;Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env};Username=postgres
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=manuals;Username=postgres;Password=${POSTGRES_PASSWORD}
       AzureOpenAI__Endpoint: ${AzureOpenAI__Endpoint:-https://development.invalid/}
       AzureOpenAI__ApiKey: ${AzureOpenAI__ApiKey:-development-placeholder}
       AzureOpenAI__ChatDeployment: ${AzureOpenAI__ChatDeployment:-development-chat}
