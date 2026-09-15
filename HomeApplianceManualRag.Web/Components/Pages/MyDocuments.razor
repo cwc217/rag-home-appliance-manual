@@ -4,20 +4,17 @@
 @inject DocumentService Documents
 @inject ICurrentUser CurrentUser
 @using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Components
 
 <PageTitle>@(isAdmin ? "All documents" : "My documents")</PageTitle>
 <h1>@(isAdmin ? "All documents" : "My documents")</h1>
 <p>PDF only, maximum 10 MB. @(isAdmin ? "Administrators have unlimited uploads." : $"Active quota: {activeCount} / 3.")</p>
-<div class="mb-3">
-    <InputFile OnChange="SelectFile" accept=".pdf,application/pdf" disabled="@isUploading" />
-    <div class="mt-2">
-        <span>@(selectedFile?.Name ?? "No file selected")</span>
-        <button type="button" class="btn btn-primary ms-2" @onclick="Upload" disabled="@isUploading">
-            @(isUploading ? "Uploading..." : "Upload")
-        </button>
-    </div>
-</div>
-@if (!string.IsNullOrWhiteSpace(error)) { <div class="alert alert-danger" role="alert">@error</div> }
+<form method="post" action="/documents/upload" enctype="multipart/form-data" class="mb-3">
+    <AntiforgeryToken />
+    <input type="file" name="file" accept=".pdf,application/pdf" />
+    <button type="submit" class="btn btn-primary ms-2">Upload</button>
+</form>
+@if (!string.IsNullOrWhiteSpace(errorMessage)) { <div class="alert alert-danger" role="alert">@errorMessage</div> }
 <ul>
 @foreach (var document in documents)
 {
@@ -33,46 +30,13 @@
 
 @code {
     private List<ManualDocument> documents = [];
-    private string? error;
-    private IBrowserFile? selectedFile;
-    private bool isUploading;
+    [SupplyParameterFromQuery(Name = "error")]
+    private string? errorMessage { get; set; }
     private bool isAdmin => CurrentUser.IsInRole(ApplicationRoles.Admin);
     private int activeCount => documents.Count(x => x.Status is DocumentStatus.Pending or DocumentStatus.Processing or DocumentStatus.Ready);
     protected override async Task OnInitializedAsync() => await Refresh();
     private async Task Refresh() => documents = await Documents.ListAsync();
-    private async Task SelectFile(InputFileChangeEventArgs e)
-    {
-        selectedFile = e.File;
-        error = null;
-        await InvokeAsync(StateHasChanged);
-    }
-    private async Task Upload()
-    {
-        if (isUploading) return;
-        if (selectedFile is null)
-        {
-            error = "Select a PDF file before uploading.";
-            return;
-        }
-
-        isUploading = true;
-        error = null;
-        try
-        {
-            await Documents.UploadAsync(selectedFile);
-            selectedFile = null;
-            await Refresh();
-        }
-        catch (Exception ex) when (ex is InvalidDataException or DocumentQuotaExceededException)
-        {
-            error = ex.Message;
-        }
-        finally
-        {
-            isUploading = false;
-        }
-    }
-    private async Task Retry(Guid id) { try { await Documents.RetryAsync(id); await Refresh(); } catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException) { error = ex.Message; } }
-    private async Task Reindex(Guid id) { try { await Documents.ReindexAsync(id); await Refresh(); } catch (UnauthorizedAccessException ex) { error = ex.Message; } }
-    private async Task Delete(Guid id) { try { await Documents.DeleteAsync(id); await Refresh(); } catch (UnauthorizedAccessException ex) { error = ex.Message; } }
+    private async Task Retry(Guid id) { try { await Documents.RetryAsync(id); await Refresh(); } catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException) { errorMessage = ex.Message; } }
+    private async Task Reindex(Guid id) { try { await Documents.ReindexAsync(id); await Refresh(); } catch (UnauthorizedAccessException ex) { errorMessage = ex.Message; } }
+    private async Task Delete(Guid id) { try { await Documents.DeleteAsync(id); await Refresh(); } catch (UnauthorizedAccessException ex) { errorMessage = ex.Message; } }
 }
