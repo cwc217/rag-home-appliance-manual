@@ -10,15 +10,12 @@
 <p>PDF only, maximum 10 MB. @(isAdmin ? "Administrators have unlimited uploads." : $"Active quota: {activeCount} / 3.")</p>
 <div class="mb-3">
     <InputFile OnChange="SelectFile" accept=".pdf,application/pdf" disabled="@isUploading" />
-    @if (selectedFile is not null)
-    {
-        <div class="mt-2">
-            <span>@selectedFile.Name</span>
-            <button type="button" class="btn btn-primary ms-2" @onclick="Upload" disabled="@isUploading">
-                @(isUploading ? "Uploading..." : "Upload")
-            </button>
-        </div>
-    }
+    <div class="mt-2">
+        <span>@(selectedFile?.Name ?? "No file selected")</span>
+        <button type="button" class="btn btn-primary ms-2" @onclick="Upload" disabled="@isUploading">
+            @(isUploading ? "Uploading..." : "Upload")
+        </button>
+    </div>
 </div>
 @if (!string.IsNullOrWhiteSpace(error)) { <div class="alert alert-danger" role="alert">@error</div> }
 <ul>
@@ -50,7 +47,12 @@
     }
     private async Task Upload()
     {
-        if (selectedFile is null || isUploading) return;
+        if (isUploading) return;
+        if (selectedFile is null)
+        {
+            error = "Select a PDF file before uploading.";
+            return;
+        }
 
         isUploading = true;
         error = null;
