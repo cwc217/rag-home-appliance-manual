@@ -1,0 +1,33 @@
+@page "/my-documents"
+@rendermode InteractiveServer
+@attribute [Authorize(Policy = ApplicationPolicies.RegisteredUser)]
+@inject DocumentService Documents
+@inject ICurrentUser CurrentUser
+@using Microsoft.AspNetCore.Components.Forms
+
+<PageTitle>My documents</PageTitle>
+<h1>My documents</h1>
+<p>PDF only, maximum 10 MB. Active quota: @activeCount / 3.</p>
+<InputFile OnChange="Upload" accept=".pdf,application/pdf" />
+@if (!string.IsNullOrWhiteSpace(error)) { <div class="alert alert-danger">@error</div> }
+<ul>
+@foreach (var document in documents)
+{
+    <li><strong>@document.DisplayName</strong> — @document.Status
+        @if (document.Status == DocumentStatus.Failed) { <button @onclick="() => Retry(document.Id)">Retry</button> }
+        <button @onclick="() => Delete(document.Id)">Delete</button>
+        @if (!string.IsNullOrWhiteSpace(document.LastError)) { <span class="text-danger">@document.LastError</span> }
+    </li>
+}
+</ul>
+
+@code {
+    private List<ManualDocument> documents = [];
+    private string? error;
+    private int activeCount => documents.Count(x => x.Status is DocumentStatus.Pending or DocumentStatus.Processing or DocumentStatus.Ready);
+    protected override async Task OnInitializedAsync() => await Refresh();
+    private async Task Refresh() => documents = await Documents.ListAsync(false);
+    private async Task Upload(InputFileChangeEventArgs e) { try { await Documents.UploadAsync(e.File); error = null; await Refresh(); } catch (Exception ex) when (ex is InvalidDataException or DocumentQuotaExceededException) { error = ex.Message; } }
+    private async Task Retry(Guid id) { try { await Documents.RetryAsync(id, false); await Refresh(); } catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException) { error = ex.Message; } }
+    private async Task Delete(Guid id) { try { await Documents.DeleteAsync(id); await Refresh(); } catch (UnauthorizedAccessException ex) { error = ex.Message; } }
+}

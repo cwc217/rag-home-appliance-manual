@@ -14,6 +14,12 @@
   `POST /account/logout` signs out. The configured `SeedAdmin` account is idempotently
   assigned the Admin role at startup. Validation errors support English and Traditional
   Chinese based on the request language.
+- Authenticated users manage documents at `/my-documents`; administrators use
+  `/admin/documents`. Uploads are server-validated PDFs (extension, `application/pdf`
+  content type, `%PDF-` signature) up to 10 MB and stored beneath `Storage:RootPath`
+  with generated keys. Users may have three active (Pending, Processing, or Ready)
+  documents; failed and deleted records do not consume quota. Phase 2 creates Pending
+  records; indexing is intentionally deferred to Phase 3.
 
 ## Stack
 

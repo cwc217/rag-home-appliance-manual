@@ -22,7 +22,7 @@ public sealed class AzureOpenAiOptions
 public sealed class UploadOptions
 {
     public const string SectionName = "Upload";
-    [Range(1, 100 * 1024 * 1024)] public long MaxFileSizeBytes { get; init; } = 10 * 1024 * 1024;
+    [Range(1, 10 * 1024 * 1024)] public long MaxFileSizeBytes { get; init; } = 10 * 1024 * 1024;
 }
 
 public sealed class RetrievalOptions
