@@ -33,6 +33,7 @@
 - [x] Implement status values `Pending`, `Processing`, `Ready`, `Failed`.
 - [x] Create the role-aware `/my-documents` page with normal-user and admin actions.
 - [ ] Add unit and integration tests for file validation, quota concurrency, ownership, and admin permissions.
+- [ ] Add storage cleanup/reconciliation for failures between file and database operations.
 
 ## Phase 3 — Indexing worker
 
