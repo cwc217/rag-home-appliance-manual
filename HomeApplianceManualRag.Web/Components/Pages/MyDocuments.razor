@@ -40,10 +40,11 @@
     private int activeCount => documents.Count(x => x.Status is DocumentStatus.Pending or DocumentStatus.Processing or DocumentStatus.Ready);
     protected override async Task OnInitializedAsync() => await Refresh();
     private async Task Refresh() => documents = await Documents.ListAsync();
-    private void SelectFile(InputFileChangeEventArgs e)
+    private async Task SelectFile(InputFileChangeEventArgs e)
     {
         selectedFile = e.File;
         error = null;
+        await InvokeAsync(StateHasChanged);
     }
     private async Task Upload()
     {
