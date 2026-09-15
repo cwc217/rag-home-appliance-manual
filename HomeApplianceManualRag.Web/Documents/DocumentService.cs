@@ -42,11 +42,12 @@ public sealed class DocumentService(
         return document;
     }
 
-    public Task<List<ManualDocument>> ListAsync(bool admin, CancellationToken ct = default)
+    public Task<List<ManualDocument>> ListAsync(CancellationToken ct = default)
     {
-        if (admin && !currentUser.IsInRole(ApplicationRoles.Admin)) throw new DocumentForbiddenException();
-        if (!admin && !currentUser.IsAuthenticated) throw new DocumentForbiddenException();
-        return (admin ? db.ManualDocuments : db.ManualDocuments.Where(x => x.OwnerUserId == currentUser.UserId))
+        if (!currentUser.IsAuthenticated) throw new DocumentForbiddenException();
+        var isAdmin = currentUser.IsInRole(ApplicationRoles.Admin);
+        var owner = currentUser.UserId;
+        return (isAdmin ? db.ManualDocuments : db.ManualDocuments.Where(x => x.OwnerUserId == owner))
         .OrderByDescending(x => x.CreatedAtUtc).ToListAsync(ct);
     }
 
@@ -58,9 +59,9 @@ public sealed class DocumentService(
         await storage.DeleteAsync(document.StorageKey, ct);
     }
 
-    public async Task RetryAsync(Guid id, bool admin, CancellationToken ct = default)
+    public async Task RetryAsync(Guid id, CancellationToken ct = default)
     {
-        var document = await GetAuthorizedAsync(id, ct, admin);
+        var document = await GetAuthorizedAsync(id, ct);
         if (document.Status != DocumentStatus.Failed) throw new InvalidOperationException("Only failed documents can be retried.");
         document.Status = DocumentStatus.Pending; document.LastError = null; document.UpdatedAtUtc = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
@@ -68,7 +69,8 @@ public sealed class DocumentService(
 
     public async Task ReindexAsync(Guid id, CancellationToken ct = default)
     {
-        var document = await GetAuthorizedAsync(id, ct, true);
+        if (!currentUser.IsInRole(ApplicationRoles.Admin)) throw new DocumentForbiddenException();
+        var document = await GetAuthorizedAsync(id, ct);
         document.Status = DocumentStatus.Pending;
         document.LastError = null;
         document.IndexedAtUtc = null;
@@ -76,10 +78,11 @@ public sealed class DocumentService(
         await db.SaveChangesAsync(ct);
     }
 
-    private async Task<ManualDocument> GetAuthorizedAsync(Guid id, CancellationToken ct, bool admin = false)
+    private async Task<ManualDocument> GetAuthorizedAsync(Guid id, CancellationToken ct)
     {
+        if (!currentUser.IsAuthenticated) throw new DocumentForbiddenException();
         var document = await db.ManualDocuments.SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw new KeyNotFoundException("Document was not found.");
-        if (!(admin && currentUser.IsInRole(ApplicationRoles.Admin)) &&
+        if (!currentUser.IsInRole(ApplicationRoles.Admin) &&
             !(currentUser.IsAuthenticated && document.OwnerUserId == currentUser.UserId))
             throw new DocumentForbiddenException();
         return document;

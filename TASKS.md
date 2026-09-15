@@ -31,7 +31,7 @@
 - [x] Implement transactional user quota enforcement for active/processing documents.
 - [x] Implement document commands: upload, list, delete, retry, and admin re-index.
 - [x] Implement status values `Pending`, `Processing`, `Ready`, `Failed`.
-- [x] Create `/my-documents` and `/admin/documents` with role-appropriate actions.
+- [x] Create the role-aware `/my-documents` page with normal-user and admin actions.
 - [ ] Add unit and integration tests for file validation, quota concurrency, ownership, and admin permissions.
 
 ## Phase 3 — Indexing worker

@@ -15,10 +15,15 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
-        builder.HasPostgresExtension("vector");
+        if (Database.IsNpgsql())
+        {
+            builder.HasPostgresExtension("vector");
+            builder.Entity<ManualChunk>().Property(x => x.Embedding).HasColumnType($"vector({EmbeddingDimensions})");
+        }
         builder.Entity<ManualDocument>().HasIndex(x => new { x.Status, x.OwnerUserId });
         builder.Entity<ManualChunk>().HasIndex(x => x.DocumentId);
-        builder.Entity<ManualChunk>().Property(x => x.Embedding).HasColumnType($"vector({EmbeddingDimensions})");
+        if (!Database.IsNpgsql())
+            builder.Entity<ManualChunk>().Ignore(x => x.Embedding);
     }
 }
 
