@@ -59,7 +59,7 @@ SeedAdmin__Email
 SeedAdmin__Password
 ```
 
-`AzureOpenAI__EmbeddingDimensions` must be `1536` for the current migration and match the selected embedding deployment. Changing the embedding deployment dimension requires a new migration and compatible embedding configuration. `SeedAdmin__Password` must contain at least 8 characters.
+`AzureOpenAI__EmbeddingDimensions` must be `1536` for the current migration and match the selected embedding deployment. Changing the embedding deployment dimension requires a new migration and compatible embedding configuration. `SeedAdmin__Password` and registration passwords must contain at least 8 characters; stronger passwords are still recommended.
 
 ### Run
 
