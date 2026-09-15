@@ -47,8 +47,26 @@ public sealed class DocumentService(
         if (!currentUser.IsAuthenticated) throw new DocumentForbiddenException();
         var isAdmin = currentUser.IsInRole(ApplicationRoles.Admin);
         var owner = currentUser.UserId;
-        return (isAdmin ? db.ManualDocuments : db.ManualDocuments.Where(x => x.OwnerUserId == owner))
-        .OrderByDescending(x => x.CreatedAtUtc).ToListAsync(ct);
+        return ListCoreAsync(isAdmin, owner, ct);
+    }
+
+    private async Task<List<ManualDocument>> ListCoreAsync(bool isAdmin, string? owner, CancellationToken ct)
+    {
+        var documents = await (isAdmin ? db.ManualDocuments : db.ManualDocuments.Where(x => x.OwnerUserId == owner))
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .ToListAsync(ct);
+        if (isAdmin)
+        {
+            var ownerIds = documents.Where(x => x.OwnerUserId is not null).Select(x => x.OwnerUserId!).Distinct().ToList();
+            var emails = await db.Users
+                .Where(x => ownerIds.Contains(x.Id))
+                .ToDictionaryAsync(x => x.Id, x => x.Email, ct);
+            foreach (var document in documents)
+                document.OwnerEmail = document.OwnerUserId is not null && emails.TryGetValue(document.OwnerUserId, out var email)
+                    ? email
+                    : null;
+        }
+        return documents;
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
