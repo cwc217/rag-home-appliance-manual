@@ -11,7 +11,11 @@ public static class IdentitySeeder
         var roles = services.GetRequiredService<RoleManager<IdentityRole>>();
         foreach (var role in new[] { ApplicationRoles.Admin, ApplicationRoles.User })
             if (!await roles.RoleExistsAsync(role))
-                (await roles.CreateAsync(new IdentityRole(role))).ThrowIfFailed();
+            {
+                var result = await roles.CreateAsync(new IdentityRole(role));
+                if (!result.Succeeded && !await roles.RoleExistsAsync(role))
+                    result.ThrowIfFailed();
+            }
 
         var options = services.GetRequiredService<IOptions<SeedAdminOptions>>().Value;
         var users = services.GetRequiredService<UserManager<ApplicationUser>>();

@@ -52,6 +52,12 @@ public static class ApplicationRoles
     public const string User = "User";
 }
 
+public static class ApplicationPolicies
+{
+    public const string AdminOnly = "AdminOnly";
+    public const string RegisteredUser = "RegisteredUser";
+}
+
 public static class ConfigurationValidation
 {
     public static void ValidateProduction(IConfiguration configuration, IHostEnvironment environment)

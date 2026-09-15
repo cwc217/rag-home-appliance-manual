@@ -1,7 +1,10 @@
 using HomeApplianceManualRag.Web.Configuration;
 using HomeApplianceManualRag.Web.Data;
 using HomeApplianceManualRag.Web.Providers;
+using HomeApplianceManualRag.Web.Resources;
 using System.ComponentModel.DataAnnotations;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 
@@ -9,6 +12,42 @@ namespace HomeApplianceManualRag.Tests;
 
 public sealed class ConfigurationValidationTests
 {
+    [Fact]
+    public void Identity_roles_and_policies_are_fixed()
+    {
+        Assert.Equal("Admin", ApplicationRoles.Admin);
+        Assert.Equal("User", ApplicationRoles.User);
+        Assert.Equal("AdminOnly", ApplicationPolicies.AdminOnly);
+        Assert.Equal("RegisteredUser", ApplicationPolicies.RegisteredUser);
+    }
+
+    [Fact]
+    public void Current_user_reads_identity_claims()
+    {
+        var context = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(
+            [
+                new Claim(ClaimTypes.NameIdentifier, "user-1"),
+                new Claim(ClaimTypes.Email, "user@example.invalid")
+            ], "test"))
+        };
+        var currentUser = new CurrentUser(new HttpContextAccessor { HttpContext = context });
+
+        Assert.True(currentUser.IsAuthenticated);
+        Assert.Equal("user-1", currentUser.UserId);
+        Assert.Equal("user@example.invalid", currentUser.Email);
+    }
+
+    [Fact]
+    public void Identity_validation_messages_follow_requested_culture()
+    {
+        Assert.Contains("required", IdentityMessages.Required("Email", "en-US"));
+        Assert.Contains("必填", IdentityMessages.Required("Email", "zh-Hant"));
+        Assert.Contains("already registered", IdentityMessages.EmailTaken("en-US"));
+        Assert.Contains("已註冊", IdentityMessages.EmailTaken("zh-Hant"));
+    }
+
     [Fact]
     public void Seed_admin_password_accepts_eight_characters()
     {

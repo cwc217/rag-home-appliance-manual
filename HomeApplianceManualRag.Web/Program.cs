@@ -36,8 +36,8 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 builder.Services.AddAuthorization(options =>
 {
-    options.AddPolicy("AdminOnly", policy => policy.RequireRole(ApplicationRoles.Admin));
-    options.AddPolicy("RegisteredUser", policy => policy.RequireAuthenticatedUser());
+    options.AddPolicy(ApplicationPolicies.AdminOnly, policy => policy.RequireRole(ApplicationRoles.Admin));
+    options.AddPolicy(ApplicationPolicies.RegisteredUser, policy => policy.RequireAuthenticatedUser());
 });
 builder.Services.AddScoped<IChatProvider, AzureOpenAiChatProvider>();
 builder.Services.AddScoped<IEmbeddingProvider, AzureOpenAiEmbeddingProvider>();
@@ -108,7 +108,9 @@ app.MapPost("/account/register", async (
     var result = await userManager.CreateAsync(user, password);
     if (!result.Succeeded)
         return Results.Redirect($"/register?error={Uri.EscapeDataString(IdentityMessages.RegistrationFailed(culture))}");
-    await userManager.AddToRoleAsync(user, ApplicationRoles.User);
+    var roleResult = await userManager.AddToRoleAsync(user, ApplicationRoles.User);
+    if (!roleResult.Succeeded)
+        return Results.Redirect($"/register?error={Uri.EscapeDataString(IdentityMessages.RegistrationFailed(culture))}");
     await signInManager.SignInAsync(user, isPersistent: false);
     return Results.Redirect("/");
 }).AllowAnonymous();
@@ -117,11 +119,11 @@ app.MapPost("/account/logout", async (SignInManager<ApplicationUser> signInManag
 {
     await signInManager.SignOutAsync();
     return Results.Redirect("/");
-}).RequireAuthorization("RegisteredUser");
+}).RequireAuthorization(ApplicationPolicies.RegisteredUser);
 
-app.MapGet("/admin", () => Results.Ok(new { message = "Admin area" })).RequireAuthorization("AdminOnly");
+app.MapGet("/admin", () => Results.Ok(new { message = "Admin area" })).RequireAuthorization(ApplicationPolicies.AdminOnly);
 app.MapGet("/account/me", (ICurrentUser currentUser) => Results.Ok(new { currentUser.UserId, currentUser.Email }))
-    .RequireAuthorization("RegisteredUser");
+    .RequireAuthorization(ApplicationPolicies.RegisteredUser);
 
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
