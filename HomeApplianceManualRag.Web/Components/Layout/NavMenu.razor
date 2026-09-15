@@ -13,8 +13,19 @@
                 <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
             </NavLink>
         </div>
-        <div class="nav-item px-3"><NavLink class="nav-link" href="login">Login</NavLink></div>
-        <div class="nav-item px-3"><NavLink class="nav-link" href="register">Register</NavLink></div>
-        <div class="nav-item px-3"><NavLink class="nav-link" href="my-documents">My documents</NavLink></div>
+        <AuthorizeView>
+            <NotAuthorized>
+                <div class="nav-item px-3"><NavLink class="nav-link" href="login">Login</NavLink></div>
+                <div class="nav-item px-3"><NavLink class="nav-link" href="register">Register</NavLink></div>
+            </NotAuthorized>
+            <Authorized>
+                <div class="nav-item px-3"><NavLink class="nav-link" href="my-documents">My documents</NavLink></div>
+                <div class="nav-item px-3">
+                    <form method="post" action="/account/logout">
+                        <button type="submit" class="nav-link border-0 bg-transparent w-100 text-start">Logout</button>
+                    </form>
+                </div>
+            </Authorized>
+        </AuthorizeView>
     </nav>
 </div>
