@@ -15,18 +15,30 @@
     <button type="submit" class="btn btn-primary ms-2">Upload</button>
 </form>
 @if (!string.IsNullOrWhiteSpace(errorMessage)) { <div class="alert alert-danger" role="alert">@errorMessage</div> }
-<ul>
+<div class="row g-3">
 @foreach (var document in documents)
 {
-    <li><strong>@document.DisplayName</strong> — @document.Status
-        @if (isAdmin) { <span> — Owner: @(document.OwnerUserId ?? "Admin/public")</span> }
-        @if (document.Status == DocumentStatus.Failed) { <button @onclick="() => Retry(document.Id)">Retry</button> }
-        <button @onclick="() => Delete(document.Id)">Delete</button>
-        @if (isAdmin) { <button @onclick="() => Reindex(document.Id)">Re-index</button> }
-        @if (!string.IsNullOrWhiteSpace(document.LastError)) { <span class="text-danger">@document.LastError</span> }
-    </li>
+    <div class="col-12 col-md-6 col-xl-4">
+        <div class="card h-100">
+            <div class="card-body d-flex flex-column">
+                <h2 class="h5 card-title text-break">@document.DisplayName</h2>
+                <p class="card-text mb-2">Status: <strong>@document.Status</strong></p>
+                @if (isAdmin) { <p class="card-text small text-muted">Owner: @(document.OwnerUserId ?? "Admin/public")</p> }
+                @if (!string.IsNullOrWhiteSpace(document.LastError)) { <p class="card-text text-danger">@document.LastError</p> }
+                <div class="mt-auto d-flex flex-wrap gap-2">
+                    <a class="btn btn-outline-primary btn-sm" href="/documents/@document.Id/download">Download</a>
+                    @if (document.Status == DocumentStatus.Failed) { <button class="btn btn-outline-secondary btn-sm" @onclick="() => Retry(document.Id)">Retry</button> }
+                    @if (isAdmin) { <button class="btn btn-outline-secondary btn-sm" @onclick="() => Reindex(document.Id)">Re-index</button> }
+                    <form method="post" action="/documents/@document.Id/delete" class="d-inline">
+                        <AntiforgeryToken />
+                        <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
 }
-</ul>
+</div>
 
 @code {
     private List<ManualDocument> documents = [];
@@ -38,5 +50,4 @@
     private async Task Refresh() => documents = await Documents.ListAsync();
     private async Task Retry(Guid id) { try { await Documents.RetryAsync(id); await Refresh(); } catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException) { errorMessage = ex.Message; } }
     private async Task Reindex(Guid id) { try { await Documents.ReindexAsync(id); await Refresh(); } catch (UnauthorizedAccessException ex) { errorMessage = ex.Message; } }
-    private async Task Delete(Guid id) { try { await Documents.DeleteAsync(id); await Refresh(); } catch (UnauthorizedAccessException ex) { errorMessage = ex.Message; } }
 }

@@ -155,6 +155,45 @@ app.MapPost("/documents/upload", async (HttpContext context, DocumentService doc
     }
 }).RequireAuthorization(ApplicationPolicies.RegisteredUser);
 
+app.MapPost("/documents/{id:guid}/delete", async (Guid id, DocumentService documents, HttpContext context) =>
+{
+    try
+    {
+        await documents.DeleteAsync(id, context.RequestAborted);
+    }
+    catch (KeyNotFoundException)
+    {
+        return Results.NotFound();
+    }
+    catch (UnauthorizedAccessException)
+    {
+        return Results.Forbid();
+    }
+
+    return Results.Redirect("/my-documents");
+}).RequireAuthorization(ApplicationPolicies.RegisteredUser);
+
+app.MapGet("/documents/{id:guid}/download", async (Guid id, DocumentService documents, HttpContext context) =>
+{
+    try
+    {
+        var (document, content) = await documents.OpenReadAsync(id, context.RequestAborted);
+        return Results.File(content, document.ContentType, document.DisplayName, enableRangeProcessing: true);
+    }
+    catch (KeyNotFoundException)
+    {
+        return Results.NotFound();
+    }
+    catch (UnauthorizedAccessException)
+    {
+        return Results.Forbid();
+    }
+    catch (FileNotFoundException)
+    {
+        return Results.NotFound();
+    }
+}).RequireAuthorization(ApplicationPolicies.RegisteredUser);
+
 app.MapGet("/admin", () => Results.Ok(new { message = "Admin area" })).RequireAuthorization(ApplicationPolicies.AdminOnly);
 app.MapGet("/account/me", (ICurrentUser currentUser) => Results.Ok(new { currentUser.UserId, currentUser.Email }))
     .RequireAuthorization(ApplicationPolicies.RegisteredUser);
