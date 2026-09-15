@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Pgvector;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace HomeApplianceManualRag.Web.Data;
 
@@ -33,6 +34,8 @@ public sealed class ManualDocument
 {
     public Guid Id { get; set; }
     public string? OwnerUserId { get; set; }
+    [NotMapped]
+    public string? OwnerEmail { get; set; }
     public string DisplayName { get; set; } = string.Empty;
     public string StorageKey { get; set; } = string.Empty;
     public string ContentType { get; set; } = "application/pdf";

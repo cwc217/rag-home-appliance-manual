@@ -23,7 +23,7 @@
             <div class="card-body d-flex flex-column">
                 <h2 class="h5 card-title text-break">@document.DisplayName</h2>
                 <p class="card-text mb-2">Status: <strong>@document.Status</strong></p>
-                @if (isAdmin) { <p class="card-text small text-muted">Owner: @(document.OwnerUserId ?? "Admin/public")</p> }
+                @if (isAdmin) { <p class="card-text small text-muted">Owner: @(document.OwnerEmail ?? "Admin/public")</p> }
                 @if (!string.IsNullOrWhiteSpace(document.LastError)) { <p class="card-text text-danger">@document.LastError</p> }
                 <div class="mt-auto d-flex flex-wrap gap-2">
                     <a class="btn btn-outline-primary btn-sm" href="/documents/@document.Id/download">Download</a>
