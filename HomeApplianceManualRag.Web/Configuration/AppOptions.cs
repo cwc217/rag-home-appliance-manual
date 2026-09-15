@@ -33,6 +33,15 @@ public sealed class RetrievalOptions
     [Range(0, 10000)] public int ChunkOverlap { get; init; } = 200;
 }
 
+public sealed class DoclingOptions
+{
+    public const string SectionName = "Docling";
+    public string ExecutablePath { get; init; } = "docling";
+    public string ArgumentsTemplate { get; init; } = "--output {output} --format json {input}";
+    [Range(1, 3600)] public int TimeoutSeconds { get; init; } = 300;
+    [Range(1, 4)] public int MaxConcurrentJobs { get; init; } = 1;
+}
+
 public sealed class RateLimitingOptions
 {
     public const string SectionName = "RateLimiting";

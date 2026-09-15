@@ -89,6 +89,21 @@ public sealed class DocumentValidationTests
             Assert.Contains(document.StorageKey, storage.DeletedKeys);
         }
 
+        [Fact]
+        public async Task Upload_creates_a_pending_indexing_job()
+        {
+            await using var db = CreateDb();
+            var service = Service(db, new TestCurrentUser("admin", true));
+            var file = File("manual.pdf", "application/pdf", "%PDF-1.7\ncontent"u8.ToArray());
+
+            var document = await service.UploadAsync(file);
+
+            var job = Assert.Single(db.IndexingJobs);
+            Assert.Equal(document.Id, job.DocumentId);
+            Assert.Equal(document.DocumentVersion, job.DocumentVersion);
+            Assert.Equal(IndexingJobStatus.Pending, job.Status);
+        }
+
         private static ApplicationDbContext CreateDb() =>
             new(new DbContextOptionsBuilder<ApplicationDbContext>()
                 .UseInMemoryDatabase(Guid.NewGuid().ToString())

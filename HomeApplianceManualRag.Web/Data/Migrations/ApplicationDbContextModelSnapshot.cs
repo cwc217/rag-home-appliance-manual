@@ -91,6 +91,48 @@ namespace HomeApplianceManualRag.Web.Data.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
+            modelBuilder.Entity("HomeApplianceManualRag.Web.Data.IndexingJob", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("DocumentVersion")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("LastError")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("NextAttemptAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("StartedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("Status", "NextAttemptAtUtc");
+
+                    b.ToTable("IndexingJobs");
+                });
+
             modelBuilder.Entity("HomeApplianceManualRag.Web.Data.ManualChunk", b =>
                 {
                     b.Property<Guid>("Id")
@@ -139,6 +181,9 @@ namespace HomeApplianceManualRag.Web.Data.Migrations
                     b.Property<string>("DisplayName")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<Guid>("DocumentVersion")
+                        .HasColumnType("uuid");
 
                     b.Property<DateTime?>("IndexedAtUtc")
                         .HasColumnType("timestamp with time zone");
@@ -332,6 +377,17 @@ namespace HomeApplianceManualRag.Web.Data.Migrations
                     b.HasKey("UserId", "LoginProvider", "Name");
 
                     b.ToTable("AspNetUserTokens", (string)null);
+                });
+
+            modelBuilder.Entity("HomeApplianceManualRag.Web.Data.IndexingJob", b =>
+                {
+                    b.HasOne("HomeApplianceManualRag.Web.Data.ManualDocument", "Document")
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Document");
                 });
 
             modelBuilder.Entity("HomeApplianceManualRag.Web.Data.ManualChunk", b =>

@@ -44,6 +44,7 @@ public sealed class DocumentService(
             storageWriteStarted = true;
             await storage.StoreAsync(key, stream, cancellationToken);
             db.ManualDocuments.Add(document);
+            db.IndexingJobs.Add(CreateIndexingJob(document));
             await db.SaveChangesAsync(cancellationToken);
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);
@@ -129,7 +130,12 @@ public sealed class DocumentService(
     {
         var document = await GetAuthorizedAsync(id, ct);
         if (document.Status != DocumentStatus.Failed) throw new InvalidOperationException("Only failed documents can be retried.");
-        document.Status = DocumentStatus.Pending; document.LastError = null; document.UpdatedAtUtc = DateTime.UtcNow;
+        document.Status = DocumentStatus.Pending;
+        document.LastError = null;
+        document.DocumentVersion = Guid.NewGuid();
+        document.UpdatedAtUtc = DateTime.UtcNow;
+        await CancelOutstandingJobsAsync(document.Id, ct);
+        db.IndexingJobs.Add(CreateIndexingJob(document));
         await db.SaveChangesAsync(ct);
     }
 
@@ -140,8 +146,35 @@ public sealed class DocumentService(
         document.Status = DocumentStatus.Pending;
         document.LastError = null;
         document.IndexedAtUtc = null;
+        document.DocumentVersion = Guid.NewGuid();
         document.UpdatedAtUtc = DateTime.UtcNow;
+        await CancelOutstandingJobsAsync(document.Id, ct);
+        db.IndexingJobs.Add(CreateIndexingJob(document));
         await db.SaveChangesAsync(ct);
+    }
+
+    private static IndexingJob CreateIndexingJob(ManualDocument document) => new()
+    {
+        Id = Guid.NewGuid(),
+        DocumentId = document.Id,
+        DocumentVersion = document.DocumentVersion,
+        Status = IndexingJobStatus.Pending,
+        CreatedAtUtc = DateTime.UtcNow,
+        NextAttemptAtUtc = DateTime.UtcNow
+    };
+
+    private async Task CancelOutstandingJobsAsync(Guid documentId, CancellationToken ct)
+    {
+        var jobs = await db.IndexingJobs
+            .Where(x => x.DocumentId == documentId &&
+                        (x.Status == IndexingJobStatus.Pending || x.Status == IndexingJobStatus.Processing))
+            .ToListAsync(ct);
+        foreach (var job in jobs)
+        {
+            job.Status = IndexingJobStatus.Failed;
+            job.LastError = "Superseded by a newer indexing request.";
+            job.NextAttemptAtUtc = null;
+        }
     }
 
     private async Task<ManualDocument> GetAuthorizedAsync(Guid id, CancellationToken ct)

@@ -12,6 +12,7 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
 
     public DbSet<ManualDocument> ManualDocuments => Set<ManualDocument>();
     public DbSet<ManualChunk> ManualChunks => Set<ManualChunk>();
+    public DbSet<IndexingJob> IndexingJobs => Set<IndexingJob>();
     public DbSet<StorageCleanup> StorageCleanups => Set<StorageCleanup>();
 
     protected override void OnModelCreating(ModelBuilder builder)
@@ -24,12 +25,35 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
         }
         builder.Entity<ManualDocument>().HasIndex(x => new { x.Status, x.OwnerUserId });
         builder.Entity<ManualChunk>().HasIndex(x => x.DocumentId);
+        builder.Entity<IndexingJob>().HasIndex(x => new { x.Status, x.NextAttemptAtUtc });
+        builder.Entity<IndexingJob>()
+            .HasOne(x => x.Document)
+            .WithMany()
+            .HasForeignKey(x => x.DocumentId)
+            .OnDelete(DeleteBehavior.Cascade);
         if (!Database.IsNpgsql())
             builder.Entity<ManualChunk>().Ignore(x => x.Embedding);
     }
 }
 
 public enum DocumentStatus { Pending, Processing, Ready, Failed }
+
+public enum IndexingJobStatus { Pending, Processing, Completed, Failed }
+
+public sealed class IndexingJob
+{
+    public Guid Id { get; set; }
+    public Guid DocumentId { get; set; }
+    public Guid DocumentVersion { get; set; }
+    public IndexingJobStatus Status { get; set; } = IndexingJobStatus.Pending;
+    public int Attempts { get; set; }
+    public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+    public DateTime? StartedAtUtc { get; set; }
+    public DateTime? CompletedAtUtc { get; set; }
+    public DateTime? NextAttemptAtUtc { get; set; }
+    public string? LastError { get; set; }
+    public ManualDocument? Document { get; set; }
+}
 
 public enum StorageCleanupStatus { Pending, Completed }
 
@@ -60,6 +84,7 @@ public sealed class ManualDocument
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime? IndexedAtUtc { get; set; }
+    public Guid DocumentVersion { get; set; } = Guid.NewGuid();
     public ICollection<ManualChunk> Chunks { get; set; } = [];
 }
 
