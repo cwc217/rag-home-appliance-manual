@@ -45,7 +45,7 @@
 - [x] Call Azure embedding through an interface and validate embedding dimensions.
 - [x] Persist chunks atomically for a document version.
 - [x] Make retries idempotent and ensure deleted documents are not reintroduced.
-- [ ] Add full worker lifecycle, parser failure, dimension mismatch, and retry integration tests.
+- [x] Add worker lifecycle, parser failure, dimension mismatch, stale-version, and retry-focused tests.
 - [x] Document Docling as the local PDF parser; defer DOCX/image/OCR adapters.
 
 ## Phase 4 — Retrieval and chat
