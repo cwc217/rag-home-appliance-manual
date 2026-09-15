@@ -94,6 +94,7 @@ public sealed class DocumentValidationTests
         private sealed class NoopStorage : IFileStorage
         {
             public Task StoreAsync(string key, Stream content, CancellationToken ct = default) => Task.CompletedTask;
+            public Task<Stream> OpenReadAsync(string key, CancellationToken ct = default) => Task.FromResult<Stream>(new MemoryStream());
             public Task DeleteAsync(string key, CancellationToken ct = default) => Task.CompletedTask;
         }
     }

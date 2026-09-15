@@ -6,6 +6,7 @@ namespace HomeApplianceManualRag.Web.Documents;
 public interface IFileStorage
 {
     Task StoreAsync(string storageKey, Stream content, CancellationToken cancellationToken = default);
+    Task<Stream> OpenReadAsync(string storageKey, CancellationToken cancellationToken = default);
     Task DeleteAsync(string storageKey, CancellationToken cancellationToken = default);
 }
 
@@ -24,6 +25,13 @@ public sealed class LocalFileStorage(IOptions<LocalStorageOptions> options) : IF
         var path = Resolve(storageKey);
         if (File.Exists(path)) File.Delete(path);
         return Task.CompletedTask;
+    }
+
+    public Task<Stream> OpenReadAsync(string storageKey, CancellationToken cancellationToken = default)
+    {
+        var path = Resolve(storageKey);
+        Stream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        return Task.FromResult(stream);
     }
 
     private string Resolve(string key)

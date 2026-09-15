@@ -59,6 +59,12 @@ public sealed class DocumentService(
         await storage.DeleteAsync(document.StorageKey, ct);
     }
 
+    public async Task<(ManualDocument Document, Stream Content)> OpenReadAsync(Guid id, CancellationToken ct = default)
+    {
+        var document = await GetAuthorizedAsync(id, ct);
+        return (document, await storage.OpenReadAsync(document.StorageKey, ct));
+    }
+
     public async Task RetryAsync(Guid id, CancellationToken ct = default)
     {
         var document = await GetAuthorizedAsync(id, ct);
