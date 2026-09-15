@@ -66,9 +66,10 @@ Pending -> Processing -> Ready
 - During Phase 2, upload writes the original PDF to local storage first, then saves
   the metadata record as `Pending`. Durable queueing and background indexing begin
   in Phase 3.
-- During Phase 2, delete removes the metadata record first, then deletes the stored
-  file. A failure between these operations is a known local-storage consistency
-  limitation; a later cleanup/reconciliation strategy may remove orphaned files.
+- During Phase 2, delete removes the metadata record and creates a durable pending
+  cleanup record in the same transaction, then deletes the stored file. A hosted
+  cleanup worker retries failed deletions and reconciles unreferenced files after
+  a one-hour grace period.
 - Only `Ready` documents participate in retrieval.
 - Retry is allowed for `Failed` documents by admin or the owning user.
 - Deleting a document must cancel/ignore outstanding work and remove its chunks from retrieval.

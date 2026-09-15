@@ -24,10 +24,11 @@
   quota. There is no separate `/admin/documents` route. Phase 2 creates Pending
   records; indexing is intentionally deferred to Phase 3.
 
-Phase 2 storage ordering is deliberately simple: upload writes the PDF to local
-storage before saving the database record; delete removes the database record before
-deleting the stored file. A failure between these operations can leave an orphaned
-file or record and is a known local-storage consistency limitation for this phase.
+Phase 2 storage ordering writes the PDF to local storage before saving metadata,
+and compensates by deleting the file if the metadata transaction fails. Delete
+removes the database record and creates a durable pending cleanup record in the
+same transaction, then removes the stored file. A cleanup worker retries failed
+deletions and periodically removes unreferenced files older than one hour.
 
 ## Stack
 

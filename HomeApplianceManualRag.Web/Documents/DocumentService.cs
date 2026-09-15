@@ -2,6 +2,7 @@ using HomeApplianceManualRag.Web.Configuration;
 using HomeApplianceManualRag.Web.Data;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.AspNetCore.Components.Forms;
 
 namespace HomeApplianceManualRag.Web.Documents;
@@ -29,17 +30,41 @@ public sealed class DocumentService(
         if (!validation.IsValid) throw new InvalidDataException(validation.Error);
         var isAdmin = currentUser.IsInRole(ApplicationRoles.Admin);
         var owner = isAdmin ? null : currentUser.UserId ?? throw new DocumentForbiddenException();
-        await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
+        await using var transaction = db.Database.IsRelational()
+            ? await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken)
+            : null;
         if (!isAdmin && await db.ManualDocuments.CountAsync(x => x.OwnerUserId == owner && ActiveStatuses.Contains(x.Status), cancellationToken) >= 3)
             throw new DocumentQuotaExceededException();
         var key = $"{Guid.NewGuid():N}.pdf";
         var document = new ManualDocument { Id = Guid.NewGuid(), OwnerUserId = owner, DisplayName = Path.GetFileName(file.FileName), StorageKey = key, ContentType = "application/pdf", SizeBytes = validation.SizeBytes, Status = DocumentStatus.Pending, CreatedAtUtc = DateTime.UtcNow, UpdatedAtUtc = DateTime.UtcNow };
         await using var stream = file.OpenRead();
-        await storage.StoreAsync(key, stream, cancellationToken);
-        db.ManualDocuments.Add(document);
-        await db.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return document;
+        var storageWriteStarted = false;
+        try
+        {
+            storageWriteStarted = true;
+            await storage.StoreAsync(key, stream, cancellationToken);
+            db.ManualDocuments.Add(document);
+            await db.SaveChangesAsync(cancellationToken);
+            if (transaction is not null)
+                await transaction.CommitAsync(cancellationToken);
+            return document;
+        }
+        catch (Exception databaseException) when (storageWriteStarted)
+        {
+            try
+            {
+                await storage.DeleteAsync(key, CancellationToken.None);
+            }
+            catch (Exception cleanupException)
+            {
+                throw new AggregateException(
+                    "Document metadata save failed and uploaded file cleanup also failed.",
+                    databaseException,
+                    cleanupException);
+            }
+
+            throw;
+        }
     }
 
     public Task<List<ManualDocument>> ListAsync(CancellationToken ct = default)
@@ -72,9 +97,26 @@ public sealed class DocumentService(
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
     {
         var document = await GetAuthorizedAsync(id, ct);
+        var cleanup = new StorageCleanup
+        {
+            Id = Guid.NewGuid(),
+            StorageKey = document.StorageKey,
+            CreatedAtUtc = DateTime.UtcNow,
+            NextAttemptAtUtc = DateTime.UtcNow
+        };
+        await using var transaction = db.Database.IsRelational()
+            ? await db.Database.BeginTransactionAsync(ct)
+            : null;
         db.ManualDocuments.Remove(document);
+        db.StorageCleanups.Add(cleanup);
         await db.SaveChangesAsync(ct);
+        if (transaction is not null)
+            await transaction.CommitAsync(ct);
+
         await storage.DeleteAsync(document.StorageKey, ct);
+        cleanup.Status = StorageCleanupStatus.Completed;
+        cleanup.CompletedAtUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
     }
 
     public async Task<(ManualDocument Document, Stream Content)> OpenReadAsync(Guid id, CancellationToken ct = default)

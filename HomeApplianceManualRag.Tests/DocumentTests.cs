@@ -69,6 +69,26 @@ public sealed class DocumentValidationTests
             await Assert.ThrowsAsync<DocumentForbiddenException>(() => service.RetryAsync(failed.Id));
         }
 
+        [Fact]
+        public async Task Delete_records_cleanup_and_marks_it_complete_after_file_removal()
+        {
+            await using var db = CreateDb();
+            var document = Document("to-delete", "user-1");
+            db.ManualDocuments.Add(document);
+            await db.SaveChangesAsync();
+            var storage = new RecordingStorage();
+            var service = new DocumentService(db, new TestCurrentUser("user-1", false),
+                new PdfValidator(Options.Create(new UploadOptions())), storage);
+
+            await service.DeleteAsync(document.Id);
+
+            Assert.Null(await db.ManualDocuments.FindAsync(document.Id));
+            var cleanup = Assert.Single(db.StorageCleanups);
+            Assert.Equal(document.StorageKey, cleanup.StorageKey);
+            Assert.Equal(StorageCleanupStatus.Completed, cleanup.Status);
+            Assert.Contains(document.StorageKey, storage.DeletedKeys);
+        }
+
         private static ApplicationDbContext CreateDb() =>
             new(new DbContextOptionsBuilder<ApplicationDbContext>()
                 .UseInMemoryDatabase(Guid.NewGuid().ToString())
@@ -91,11 +111,23 @@ public sealed class DocumentValidationTests
             public bool IsInRole(string role) => admin && role == ApplicationRoles.Admin;
         }
 
-        private sealed class NoopStorage : IFileStorage
+        private class NoopStorage : IFileStorage
         {
             public Task StoreAsync(string key, Stream content, CancellationToken ct = default) => Task.CompletedTask;
             public Task<Stream> OpenReadAsync(string key, CancellationToken ct = default) => Task.FromResult<Stream>(new MemoryStream());
-            public Task DeleteAsync(string key, CancellationToken ct = default) => Task.CompletedTask;
+            public virtual Task DeleteAsync(string key, CancellationToken ct = default) => Task.CompletedTask;
+            public Task<IReadOnlyCollection<StoredFile>> ListAsync(CancellationToken ct = default) =>
+                Task.FromResult<IReadOnlyCollection<StoredFile>>([]);
+        }
+
+        private sealed class RecordingStorage : NoopStorage
+        {
+            public List<string> DeletedKeys { get; } = [];
+            public override Task DeleteAsync(string key, CancellationToken ct = default)
+            {
+                DeletedKeys.Add(key);
+                return Task.CompletedTask;
+            }
         }
     }
 

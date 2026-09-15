@@ -23,7 +23,7 @@ builder.Services.AddOptions<RetrievalOptions>().BindConfiguration(RetrievalOptio
 builder.Services.AddOptions<RateLimitingOptions>().BindConfiguration(RateLimitingOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<SeedAdminOptions>().BindConfiguration(SeedAdminOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<LocalStorageOptions>().BindConfiguration(LocalStorageOptions.SectionName);
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
+builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Default"),
         npgsql => npgsql.UseVector()));
 builder.Services.AddIdentity<ApplicationUser, Microsoft.AspNetCore.Identity.IdentityRole>(options =>
@@ -52,6 +52,8 @@ builder.Services.AddScoped<IChatProvider, AzureOpenAiChatProvider>();
 builder.Services.AddScoped<IEmbeddingProvider, AzureOpenAiEmbeddingProvider>();
 builder.Services.AddScoped<PdfValidator>();
 builder.Services.AddScoped<DocumentService>();
+builder.Services.AddScoped<StorageCleanupService>();
+builder.Services.AddHostedService<StorageCleanupWorker>();
 builder.Services.AddSingleton<IFileStorage, LocalFileStorage>();
 
 // Add services to the container.
