@@ -24,14 +24,14 @@
 
 ## Phase 2 — Documents and quotas
 
-- [ ] Create `ManualDocument` and `ManualChunk` entities with UTC audit fields.
+- [x] Create `ManualDocument` and `ManualChunk` entities with UTC audit fields.
 - [ ] Add migrations for Identity, documents, chunks, pgvector extension, vector dimension, and indexes.
-- [ ] Implement server-side PDF signature/type validation and 10 MB limit.
-- [ ] Implement safe file storage abstraction; keep local storage as the initial development provider.
-- [ ] Implement transactional user quota enforcement for active/processing documents.
-- [ ] Implement document commands: upload, list, delete, retry, and admin re-index.
-- [ ] Implement status values `Pending`, `Processing`, `Ready`, `Failed`.
-- [ ] Create `/my-documents` and `/admin/documents` with role-appropriate actions.
+- [x] Implement server-side PDF signature/type validation and 10 MB limit.
+- [x] Implement safe file storage abstraction; keep local storage as the initial development provider.
+- [x] Implement transactional user quota enforcement for active/processing documents.
+- [x] Implement document commands: upload, list, delete, retry, and admin re-index.
+- [x] Implement status values `Pending`, `Processing`, `Ready`, `Failed`.
+- [x] Create `/my-documents` and `/admin/documents` with role-appropriate actions.
 - [ ] Add unit and integration tests for file validation, quota concurrency, ownership, and admin permissions.
 
 ## Phase 3 — Indexing worker

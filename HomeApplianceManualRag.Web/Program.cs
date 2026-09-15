@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using HomeApplianceManualRag.Web.Resources;
+using HomeApplianceManualRag.Web.Documents;
 
 var builder = WebApplication.CreateBuilder(args);
 ConfigurationValidation.ValidateProduction(builder.Configuration, builder.Environment);
@@ -21,6 +22,7 @@ builder.Services.AddOptions<UploadOptions>().BindConfiguration(UploadOptions.Sec
 builder.Services.AddOptions<RetrievalOptions>().BindConfiguration(RetrievalOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<RateLimitingOptions>().BindConfiguration(RateLimitingOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<SeedAdminOptions>().BindConfiguration(SeedAdminOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
+builder.Services.AddOptions<LocalStorageOptions>().BindConfiguration(LocalStorageOptions.SectionName);
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Default"),
         npgsql => npgsql.UseVector()));
@@ -48,6 +50,9 @@ builder.Services.AddAuthorization(options =>
 });
 builder.Services.AddScoped<IChatProvider, AzureOpenAiChatProvider>();
 builder.Services.AddScoped<IEmbeddingProvider, AzureOpenAiEmbeddingProvider>();
+builder.Services.AddScoped<PdfValidator>();
+builder.Services.AddScoped<DocumentService>();
+builder.Services.AddSingleton<IFileStorage, LocalFileStorage>();
 
 // Add services to the container.
 builder.Services.AddRazorComponents()

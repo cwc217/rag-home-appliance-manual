@@ -12,6 +12,7 @@ public interface ICurrentUser
     string? UserId { get; }
     string? Email { get; }
     bool IsAuthenticated { get; }
+    bool IsInRole(string role);
 }
 
 public sealed class CurrentUser(IHttpContextAccessor httpContextAccessor) : ICurrentUser
@@ -23,4 +24,5 @@ public sealed class CurrentUser(IHttpContextAccessor httpContextAccessor) : ICur
     public string? Email => Principal.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
         ?? Principal.Identity?.Name;
     public bool IsAuthenticated => Principal.Identity?.IsAuthenticated == true;
+    public bool IsInRole(string role) => Principal.IsInRole(role);
 }
