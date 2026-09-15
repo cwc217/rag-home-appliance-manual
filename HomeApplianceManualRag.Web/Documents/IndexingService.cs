@@ -132,12 +132,14 @@ public sealed class IndexingWorker(
         await using var scope = scopeFactory.CreateAsyncScope();
         var factory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<ApplicationDbContext>>();
         await using var db = await factory.CreateDbContextAsync(ct);
+        var now = DateTime.UtcNow;
+        var staleBefore = now - LeaseTimeout;
         var jobs = await db.IndexingJobs
             .Where(x =>
                 (x.Status == IndexingJobStatus.Pending &&
-                 (x.NextAttemptAtUtc == null || x.NextAttemptAtUtc <= DateTime.UtcNow)) ||
+                 (x.NextAttemptAtUtc == null || x.NextAttemptAtUtc <= now)) ||
                 (x.Status == IndexingJobStatus.Processing &&
-                 x.StartedAtUtc < DateTime.UtcNow.Subtract(LeaseTimeout)))
+                 x.StartedAtUtc < staleBefore))
             .OrderBy(x => x.CreatedAtUtc)
             .Take(options.Value.MaxConcurrentJobs)
             .ToListAsync(ct);
@@ -167,6 +169,7 @@ public sealed class IndexingWorker(
             CancellationToken ct)
         {
             var now = DateTime.UtcNow;
+            var staleBefore = now - LeaseTimeout;
             if (db.Database.IsRelational())
             {
                 var updated = await db.IndexingJobs
@@ -174,7 +177,7 @@ public sealed class IndexingWorker(
                                 ((x.Status == IndexingJobStatus.Pending &&
                                   (x.NextAttemptAtUtc == null || x.NextAttemptAtUtc <= now)) ||
                                  (x.Status == IndexingJobStatus.Processing &&
-                                  x.StartedAtUtc < now.Subtract(LeaseTimeout))))
+                                  x.StartedAtUtc < staleBefore)))
                     .ExecuteUpdateAsync(setters => setters
                         .SetProperty(x => x.Status, IndexingJobStatus.Processing)
                         .SetProperty(x => x.StartedAtUtc, now)
@@ -186,7 +189,7 @@ public sealed class IndexingWorker(
             if (job is null ||
                 (job.Status != IndexingJobStatus.Pending &&
                  (job.Status != IndexingJobStatus.Processing ||
-                  job.StartedAtUtc >= now.Subtract(LeaseTimeout))))
+                  job.StartedAtUtc >= staleBefore)))
                 return false;
             job.Status = IndexingJobStatus.Processing;
             job.StartedAtUtc = now;
