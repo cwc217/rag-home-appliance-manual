@@ -59,6 +59,12 @@ Pending -> Processing -> Ready
                      \-> Failed
 ```
 
+- `Pending`: The document has been uploaded and stored, but background processing has not started.
+- `Processing`: A background worker is extracting text, creating chunks, and generating embeddings.
+- `Ready`: Processing completed successfully and all required chunks and embeddings were persisted. The document is available for retrieval.
+- `Failed`: Processing could not complete. `LastError` stores an actionable failure message, and the document can be retried by the owner or an admin.
+- `Pending`, `Processing`, and `Failed` documents must not participate in retrieval.
+- `Failed` documents do not count toward the normal user's active document quota.
 - Upload stores metadata and the original PDF, then queues background indexing.
 - Only `Ready` documents participate in retrieval.
 - Retry is allowed for `Failed` documents by admin or the owning user.
