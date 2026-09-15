@@ -74,19 +74,35 @@ Pending -> Processing -> Ready
 - Retry is allowed for `Failed` documents by admin or the owning user.
 - Deleting a document must cancel/ignore outstanding work and remove its chunks from retrieval.
 - Store `LastError` for failed processing; do not silently convert failure to an empty document.
+- Indexing jobs carry a document version. Retrying or re-indexing supersedes
+  older jobs, and a stale worker must not publish chunks for a newer version.
 
 ## 5. RAG pipeline
 
 ### Extraction and chunking
 
-1. Read each PDF page with a text-layer parser.
-2. Preserve page number and document id on every extracted page.
-3. Normalize whitespace without destroying meaningful line breaks.
-4. Split text into deterministic, overlapping chunks.
-5. Store chunk text, page number, ordinal, token/character metadata, and document id.
-6. Generate an embedding for each chunk using the configured Azure OpenAI embedding deployment.
-7. Verify the returned dimension equals `AzureOpenAI__EmbeddingDimensions` before persistence.
-8. Mark the document `Ready` only when all required chunks are embedded and persisted.
+1. Parse the stored PDF through the `IDocumentParser` boundary. The Phase 3
+   implementation uses a local Docling process and a structured JSON contract;
+   the web process does not load Python packages.
+2. Preserve page number, document id, block order, block type, heading path,
+   table/image markers, and source references on every parsed block.
+3. Reject empty/textless output with an actionable `Failed` error.
+4. Normalize whitespace without destroying meaningful line breaks.
+5. Split blocks into deterministic, overlapping chunks owned by the
+   application, not by the parser.
+6. Store chunk text, page number, chunk ordinal, parser version, and document
+   version.
+7. Generate an embedding for each chunk using the configured Azure OpenAI
+   embedding deployment.
+8. Verify the returned dimension equals `AzureOpenAI__EmbeddingDimensions`
+   before persistence.
+9. Replace a document's chunks atomically only after all embeddings succeed.
+10. Mark the document `Ready` only when all required chunks are embedded and
+    persisted. A stale or deleted job must not reintroduce chunks.
+
+Phase 3 remains PDF-only. Docling's DOCX, image, and OCR capabilities are
+reserved for later parser adapters after resource limits and user-facing
+failure behavior are validated.
 
 The exact chunk size and overlap may be tuned during implementation, but must be configuration values and covered by unit tests. A chunk must never lose its source page metadata.
 

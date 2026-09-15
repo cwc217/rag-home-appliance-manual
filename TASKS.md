@@ -37,15 +37,16 @@
 
 ## Phase 3 — Indexing worker
 
-- [ ] Add durable indexing job/outbox persistence.
-- [ ] Add hosted worker with bounded retry and cancellation.
-- [ ] Extract text page-by-page from valid PDFs.
-- [ ] Reject empty/textless PDFs with an actionable `Failed` error.
-- [ ] Implement deterministic configurable chunking with overlap and page metadata.
-- [ ] Call Azure embedding through an interface and validate embedding dimensions.
-- [ ] Persist chunks atomically for a document version.
-- [ ] Make retries idempotent and ensure deleted documents are not reintroduced.
-- [ ] Add worker lifecycle, parser failure, dimension mismatch, and retry tests.
+- [x] Add durable indexing job/outbox persistence.
+- [x] Add hosted worker with bounded retry and cancellation.
+- [x] Extract text page-by-page from valid PDFs through a Docling parser boundary.
+- [x] Reject empty/textless PDFs with an actionable `Failed` error.
+- [x] Implement deterministic configurable chunking with overlap and page metadata.
+- [x] Call Azure embedding through an interface and validate embedding dimensions.
+- [x] Persist chunks atomically for a document version.
+- [x] Make retries idempotent and ensure deleted documents are not reintroduced.
+- [x] Add worker lifecycle, parser failure, dimension mismatch, stale-version, and retry-focused tests.
+- [x] Document Docling as the local PDF parser; defer DOCX/image/OCR adapters.
 
 ## Phase 4 — Retrieval and chat
 

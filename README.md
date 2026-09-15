@@ -37,6 +37,7 @@ deletions and periodically removes unreferenced files older than one hour.
 - ASP.NET Core Identity with PostgreSQL
 - PostgreSQL with `pgvector`
 - Azure OpenAI chat and embedding deployments
+- Local Docling CLI for Phase 3 PDF parsing (pin the Python/Docling environment)
 - xUnit tests (integration and Playwright smoke tests are planned in later phases)
 
 ## Local quick start
@@ -103,7 +104,31 @@ dotnet ef database update --project HomeApplianceManualRag.Web --startup-project
 dotnet run --project HomeApplianceManualRag.Web
 ```
 
-The Docker Compose PostgreSQL service creates the `manuals` database on first initialization. The EF Core migration then creates the PostgreSQL `pgvector` extension, ASP.NET Core Identity tables, and the initial manual document/chunk tables. Run `dotnet ef database update` after starting PostgreSQL and before the first application run. If PostgreSQL is managed outside Docker, create the configured database first, then run the migration. The application must not call Azure OpenAI during database migrations. Phase 2 stores uploaded documents as `Pending`; durable queueing and indexing are planned for Phase 3.
+The Docker Compose PostgreSQL service creates the `manuals` database on first initialization. The EF Core migrations then create the PostgreSQL `pgvector` extension, ASP.NET Core Identity tables, document/chunk tables, storage cleanup records, and durable indexing jobs. Run `dotnet ef database update` after starting PostgreSQL and before the first application run. If PostgreSQL is managed outside Docker, create the configured database first, then run the migration. The application must not call Azure OpenAI during database migrations.
+
+### Phase 3 document indexing
+
+Phase 3 keeps the upload MVP PDF-only. A durable indexing job is created with
+each new, retried, or re-indexed document. The hosted worker invokes the local
+Docling executable using `Docling:ExecutablePath` and
+`Docling:ArgumentsTemplate`, reads a structured JSON result with page/block
+provenance, creates deterministic page-aware chunks, and validates
+`AzureOpenAI:EmbeddingDimensions` before storing vectors atomically.
+
+Install and pin Docling separately in the worker environment; the web project
+does not install Python packages. The default command template expects a
+wrapper/CLI that writes the JSON contract to `{output}`:
+
+```text
+Docling:ExecutablePath = docling
+Docling:ArgumentsTemplate = --output {output} --format json {input}
+```
+
+The JSON contract is intentionally application-owned: each page contains
+ordered blocks with `text`, `blockType`, `headingPath`, and optional
+`sourceReference`. Markdown export can be used for diagnostics, but indexing
+must consume structured output so citations never have to be reconstructed from
+rendered Markdown. DOCX, image inputs, and OCR remain future parser adapters.
 
 ## Repository conventions
 

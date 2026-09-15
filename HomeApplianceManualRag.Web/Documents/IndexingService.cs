@@ -1,0 +1,217 @@
+using HomeApplianceManualRag.Web.Configuration;
+using HomeApplianceManualRag.Web.Data;
+using HomeApplianceManualRag.Web.Providers;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using Pgvector;
+
+namespace HomeApplianceManualRag.Web.Documents;
+
+public sealed class DocumentChunker(IOptions<RetrievalOptions> options)
+{
+    public IReadOnlyList<ChunkDraft> Chunk(ParsedDocument document)
+    {
+        var size = options.Value.ChunkSize;
+        var overlap = Math.Min(options.Value.ChunkOverlap, size - 1);
+        var drafts = new List<ChunkDraft>();
+        var ordinal = 0;
+        foreach (var page in document.Pages)
+        {
+            var text = string.Join("\n\n", page.Blocks
+                .OrderBy(x => x.Order)
+                .Where(x => !string.IsNullOrWhiteSpace(x.Text))
+                .Select(x => string.IsNullOrWhiteSpace(x.HeadingPath) ? x.Text.Trim() : $"{x.HeadingPath}\n{x.Text.Trim()}"));
+            for (var start = 0; start < text.Length; start += Math.Max(1, size - overlap))
+            {
+                var length = Math.Min(size, text.Length - start);
+                if (length == 0) break;
+                drafts.Add(new ChunkDraft(ordinal++, page.PageNumber, text.Substring(start, length), document.ParserVersion));
+                if (start + length >= text.Length) break;
+            }
+        }
+        return drafts;
+    }
+}
+
+public sealed record ChunkDraft(int Ordinal, int PageNumber, string Text, string ParserVersion);
+
+public sealed class IndexingPipeline(
+    ApplicationDbContext db,
+    IFileStorage storage,
+    IDocumentParser parser,
+    DocumentChunker chunker,
+    IEmbeddingProvider embedding,
+    ILogger<IndexingPipeline> logger)
+{
+    public async Task ProcessAsync(Guid jobId, CancellationToken cancellationToken)
+    {
+        var job = await db.IndexingJobs.SingleOrDefaultAsync(x => x.Id == jobId, cancellationToken)
+            ?? throw new DocumentParseException("Indexing job was deleted.");
+        var document = await db.ManualDocuments.SingleOrDefaultAsync(x => x.Id == job.DocumentId, cancellationToken)
+            ?? throw new DocumentParseException("Document was deleted before indexing.");
+        if (document.DocumentVersion != job.DocumentVersion)
+            throw new DocumentParseException("Indexing job is stale and was superseded.");
+
+        document.Status = DocumentStatus.Processing;
+        document.LastError = null;
+        document.UpdatedAtUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+
+        await using var content = await storage.OpenReadAsync(document.StorageKey, cancellationToken);
+        var parsed = await parser.ParseAsync(new DocumentParseRequest(document.Id, document.DisplayName, content, cancellationToken));
+        var drafts = chunker.Chunk(parsed);
+        if (drafts.Count == 0)
+            throw new DocumentParseException("The document has no extractable text.");
+
+        var vectors = new List<ManualChunk>(drafts.Count);
+        foreach (var draft in drafts)
+        {
+            var values = await embedding.EmbedAsync(draft.Text, cancellationToken);
+            if (values.Length != ApplicationDbContext.EmbeddingDimensions)
+                throw new DocumentParseException(
+                    $"Embedding dimension {values.Length} does not match {ApplicationDbContext.EmbeddingDimensions}.");
+            vectors.Add(new ManualChunk
+            {
+                Id = Guid.NewGuid(),
+                DocumentId = document.Id,
+                ChunkOrdinal = draft.Ordinal,
+                PageNumber = draft.PageNumber,
+                Text = draft.Text,
+                Embedding = new Vector(values.ToArray()),
+                CreatedAtUtc = DateTime.UtcNow
+            });
+        }
+
+        await using var transaction = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(cancellationToken) : null;
+        if (!await db.ManualDocuments.AnyAsync(
+                x => x.Id == job.DocumentId && x.DocumentVersion == job.DocumentVersion,
+                cancellationToken))
+            throw new DocumentParseException("Indexing job is stale and was superseded.");
+        var existingChunks = await db.ManualChunks
+            .Where(x => x.DocumentId == document.Id)
+            .ToListAsync(cancellationToken);
+        db.ManualChunks.RemoveRange(existingChunks);
+        db.ManualChunks.AddRange(vectors);
+        document.Status = DocumentStatus.Ready;
+        document.IndexedAtUtc = DateTime.UtcNow;
+        document.UpdatedAtUtc = DateTime.UtcNow;
+        document.LastError = null;
+        job.Status = IndexingJobStatus.Completed;
+        job.CompletedAtUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+            await transaction.CommitAsync(cancellationToken);
+        logger.LogInformation("Indexed document {DocumentId} with {ChunkCount} chunks.", document.Id, vectors.Count);
+    }
+}
+
+public sealed class IndexingWorker(
+    IServiceScopeFactory scopeFactory,
+    IOptions<DoclingOptions> options,
+    ILogger<IndexingWorker> logger) : BackgroundService
+{
+    private static readonly TimeSpan LeaseTimeout = TimeSpan.FromMinutes(15);
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await ProcessBatchAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+            catch (Exception ex) { logger.LogError(ex, "Indexing cycle failed."); }
+            await timer.WaitForNextTickAsync(stoppingToken);
+        }
+    }
+
+    private async Task ProcessBatchAsync(CancellationToken ct)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var factory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<ApplicationDbContext>>();
+        await using var db = await factory.CreateDbContextAsync(ct);
+        var jobs = await db.IndexingJobs
+            .Where(x =>
+                (x.Status == IndexingJobStatus.Pending &&
+                 (x.NextAttemptAtUtc == null || x.NextAttemptAtUtc <= DateTime.UtcNow)) ||
+                (x.Status == IndexingJobStatus.Processing &&
+                 x.StartedAtUtc < DateTime.UtcNow.Subtract(LeaseTimeout)))
+            .OrderBy(x => x.CreatedAtUtc)
+            .Take(options.Value.MaxConcurrentJobs)
+            .ToListAsync(ct);
+        foreach (var job in jobs)
+        {
+            if (!await TryClaimAsync(db, job.Id, ct))
+                continue;
+            try
+            {
+                var pipeline = scope.ServiceProvider.GetRequiredService<IndexingPipeline>();
+                await pipeline.ProcessAsync(job.Id, ct);
+            }
+            catch (DocumentParseException ex)
+            {
+                await MarkFailureAsync(job.Id, ex, ex.Retryable, ct);
+            }
+            catch (Exception ex) when (ex is IOException or InvalidOperationException)
+            {
+                await MarkFailureAsync(job.Id, ex, retryable: true, ct);
+            }
+        }
+    }
+
+    private static async Task<bool> TryClaimAsync(
+            ApplicationDbContext db,
+            Guid jobId,
+            CancellationToken ct)
+        {
+            var now = DateTime.UtcNow;
+            if (db.Database.IsRelational())
+            {
+                var updated = await db.IndexingJobs
+                    .Where(x => x.Id == jobId &&
+                                ((x.Status == IndexingJobStatus.Pending &&
+                                  (x.NextAttemptAtUtc == null || x.NextAttemptAtUtc <= now)) ||
+                                 (x.Status == IndexingJobStatus.Processing &&
+                                  x.StartedAtUtc < now.Subtract(LeaseTimeout))))
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(x => x.Status, IndexingJobStatus.Processing)
+                        .SetProperty(x => x.StartedAtUtc, now)
+                        .SetProperty(x => x.Attempts, x => x.Attempts + 1), ct);
+                return updated == 1;
+            }
+
+            var job = await db.IndexingJobs.SingleOrDefaultAsync(x => x.Id == jobId, ct);
+            if (job is null ||
+                (job.Status != IndexingJobStatus.Pending &&
+                 (job.Status != IndexingJobStatus.Processing ||
+                  job.StartedAtUtc >= now.Subtract(LeaseTimeout))))
+                return false;
+            job.Status = IndexingJobStatus.Processing;
+            job.StartedAtUtc = now;
+            job.Attempts++;
+            await db.SaveChangesAsync(ct);
+            return true;
+        }
+
+    private async Task MarkFailureAsync(Guid jobId, Exception exception, bool retryable, CancellationToken ct)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var factory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<ApplicationDbContext>>();
+        await using var db = await factory.CreateDbContextAsync(ct);
+        var job = await db.IndexingJobs.Include(x => x.Document).SingleOrDefaultAsync(x => x.Id == jobId, ct);
+        if (job is null) return;
+        job.Status = retryable && job.Attempts < 3 ? IndexingJobStatus.Pending : IndexingJobStatus.Failed;
+        job.LastError = exception.Message;
+        job.NextAttemptAtUtc = job.Status == IndexingJobStatus.Pending ? DateTime.UtcNow.AddMinutes(Math.Pow(2, job.Attempts)) : null;
+        if (job.Document is not null && job.Document.DocumentVersion == job.DocumentVersion)
+        {
+            job.Document.Status = DocumentStatus.Failed;
+            job.Document.LastError = exception.Message;
+            job.Document.UpdatedAtUtc = DateTime.UtcNow;
+        }
+        await db.SaveChangesAsync(ct);
+        logger.LogWarning(exception, "Indexing job {JobId} failed on attempt {Attempt}.", jobId, job.Attempts);
+    }
+}

@@ -20,6 +20,7 @@ builder.Services.AddOptions<AzureOpenAiOptions>()
     .ValidateOnStart();
 builder.Services.AddOptions<UploadOptions>().BindConfiguration(UploadOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<RetrievalOptions>().BindConfiguration(RetrievalOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
+builder.Services.AddOptions<DoclingOptions>().BindConfiguration(DoclingOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<RateLimitingOptions>().BindConfiguration(RateLimitingOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<SeedAdminOptions>().BindConfiguration(SeedAdminOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<LocalStorageOptions>().BindConfiguration(LocalStorageOptions.SectionName);
@@ -52,6 +53,10 @@ builder.Services.AddScoped<IChatProvider, AzureOpenAiChatProvider>();
 builder.Services.AddScoped<IEmbeddingProvider, AzureOpenAiEmbeddingProvider>();
 builder.Services.AddScoped<PdfValidator>();
 builder.Services.AddScoped<DocumentService>();
+builder.Services.AddScoped<IDocumentParser, DoclingProcessParser>();
+builder.Services.AddScoped<DocumentChunker>();
+builder.Services.AddScoped<IndexingPipeline>();
+builder.Services.AddHostedService<IndexingWorker>();
 builder.Services.AddScoped<StorageCleanupService>();
 builder.Services.AddHostedService<StorageCleanupWorker>();
 builder.Services.AddSingleton<IFileStorage, LocalFileStorage>();

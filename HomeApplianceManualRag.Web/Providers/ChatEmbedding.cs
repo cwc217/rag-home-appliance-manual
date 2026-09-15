@@ -1,3 +1,9 @@
+using Azure;
+using Azure.AI.OpenAI;
+using HomeApplianceManualRag.Web.Configuration;
+using Microsoft.Extensions.Options;
+using OpenAI.Embeddings;
+
 namespace HomeApplianceManualRag.Web.Providers;
 
 public interface IChatProvider
@@ -22,10 +28,17 @@ public sealed class AzureOpenAiChatProvider : IChatProvider
     }
 }
 
-public sealed class AzureOpenAiEmbeddingProvider : IEmbeddingProvider
+public sealed class AzureOpenAiEmbeddingProvider(IOptions<AzureOpenAiOptions> options) : IEmbeddingProvider
 {
-    public Task<ReadOnlyMemory<float>> EmbedAsync(string text, CancellationToken cancellationToken = default) =>
-        throw new InvalidOperationException("Azure OpenAI embedding provider is not enabled until Phase 3.");
+    private readonly EmbeddingClient client =
+        new AzureOpenAIClient(new Uri(options.Value.Endpoint), new AzureKeyCredential(options.Value.ApiKey))
+            .GetEmbeddingClient(options.Value.EmbeddingDeployment);
+
+    public async Task<ReadOnlyMemory<float>> EmbedAsync(string text, CancellationToken cancellationToken = default)
+    {
+        var response = await client.GenerateEmbeddingAsync(text, cancellationToken: cancellationToken);
+        return response.Value.ToFloats();
+    }
 }
 
 public sealed class DeterministicFakeChatProvider : IChatProvider
