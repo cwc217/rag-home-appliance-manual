@@ -30,8 +30,7 @@
 - ASP.NET Core Identity with PostgreSQL
 - PostgreSQL with `pgvector`
 - Azure OpenAI chat and embedding deployments
-- Background indexing worker
-- xUnit, integration tests, and Playwright smoke tests
+- xUnit tests (integration and Playwright smoke tests are planned in later phases)
 
 ## Local quick start
 
@@ -46,7 +45,7 @@
 Copy the example configuration for reference and set local secrets with User Secrets. Never commit real secrets.
 
 ```powershell
-dotnet user-secrets set "ConnectionStrings:Default" "Host=localhost;Port=5432;Database=manuals;Username=postgres;Password=postgres" --project HomeApplianceManualRag.Web
+dotnet user-secrets set "ConnectionStrings:Default" "Host=localhost;Port=5432;Database=manuals;Username=postgres;Password=replace-with-password" --project HomeApplianceManualRag.Web
 dotnet user-secrets set "SeedAdmin:Email" "admin@example.invalid" --project HomeApplianceManualRag.Web
 dotnet user-secrets set "SeedAdmin:Password" "replace-with-a-strong-development-password" --project HomeApplianceManualRag.Web
 ```
@@ -97,7 +96,7 @@ dotnet ef database update --project HomeApplianceManualRag.Web --startup-project
 dotnet run --project HomeApplianceManualRag.Web
 ```
 
-The Docker Compose PostgreSQL service creates the `manuals` database on first initialization. The EF Core migration then creates the PostgreSQL `pgvector` extension, ASP.NET Core Identity tables, and the initial manual document/chunk tables. Run `dotnet ef database update` after starting PostgreSQL and before the first application run. If PostgreSQL is managed outside Docker, create the configured database first, then run the migration. The application must not call Azure OpenAI during database migrations. Indexing starts only after an upload is stored and a background job is queued.
+The Docker Compose PostgreSQL service creates the `manuals` database on first initialization. The EF Core migration then creates the PostgreSQL `pgvector` extension, ASP.NET Core Identity tables, and the initial manual document/chunk tables. Run `dotnet ef database update` after starting PostgreSQL and before the first application run. If PostgreSQL is managed outside Docker, create the configured database first, then run the migration. The application must not call Azure OpenAI during database migrations. Phase 2 stores uploaded documents as `Pending`; durable queueing and indexing are planned for Phase 3.
 
 ## Repository conventions
 
