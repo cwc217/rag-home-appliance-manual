@@ -156,7 +156,7 @@ app.MapPost("/documents/upload", async (HttpContext context, DocumentService doc
         await documents.UploadAsync(file, context.RequestAborted);
         return Results.Redirect("/my-documents");
     }
-    catch (Exception ex) when (ex is InvalidDataException or DocumentQuotaExceededException)
+    catch (Exception ex) when (ex is InvalidDataException or DocumentQuotaExceededException or DocumentProcessingInProgressException)
     {
         return Results.Redirect($"/my-documents?error={Uri.EscapeDataString(ex.Message)}");
     }

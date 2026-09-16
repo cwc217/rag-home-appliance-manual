@@ -29,6 +29,7 @@
 - [x] Implement server-side PDF signature/type validation and 10 MB limit.
 - [x] Implement safe file storage abstraction; keep local storage as the initial development provider.
 - [x] Implement transactional user quota enforcement for active/processing documents.
+- [x] Restrict normal users to one simultaneously progressing document and reject conflicting uploads/retries.
 - [x] Implement document commands: upload, list, delete, retry, and admin re-index.
 - [x] Implement status values `Pending`, `Processing`, `Ready`, `Failed`.
 - [x] Create the role-aware `/my-documents` page with normal-user and admin actions.
@@ -67,7 +68,7 @@
 - [ ] Add browser-culture default and language selector.
 - [ ] Localize navigation, validation, status, errors, empty states, quota messages, and chat states.
 - [ ] Add empty state when no admin document is ready.
-- [ ] Add processing progress/status refresh without exposing internal errors or secrets.
+- [x] Add processing progress/status refresh without exposing internal errors or secrets.
 - [ ] Add responsive layout and keyboard-accessible controls.
 - [ ] Add Playwright smoke flows for anonymous, user, and admin journeys.
 
