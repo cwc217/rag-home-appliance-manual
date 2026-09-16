@@ -41,6 +41,26 @@ public sealed class DocumentValidationTests
         }
 
         [Fact]
+        public async Task Listing_refresh_reads_status_updated_by_worker_context()
+        {
+            await using var db = CreateDb();
+            var document = Document("manual", "user-1");
+            db.ManualDocuments.Add(document);
+            await db.SaveChangesAsync();
+            var service = Service(db, new TestCurrentUser("user-1", false));
+
+            Assert.Equal(DocumentStatus.Pending, (await service.ListAsync())[0].Status);
+
+            document.Status = DocumentStatus.Failed;
+            document.LastError = "Docling executable 'docling' is unavailable.";
+            await db.SaveChangesAsync();
+
+            var refreshed = Assert.Single(await service.ListAsync());
+            Assert.Equal(DocumentStatus.Failed, refreshed.Status);
+            Assert.Contains("unavailable", refreshed.LastError);
+        }
+
+        [Fact]
         public async Task Admins_list_every_document_and_can_retry_failed_documents()
         {
             await using var db = CreateDb();
