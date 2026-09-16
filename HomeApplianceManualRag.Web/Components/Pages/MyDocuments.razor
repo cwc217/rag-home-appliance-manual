@@ -80,11 +80,24 @@
         {
             if (!documents.Any(x => x.Status is DocumentStatus.Pending or DocumentStatus.Processing))
                 break;
-            await InvokeAsync(async () =>
+            try
             {
-                await Refresh();
-                StateHasChanged();
-            });
+                await InvokeAsync(async () =>
+                {
+                    await Refresh();
+                    StateHasChanged();
+                });
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception)
+            {
+                errorMessage = "Unable to refresh document status. Please reload the page.";
+                await InvokeAsync(StateHasChanged);
+                break;
+            }
         }
     }
     private static string GetStage(DocumentStatus status) => status switch
