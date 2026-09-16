@@ -82,6 +82,7 @@ public sealed class DocumentService(
     private async Task<List<ManualDocument>> ListCoreAsync(bool isAdmin, string? owner, CancellationToken ct)
     {
         var documents = await (isAdmin ? db.ManualDocuments : db.ManualDocuments.Where(x => x.OwnerUserId == owner))
+            .AsNoTracking()
             .OrderByDescending(x => x.CreatedAtUtc)
             .ToListAsync(ct);
         if (isAdmin)
