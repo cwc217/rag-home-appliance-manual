@@ -160,6 +160,10 @@ public sealed class IndexingWorker(
             {
                 await MarkFailureAsync(job.Id, ex, retryable: true, ct);
             }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                await MarkFailureAsync(job.Id, ex, retryable: true, ct);
+            }
         }
     }
 
