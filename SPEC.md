@@ -77,8 +77,10 @@ Pending -> Processing -> Ready
 - Retry is allowed for `Failed` documents by admin or the owning user.
 - The document listing automatically refreshes while a document is `Pending` or
   `Processing` and presents stage-based progress (`Queued`, `Processing`,
-  `Ready`, or `Failed`) with a loading indicator. It must not claim a numeric
-  percentage unless the worker persists a reliable progress metric.
+  `Ready`, or `Failed`) with a loading indicator. The initial listing may load
+  all authorized documents, but each refresh should query only known progressing
+  document IDs and must not claim a numeric percentage unless the worker
+  persists a reliable progress metric.
 - Deleting a document must cancel/ignore outstanding work and remove its chunks from retrieval.
 - Store `LastError` for failed processing; do not silently convert failure to an empty document.
 - Indexing jobs carry a document version. Retrying or re-indexing supersedes

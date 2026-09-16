@@ -79,12 +79,43 @@ public sealed class DocumentService(
         return ListCoreAsync(isAdmin, owner, ct);
     }
 
+    public async Task<List<ManualDocument>> ListProgressAsync(
+        IReadOnlyCollection<Guid> documentIds,
+        CancellationToken ct = default)
+    {
+        if (!currentUser.IsAuthenticated) throw new DocumentForbiddenException();
+        if (documentIds.Count == 0) return [];
+
+        var isAdmin = currentUser.IsInRole(ApplicationRoles.Admin);
+        var owner = currentUser.UserId;
+        var query = db.ManualDocuments
+            .AsNoTracking()
+            .Where(x => documentIds.Contains(x.Id));
+        if (!isAdmin)
+            query = query.Where(x => x.OwnerUserId == owner);
+
+        var documents = await query
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .ToListAsync(ct);
+        await PopulateOwnerEmailsAsync(documents, isAdmin, ct);
+        return documents;
+    }
+
     private async Task<List<ManualDocument>> ListCoreAsync(bool isAdmin, string? owner, CancellationToken ct)
     {
         var documents = await (isAdmin ? db.ManualDocuments : db.ManualDocuments.Where(x => x.OwnerUserId == owner))
             .AsNoTracking()
             .OrderByDescending(x => x.CreatedAtUtc)
             .ToListAsync(ct);
+        await PopulateOwnerEmailsAsync(documents, isAdmin, ct);
+        return documents;
+    }
+
+    private async Task PopulateOwnerEmailsAsync(
+        List<ManualDocument> documents,
+        bool isAdmin,
+        CancellationToken ct)
+    {
         if (isAdmin)
         {
             var ownerIds = documents.Where(x => x.OwnerUserId is not null).Select(x => x.OwnerUserId!).Distinct().ToList();
@@ -96,7 +127,6 @@ public sealed class DocumentService(
                     ? email
                     : null;
         }
-        return documents;
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)

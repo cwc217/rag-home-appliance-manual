@@ -61,6 +61,39 @@ public sealed class DocumentValidationTests
         }
 
         [Fact]
+        public async Task Progress_listing_returns_requested_terminal_transition()
+        {
+            await using var db = CreateDb();
+            var document = Document("manual", "user-1");
+            db.ManualDocuments.AddRange(document, Document("other", "user-1"));
+            await db.SaveChangesAsync();
+            var service = Service(db, new TestCurrentUser("user-1", false));
+            document.Status = DocumentStatus.Ready;
+            await db.SaveChangesAsync();
+
+            var result = await service.ListProgressAsync([document.Id]);
+
+            var refreshed = Assert.Single(result);
+            Assert.Equal(DocumentStatus.Ready, refreshed.Status);
+        }
+
+        [Fact]
+        public async Task Progress_listing_enforces_normal_user_ownership()
+        {
+            await using var db = CreateDb();
+            var mine = Document("mine", "user-1");
+            var other = Document("other", "user-2");
+            db.ManualDocuments.AddRange(mine, other);
+            await db.SaveChangesAsync();
+            var service = Service(db, new TestCurrentUser("user-1", false));
+
+            var result = await service.ListProgressAsync([mine.Id, other.Id]);
+
+            var returned = Assert.Single(result);
+            Assert.Equal(mine.Id, returned.Id);
+        }
+
+        [Fact]
         public async Task Admins_list_every_document_and_can_retry_failed_documents()
         {
             await using var db = CreateDb();
