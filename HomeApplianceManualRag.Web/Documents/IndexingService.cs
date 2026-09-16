@@ -145,10 +145,10 @@ public sealed class IndexingWorker(
             .ToListAsync(ct);
         foreach (var job in jobs)
         {
-            if (!await TryClaimAsync(db, job.Id, ct))
-                continue;
             try
             {
+                if (!await TryClaimAsync(db, job.Id, ct))
+                    continue;
                 var pipeline = scope.ServiceProvider.GetRequiredService<IndexingPipeline>();
                 await pipeline.ProcessAsync(job.Id, ct);
             }
@@ -157,6 +157,10 @@ public sealed class IndexingWorker(
                 await MarkFailureAsync(job.Id, ex, ex.Retryable, ct);
             }
             catch (Exception ex) when (ex is IOException or InvalidOperationException)
+            {
+                await MarkFailureAsync(job.Id, ex, retryable: true, ct);
+            }
+            catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
             {
                 await MarkFailureAsync(job.Id, ex, retryable: true, ct);
             }

@@ -24,7 +24,7 @@
             <div class="card-body d-flex flex-column">
                 <h2 class="h5 card-title text-break">@document.DisplayName</h2>
                 <p class="card-text mb-2">Status: <strong>@GetStage(document.Status)</strong></p>
-                @if (document.Status is DocumentStatus.Pending or DocumentStatus.Processing)
+                @if (!refreshStopped && (document.Status is DocumentStatus.Pending or DocumentStatus.Processing))
                 {
                     <div class="progress mb-3" role="progressbar" aria-label="@GetStage(document.Status)">
                         <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: @GetProgressWidth(document.Status)%"></div>
@@ -55,6 +55,7 @@
     private List<ManualDocument> documents = [];
     private readonly CancellationTokenSource refreshCancellation = new();
     private Task? refreshTask;
+    private bool refreshStopped;
     [SupplyParameterFromQuery(Name = "error")]
     private string? errorMessage { get; set; }
     private bool isAdmin => CurrentUser.IsInRole(ApplicationRoles.Admin);
@@ -65,8 +66,8 @@
         StartRefreshLoop();
     }
     private async Task Refresh() => documents = await Documents.ListAsync();
-    private async Task Retry(Guid id) { try { await Documents.RetryAsync(id); await Refresh(); StartRefreshLoop(); } catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException) { errorMessage = ex.Message; } }
-    private async Task Reindex(Guid id) { try { await Documents.ReindexAsync(id); await Refresh(); StartRefreshLoop(); } catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException) { errorMessage = ex.Message; } }
+    private async Task Retry(Guid id) { try { await Documents.RetryAsync(id); refreshStopped = false; await Refresh(); StartRefreshLoop(); } catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException) { refreshStopped = true; errorMessage = ex.Message; } }
+    private async Task Reindex(Guid id) { try { await Documents.ReindexAsync(id); refreshStopped = false; await Refresh(); StartRefreshLoop(); } catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException) { refreshStopped = true; errorMessage = ex.Message; } }
     private void StartRefreshLoop()
     {
         if (documents.Any(x => x.Status is DocumentStatus.Pending or DocumentStatus.Processing) &&
@@ -94,6 +95,7 @@
             }
             catch (Exception)
             {
+                refreshStopped = true;
                 errorMessage = "Unable to refresh document status. Please reload the page.";
                 await InvokeAsync(StateHasChanged);
                 break;
