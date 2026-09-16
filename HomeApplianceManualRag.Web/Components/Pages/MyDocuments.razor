@@ -85,7 +85,7 @@
             {
                 await InvokeAsync(async () =>
                 {
-                    await Refresh();
+                    await RefreshProgressAsync();
                     StateHasChanged();
                 });
             }
@@ -102,6 +102,24 @@
             }
         }
     }
+
+        private async Task RefreshProgressAsync()
+        {
+            var progressIds = documents
+                .Where(IsProcessing)
+                .Select(x => x.Id)
+                .ToArray();
+            if (progressIds.Length == 0)
+                return;
+
+            var updates = await Documents.ListProgressAsync(progressIds);
+            var updatesById = updates.ToDictionary(x => x.Id);
+            for (var index = 0; index < documents.Count; index++)
+            {
+                if (updatesById.TryGetValue(documents[index].Id, out var update))
+                    documents[index] = update;
+            }
+        }
     private static bool HasError(ManualDocument document) => !string.IsNullOrWhiteSpace(document.LastError);
     private static bool IsProcessing(ManualDocument document) =>
         !HasError(document) && (document.Status is DocumentStatus.Pending or DocumentStatus.Processing);
