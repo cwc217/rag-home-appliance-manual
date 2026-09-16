@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Components.Forms;
 namespace HomeApplianceManualRag.Web.Documents;
 
 public sealed class DocumentQuotaExceededException() : InvalidOperationException("You can have at most 3 active documents.");
+public sealed class DocumentProcessingInProgressException() : InvalidOperationException("You can only process one document at a time. Wait for the current document to finish before trying again.");
 public sealed class DocumentForbiddenException() : UnauthorizedAccessException("You are not allowed to manage this document.");
 
 public sealed class DocumentService(
@@ -33,6 +34,8 @@ public sealed class DocumentService(
         await using var transaction = db.Database.IsRelational()
             ? await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken)
             : null;
+        if (!isAdmin && await HasInProgressDocumentAsync(owner!, cancellationToken))
+            throw new DocumentProcessingInProgressException();
         if (!isAdmin && await db.ManualDocuments.CountAsync(x => x.OwnerUserId == owner && ActiveStatuses.Contains(x.Status), cancellationToken) >= 3)
             throw new DocumentQuotaExceededException();
         var key = $"{Guid.NewGuid():N}.pdf";
@@ -130,6 +133,9 @@ public sealed class DocumentService(
     {
         var document = await GetAuthorizedAsync(id, ct);
         if (document.Status != DocumentStatus.Failed) throw new InvalidOperationException("Only failed documents can be retried.");
+        if (!currentUser.IsInRole(ApplicationRoles.Admin) &&
+            await HasInProgressDocumentAsync(currentUser.UserId!, ct))
+            throw new DocumentProcessingInProgressException();
         document.Status = DocumentStatus.Pending;
         document.LastError = null;
         document.DocumentVersion = Guid.NewGuid();
@@ -176,6 +182,12 @@ public sealed class DocumentService(
             job.NextAttemptAtUtc = null;
         }
     }
+
+    private Task<bool> HasInProgressDocumentAsync(string owner, CancellationToken ct) =>
+        db.ManualDocuments.AnyAsync(
+            x => x.OwnerUserId == owner &&
+                 (x.Status == DocumentStatus.Pending || x.Status == DocumentStatus.Processing),
+            ct);
 
     private async Task<ManualDocument> GetAuthorizedAsync(Guid id, CancellationToken ct)
     {

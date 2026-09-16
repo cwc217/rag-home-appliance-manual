@@ -5,6 +5,7 @@
 @inject ICurrentUser CurrentUser
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.AspNetCore.Components
+@implements IAsyncDisposable
 
 <PageTitle>@(isAdmin ? "All documents" : "My documents")</PageTitle>
 <h1>@(isAdmin ? "All documents" : "My documents")</h1>
@@ -22,7 +23,17 @@
         <div class="card h-100">
             <div class="card-body d-flex flex-column">
                 <h2 class="h5 card-title text-break">@document.DisplayName</h2>
-                <p class="card-text mb-2">Status: <strong>@document.Status</strong></p>
+                <p class="card-text mb-2">Status: <strong>@GetStage(document.Status)</strong></p>
+                @if (document.Status is DocumentStatus.Pending or DocumentStatus.Processing)
+                {
+                    <div class="progress mb-3" role="progressbar" aria-label="@GetStage(document.Status)">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: @GetProgressWidth(document.Status)%"></div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2 small text-muted mb-2">
+                        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                        <span>Indexing in progress. This page updates automatically.</span>
+                    </div>
+                }
                 @if (isAdmin) { <p class="card-text small text-muted">Owner: @(document.OwnerEmail ?? "Admin/public")</p> }
                 @if (!string.IsNullOrWhiteSpace(document.LastError)) { <p class="card-text text-danger">@document.LastError</p> }
                 <div class="mt-auto d-flex flex-wrap gap-2">
@@ -42,12 +53,56 @@
 
 @code {
     private List<ManualDocument> documents = [];
+    private readonly CancellationTokenSource refreshCancellation = new();
+    private Task? refreshTask;
     [SupplyParameterFromQuery(Name = "error")]
     private string? errorMessage { get; set; }
     private bool isAdmin => CurrentUser.IsInRole(ApplicationRoles.Admin);
     private int activeCount => documents.Count(x => x.Status is DocumentStatus.Pending or DocumentStatus.Processing or DocumentStatus.Ready);
-    protected override async Task OnInitializedAsync() => await Refresh();
+    protected override async Task OnInitializedAsync()
+    {
+        await Refresh();
+        StartRefreshLoop();
+    }
     private async Task Refresh() => documents = await Documents.ListAsync();
-    private async Task Retry(Guid id) { try { await Documents.RetryAsync(id); await Refresh(); } catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException) { errorMessage = ex.Message; } }
-    private async Task Reindex(Guid id) { try { await Documents.ReindexAsync(id); await Refresh(); } catch (UnauthorizedAccessException ex) { errorMessage = ex.Message; } }
+    private async Task Retry(Guid id) { try { await Documents.RetryAsync(id); await Refresh(); StartRefreshLoop(); } catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException) { errorMessage = ex.Message; } }
+    private async Task Reindex(Guid id) { try { await Documents.ReindexAsync(id); await Refresh(); StartRefreshLoop(); } catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException) { errorMessage = ex.Message; } }
+    private void StartRefreshLoop()
+    {
+        if (documents.Any(x => x.Status is DocumentStatus.Pending or DocumentStatus.Processing) &&
+            (refreshTask is null || refreshTask.IsCompleted))
+            refreshTask = RefreshWhileProcessingAsync(refreshCancellation.Token);
+    }
+    private async Task RefreshWhileProcessingAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(3));
+        while (await timer.WaitForNextTickAsync(ct))
+        {
+            if (!documents.Any(x => x.Status is DocumentStatus.Pending or DocumentStatus.Processing))
+                break;
+            await InvokeAsync(async () =>
+            {
+                await Refresh();
+                StateHasChanged();
+            });
+        }
+    }
+    private static string GetStage(DocumentStatus status) => status switch
+    {
+        DocumentStatus.Pending => "Queued",
+        DocumentStatus.Processing => "Processing",
+        DocumentStatus.Ready => "Ready",
+        DocumentStatus.Failed => "Failed",
+        _ => status.ToString()
+    };
+    private static int GetProgressWidth(DocumentStatus status) => status == DocumentStatus.Processing ? 66 : 33;
+    public async ValueTask DisposeAsync()
+    {
+        refreshCancellation.Cancel();
+        if (refreshTask is not null)
+        {
+            try { await refreshTask; } catch (OperationCanceledException) { }
+        }
+        refreshCancellation.Dispose();
+    }
 }

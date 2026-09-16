@@ -104,6 +104,46 @@ public sealed class DocumentValidationTests
             Assert.Equal(IndexingJobStatus.Pending, job.Status);
         }
 
+        [Fact]
+        public async Task Normal_user_cannot_upload_while_another_document_is_progressing()
+        {
+            await using var db = CreateDb();
+            db.ManualDocuments.Add(Document("in-progress", "user-1"));
+            await db.SaveChangesAsync();
+            var service = Service(db, new TestCurrentUser("user-1", false));
+
+            await Assert.ThrowsAsync<DocumentProcessingInProgressException>(() =>
+                service.UploadAsync(File("second.pdf", "application/pdf", "%PDF-1.7\ncontent"u8.ToArray())));
+        }
+
+        [Fact]
+        public async Task Normal_user_can_retry_when_no_other_document_is_progressing()
+        {
+            await using var db = CreateDb();
+            var failed = Document("failed", "user-1");
+            failed.Status = DocumentStatus.Failed;
+            db.ManualDocuments.Add(failed);
+            await db.SaveChangesAsync();
+            var service = Service(db, new TestCurrentUser("user-1", false));
+
+            await service.RetryAsync(failed.Id);
+
+            Assert.Equal(DocumentStatus.Pending, failed.Status);
+        }
+
+        [Fact]
+        public async Task Normal_user_cannot_retry_while_another_document_is_progressing()
+        {
+            await using var db = CreateDb();
+            var failed = Document("failed", "user-1");
+            failed.Status = DocumentStatus.Failed;
+            db.ManualDocuments.AddRange(failed, Document("in-progress", "user-1"));
+            await db.SaveChangesAsync();
+            var service = Service(db, new TestCurrentUser("user-1", false));
+
+            await Assert.ThrowsAsync<DocumentProcessingInProgressException>(() => service.RetryAsync(failed.Id));
+        }
+
         private static ApplicationDbContext CreateDb() =>
             new(new DbContextOptionsBuilder<ApplicationDbContext>()
                 .UseInMemoryDatabase(Guid.NewGuid().ToString())

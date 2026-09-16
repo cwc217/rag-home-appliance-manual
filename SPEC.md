@@ -46,6 +46,9 @@ The selected scope is intentional: after login, a normal user searches only thei
 - User documents have the authenticated user as owner and are private to that user.
 - Admin document count has no application-level count limit.
 - A user may have at most three documents in `Pending`, `Processing`, or `Ready`.
+- A normal user may have at most one document in `Pending` or `Processing` at a
+  time. A conflicting upload or retry is rejected rather than queued. Admins are
+  exempt from this concurrency limit.
 - `Failed` and deleted documents do not count toward the limit.
 - Enforce the quota transactionally in the application/database boundary to prevent concurrent uploads bypassing the limit.
 - Deleting a document makes it unavailable to retrieval and permits a replacement upload.
@@ -72,6 +75,10 @@ Pending -> Processing -> Ready
   a one-hour grace period.
 - Only `Ready` documents participate in retrieval.
 - Retry is allowed for `Failed` documents by admin or the owning user.
+- The document listing automatically refreshes while a document is `Pending` or
+  `Processing` and presents stage-based progress (`Queued`, `Processing`,
+  `Ready`, or `Failed`) with a loading indicator. It must not claim a numeric
+  percentage unless the worker persists a reliable progress metric.
 - Deleting a document must cancel/ignore outstanding work and remove its chunks from retrieval.
 - Store `LastError` for failed processing; do not silently convert failure to an empty document.
 - Indexing jobs carry a document version. Retrying or re-indexing supersedes
