@@ -88,6 +88,9 @@ project.fragment.lock.json
 artifacts/
 .artifacts/
 
+# Runtime-uploaded appliance manuals
+/HomeApplianceManualRag.Web/App_Data/uploads/
+
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt
 
