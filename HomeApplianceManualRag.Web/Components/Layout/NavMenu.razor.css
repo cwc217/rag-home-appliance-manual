@@ -25,7 +25,11 @@
 }
 
 .build-label {
-    padding: 0.35rem 1rem 0.45rem;
+    position: absolute;
+    right: 0;
+    bottom: 1rem;
+    left: 0;
+    padding: 0.35rem 1rem;
     color: rgba(255, 255, 255, 0.58);
     font-size: 0.68rem;
     letter-spacing: 0.04em;

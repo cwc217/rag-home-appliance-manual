@@ -4,8 +4,6 @@
     </div>
 </div>
 
-<div class="build-label" title="Application build time">Build @BuildTime</div>
-
 <input type="checkbox" title="Navigation menu" class="navbar-toggler" />
 
 <div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
@@ -32,6 +30,8 @@
     </nav>
 </div>
 
+<div class="build-label" title="Application build time">Build @BuildTime</div>
+
 @code {
     private static string BuildTime
     {
@@ -42,9 +42,12 @@
                 return "unknown";
 
             var timestamp = File.GetLastWriteTimeUtc(assemblyPath);
-            return timestamp == DateTime.MinValue
-                ? "unknown"
-                : timestamp.ToString("yyyy-MM-dd HH:mm 'UTC'");
+            if (timestamp == DateTime.MinValue)
+                return "unknown";
+
+            var localTime = new DateTimeOffset(timestamp, TimeSpan.Zero)
+                .ToOffset(TimeSpan.FromHours(8));
+            return localTime.ToString("yyyy-MM-dd HH:mm 'UTC+8'");
         }
     }
 }
