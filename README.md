@@ -94,6 +94,22 @@ docker compose up --build
 
 Open `http://localhost:8080`. The web container waits for PostgreSQL to become healthy and applies EF Core migrations automatically in the Development environment. Stop the stack with `docker compose down`; add `-v` if you also want to remove the PostgreSQL data volume.
 
+When source code has changed, rebuild and recreate the web container so it
+contains the current Blazor progress-update implementation:
+
+```powershell
+docker compose down
+docker compose build --no-cache web
+docker compose up -d
+docker compose logs -f web
+```
+
+The page requires an active Blazor Interactive Server circuit for push updates.
+If the status only changes after a refresh, check the browser developer tools
+for a connected `/_blazor` WebSocket and confirm the container was rebuilt from
+the current branch. A reverse proxy in front of Docker must forward WebSocket
+upgrade requests.
+
 To inspect the PostgreSQL database with Adminer, opt in to the `tools` profile:
 
 ```powershell
@@ -121,8 +137,8 @@ Docling executable using `Docling:ExecutablePath` and
 provenance, creates deterministic page-aware chunks, and validates
 `AzureOpenAI:EmbeddingDimensions` before storing vectors atomically.
 
-Install and pin Docling separately in the worker environment; the web project
-does not install Python packages. The default command template expects a
+Install and pin Docling separately in the worker environment; the web Docker
+image does not install Python packages. The default command template expects a
 wrapper/CLI that writes the JSON contract to `{output}`:
 
 ```text
