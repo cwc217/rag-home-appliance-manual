@@ -25,7 +25,7 @@
   a time; another upload or retry is rejected until it reaches `Ready` or `Failed`.
   The listing loads all authorized documents initially, then receives server-pushed
   status updates from the Interactive Server circuit while indexing. A low
-  frequency 30-second refresh remains as a reconnect fallback. The page shows a
+  focused 3-second refresh remains as a reconnect fallback. The page shows a
   stage-based progress bar with a loading indicator. There is no separate
   `/admin/documents` route. Phase 2 creates Pending records; indexing is
   intentionally deferred to Phase 3. Upload, delete, retry, and re-index are

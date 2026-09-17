@@ -146,7 +146,7 @@
     }
     private async Task FallbackRefreshAsync(CancellationToken ct)
     {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(3));
         while (await timer.WaitForNextTickAsync(ct))
         {
             if (!documents.Any(IsProcessing))
