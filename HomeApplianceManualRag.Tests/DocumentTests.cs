@@ -1,6 +1,7 @@
 using HomeApplianceManualRag.Web.Configuration;
 using HomeApplianceManualRag.Web.Documents;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.Extensions.Options;
 using HomeApplianceManualRag.Web.Data;
 using Microsoft.EntityFrameworkCore;
@@ -158,6 +159,20 @@ public sealed class DocumentValidationTests
         }
 
         [Fact]
+        public async Task Upload_accepts_browser_file_from_interactive_component()
+        {
+            await using var db = CreateDb();
+            var service = Service(db, new TestCurrentUser("admin", true));
+            var file = new BrowserFile("manual.pdf", "application/pdf", "%PDF-1.7\ncontent"u8.ToArray());
+
+            var document = await service.UploadAsync(file);
+
+            Assert.Equal("manual.pdf", document.DisplayName);
+            Assert.Equal(DocumentStatus.Pending, document.Status);
+            Assert.Single(db.IndexingJobs);
+        }
+
+        [Fact]
         public async Task Normal_user_cannot_upload_while_another_document_is_progressing()
         {
             await using var db = CreateDb();
@@ -236,6 +251,16 @@ public sealed class DocumentValidationTests
                 DeletedKeys.Add(key);
                 return Task.CompletedTask;
             }
+        }
+
+        private sealed class BrowserFile(string name, string contentType, byte[] content) : IBrowserFile
+        {
+            public string Name => name;
+            public DateTimeOffset LastModified => DateTimeOffset.UtcNow;
+            public long Size => content.LongLength;
+            public string ContentType => contentType;
+            public Stream OpenReadStream(long maxAllowedSize = 512000, CancellationToken cancellationToken = default) =>
+                new MemoryStream(content, writable: false);
         }
     }
 

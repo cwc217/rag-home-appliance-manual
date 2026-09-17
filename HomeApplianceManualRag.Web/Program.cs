@@ -152,40 +152,6 @@ app.MapPost("/account/logout", async (SignInManager<ApplicationUser> signInManag
     return Results.Redirect("/");
 }).RequireAuthorization(ApplicationPolicies.RegisteredUser);
 
-app.MapPost("/documents/upload", async (HttpContext context, DocumentService documents, IFormFile? file) =>
-{
-    if (file is null)
-        return Results.Redirect("/my-documents?error=Select%20a%20PDF%20file%20before%20uploading.");
-
-    try
-    {
-        await documents.UploadAsync(file, context.RequestAborted);
-        return Results.Redirect("/my-documents");
-    }
-    catch (Exception ex) when (ex is InvalidDataException or DocumentQuotaExceededException or DocumentProcessingInProgressException)
-    {
-        return Results.Redirect($"/my-documents?error={Uri.EscapeDataString(ex.Message)}");
-    }
-}).RequireAuthorization(ApplicationPolicies.RegisteredUser);
-
-app.MapPost("/documents/{id:guid}/delete", async (Guid id, DocumentService documents, HttpContext context) =>
-{
-    try
-    {
-        await documents.DeleteAsync(id, context.RequestAborted);
-    }
-    catch (KeyNotFoundException)
-    {
-        return Results.NotFound();
-    }
-    catch (UnauthorizedAccessException)
-    {
-        return Results.Forbid();
-    }
-
-    return Results.Redirect("/my-documents");
-}).RequireAuthorization(ApplicationPolicies.RegisteredUser);
-
 app.MapGet("/documents/{id:guid}/download", async (Guid id, DocumentService documents, HttpContext context) =>
 {
     try

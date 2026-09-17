@@ -28,7 +28,9 @@
   frequency 30-second refresh remains as a reconnect fallback. The page shows a
   stage-based progress bar with a loading indicator. There is no separate
   `/admin/documents` route. Phase 2 creates Pending records; indexing is
-  intentionally deferred to Phase 3.
+  intentionally deferred to Phase 3. Upload, delete, retry, and re-index are
+  handled by Blazor component events; the protected download route remains a
+  normal GET so the browser can stream a PDF.
 
 Phase 2 storage ordering writes the PDF to local storage before saving metadata,
 and compensates by deleting the file if the metadata transaction fails. Delete

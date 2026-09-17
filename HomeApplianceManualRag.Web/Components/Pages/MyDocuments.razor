@@ -11,11 +11,11 @@
 <PageTitle>@(isAdmin ? "All documents" : "My documents")</PageTitle>
 <h1>@(isAdmin ? "All documents" : "My documents")</h1>
 <p>PDF only, maximum 10 MB. @(isAdmin ? "Administrators have unlimited uploads." : $"Active quota: {activeCount} / 3.")</p>
-<form method="post" action="/documents/upload" enctype="multipart/form-data" class="mb-3">
-    <AntiforgeryToken />
-    <input type="file" name="file" accept=".pdf,application/pdf" />
-    <button type="submit" class="btn btn-primary ms-2">Upload</button>
-</form>
+<div class="mb-3">
+    <InputFile OnChange="SelectFile" accept=".pdf,application/pdf" />
+    <button type="button" class="btn btn-primary ms-2" @onclick="Upload" disabled="@(selectedFile is null || busy)">Upload</button>
+    @if (busy) { <span class="ms-2 text-muted">Uploading...</span> }
+</div>
 @if (!string.IsNullOrWhiteSpace(errorMessage)) { <div class="alert alert-danger" role="alert">@errorMessage</div> }
 <div class="row g-3">
 @foreach (var document in documents)
@@ -39,12 +39,9 @@
                 @if (!string.IsNullOrWhiteSpace(document.LastError)) { <p class="card-text text-danger">@document.LastError</p> }
                 <div class="mt-auto d-flex flex-wrap gap-2">
                     <a class="btn btn-outline-primary btn-sm" href="/documents/@document.Id/download">Download</a>
-                    @if (IsFailed(document)) { <button class="btn btn-outline-secondary btn-sm" @onclick="() => Retry(document.Id)">Retry</button> }
-                    @if (isAdmin) { <button class="btn btn-outline-secondary btn-sm" @onclick="() => Reindex(document.Id)">Re-index</button> }
-                    <form method="post" action="/documents/@document.Id/delete" class="d-inline">
-                        <AntiforgeryToken />
-                        <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
-                    </form>
+                    @if (IsFailed(document)) { <button class="btn btn-outline-secondary btn-sm" @onclick="() => Retry(document.Id)" disabled="@IsBusy(document.Id)">Retry</button> }
+                    @if (isAdmin) { <button class="btn btn-outline-secondary btn-sm" @onclick="() => Reindex(document.Id)" disabled="@IsBusy(document.Id)">Re-index</button> }
+                    <button type="button" class="btn btn-outline-danger btn-sm" @onclick="() => Delete(document.Id)" disabled="@IsBusy(document.Id)">Delete</button>
                 </div>
             </div>
         </div>
@@ -57,6 +54,9 @@
     private readonly CancellationTokenSource refreshCancellation = new();
     private Task? refreshTask;
     private IDisposable? progressSubscription;
+    private readonly HashSet<Guid> busyDocuments = [];
+    private IBrowserFile? selectedFile;
+    private bool busy;
     private bool refreshStopped;
     [SupplyParameterFromQuery(Name = "error")]
     private string? errorMessage { get; set; }
@@ -72,8 +72,72 @@
         StartFallbackRefresh();
     }
     private async Task Refresh() => documents = await Documents.ListAsync();
-    private async Task Retry(Guid id) { try { await Documents.RetryAsync(id); refreshStopped = false; await Refresh(); StartFallbackRefresh(); } catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException) { refreshStopped = true; errorMessage = ex.Message; } }
-    private async Task Reindex(Guid id) { try { await Documents.ReindexAsync(id); refreshStopped = false; await Refresh(); StartFallbackRefresh(); } catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException) { refreshStopped = true; errorMessage = ex.Message; } }
+    private void SelectFile(InputFileChangeEventArgs args)
+    {
+        selectedFile = args.File;
+        errorMessage = null;
+    }
+    private async Task Upload()
+    {
+        if (selectedFile is null || busy)
+            return;
+
+        busy = true;
+        errorMessage = null;
+        try
+        {
+            await Documents.UploadAsync(selectedFile);
+            selectedFile = null;
+            refreshStopped = false;
+            await Refresh();
+            StartFallbackRefresh();
+        }
+        catch (Exception ex) when (ex is InvalidDataException or DocumentQuotaExceededException or DocumentProcessingInProgressException or UnauthorizedAccessException or IOException)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+    private async Task Retry(Guid id)
+    {
+        await RunDocumentAction(id, () => Documents.RetryAsync(id));
+    }
+    private async Task Reindex(Guid id)
+    {
+        await RunDocumentAction(id, () => Documents.ReindexAsync(id));
+    }
+    private async Task Delete(Guid id)
+    {
+        await RunDocumentAction(id, () => Documents.DeleteAsync(id));
+    }
+    private async Task RunDocumentAction(Guid id, Func<Task> action)
+    {
+        if (!busyDocuments.Add(id))
+            return;
+
+        errorMessage = null;
+        try
+        {
+            await action();
+            documents.RemoveAll(x => x.Id == id);
+            refreshStopped = false;
+            await Refresh();
+            StartFallbackRefresh();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException or KeyNotFoundException or FileNotFoundException or IOException)
+        {
+            refreshStopped = true;
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            busyDocuments.Remove(id);
+        }
+    }
+    private bool IsBusy(Guid id) => busy || busyDocuments.Contains(id);
     private void StartFallbackRefresh()
     {
         if (documents.Any(IsProcessing) &&
