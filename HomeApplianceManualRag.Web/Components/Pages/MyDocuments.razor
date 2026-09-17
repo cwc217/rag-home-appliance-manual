@@ -64,11 +64,11 @@
     private int activeCount => documents.Count(IsActive);
     protected override async Task OnInitializedAsync()
     {
-        await Refresh();
         progressSubscription = ProgressNotifier.Subscribe(
             CurrentUser.UserId,
             isAdmin,
             HandleProgressAsync);
+        await Refresh();
         StartFallbackRefresh();
     }
     private async Task Refresh() => documents = await Documents.ListAsync();
@@ -110,11 +110,16 @@
     }
     private async Task HandleProgressAsync(DocumentProgressUpdate update)
     {
-        await InvokeAsync(() =>
+        await InvokeAsync(async () =>
         {
             var document = documents.FirstOrDefault(x => x.Id == update.DocumentId);
             if (document is null)
-                return;
+            {
+                document = (await Documents.ListProgressAsync([update.DocumentId])).SingleOrDefault();
+                if (document is null)
+                    return;
+                documents.Add(document);
+            }
             document.Status = update.Status;
             document.LastError = update.LastError;
             document.UpdatedAtUtc = DateTime.UtcNow;
