@@ -110,22 +110,41 @@
     }
     private async Task HandleProgressAsync(DocumentProgressUpdate update)
     {
-        await InvokeAsync(async () =>
+        try
         {
-            var document = documents.FirstOrDefault(x => x.Id == update.DocumentId);
-            if (document is null)
+            await InvokeAsync(async () =>
             {
-                document = (await Documents.ListProgressAsync([update.DocumentId])).SingleOrDefault();
+                var document = documents.FirstOrDefault(x => x.Id == update.DocumentId);
                 if (document is null)
-                    return;
-                documents.Add(document);
-            }
-            document.Status = update.Status;
-            document.LastError = update.LastError;
-            document.UpdatedAtUtc = DateTime.UtcNow;
-            refreshStopped = false;
-            StateHasChanged();
-        });
+                {
+                    try
+                    {
+                        document = (await Documents.ListProgressAsync([update.DocumentId])).SingleOrDefault();
+                    }
+                    catch (DocumentForbiddenException)
+                    {
+                        return;
+                    }
+
+                    if (document is null)
+                        return;
+                    documents.Add(document);
+                }
+                document.Status = update.Status;
+                document.LastError = update.LastError;
+                document.UpdatedAtUtc = DateTime.UtcNow;
+                refreshStopped = false;
+                StateHasChanged();
+            });
+        }
+        catch (DocumentForbiddenException)
+        {
+            progressSubscription?.Dispose();
+            progressSubscription = null;
+        }
+        catch (InvalidOperationException) when (refreshCancellation.IsCancellationRequested)
+        {
+        }
     }
 
     private async Task RefreshProgressAsync()
