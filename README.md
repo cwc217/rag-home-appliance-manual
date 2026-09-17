@@ -24,8 +24,8 @@
   quota. A normal user may have only one document in `Pending` or `Processing` at
   a time; another upload or retry is rejected until it reaches `Ready` or `Failed`.
   The listing loads all authorized documents initially, then receives server-pushed
-  status updates from the Interactive Server circuit while indexing. A low
-  focused 3-second refresh remains as a reconnect fallback. The page shows a
+  status updates from the Interactive Server circuit while indexing. A focused
+  three-second refresh remains as a reconnect fallback. The page shows a
   stage-based progress bar with a loading indicator. There is no separate
   `/admin/documents` route. Phase 2 creates Pending records; indexing is
   intentionally deferred to Phase 3. Upload, delete, retry, and re-index are
@@ -47,6 +47,30 @@ deletions and periodically removes unreferenced files older than one hour.
 - Azure OpenAI chat and embedding deployments
 - Local Docling CLI for Phase 3 PDF parsing (pin the Python/Docling environment)
 - xUnit tests (integration and Playwright smoke tests are planned in later phases)
+
+### Hosting defaults
+
+Visual Studio and Docker use different host defaults even though both currently
+run the application in the `Development` environment:
+
+| Host | URL | Environment | HTTPS |
+| --- | --- | --- | --- |
+| Visual Studio `http` profile | `http://localhost:5170` | `Development` | Disabled |
+| Visual Studio `https` profile | `https://localhost:7151` | `Development` | Enabled |
+| Docker Compose `web` service | `http://localhost:8080` | `Development` | Disabled by Compose |
+
+If no launch profile or environment variable is selected, ASP.NET Core defaults
+to the `Production` environment. The Compose file explicitly sets
+`ASPNETCORE_ENVIRONMENT=Development`, `ASPNETCORE_HTTP_PORTS=8080`, and
+`HttpsRedirection__Enabled=false`. The Visual Studio profiles set
+`ASPNETCORE_ENVIRONMENT=Development`; the `https` profile also supplies the
+local HTTPS certificate and port.
+
+The application explicitly enables WebSockets with a 30-second keep-alive.
+Interactive Server prefers the `/_blazor` WebSocket, while the document page
+also performs a focused three-second refresh for Pending/Processing documents
+when a circuit event is delayed or missed. A reverse proxy must forward
+WebSocket upgrade requests.
 
 ## Local quick start
 
