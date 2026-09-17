@@ -125,7 +125,9 @@ public sealed class IndexingTests
         IEmbeddingProvider embedding) =>
         new(db, new TestStorage(), parser,
             new DocumentChunker(Options.Create(new RetrievalOptions { ChunkSize = 100, ChunkOverlap = 10 })),
-            embedding, NullLogger<IndexingPipeline>.Instance);
+            embedding,
+            new DocumentProgressNotifier(NullLogger<DocumentProgressNotifier>.Instance),
+            NullLogger<IndexingPipeline>.Instance);
 
     private sealed class FixedParser : IDocumentParser
     {

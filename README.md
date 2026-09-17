@@ -23,9 +23,10 @@
   with generated keys. Failed and deleted records do not consume a normal user's
   quota. A normal user may have only one document in `Pending` or `Processing` at
   a time; another upload or retry is rejected until it reaches `Ready` or `Failed`.
-  The listing loads all authorized documents initially, then polls only the
-  currently progressing document IDs while indexing and shows a stage-based
-  progress bar with a loading indicator. There is no separate
+  The listing loads all authorized documents initially, then receives server-pushed
+  status updates from the Interactive Server circuit while indexing. A low
+  frequency 30-second refresh remains as a reconnect fallback. The page shows a
+  stage-based progress bar with a loading indicator. There is no separate
   `/admin/documents` route. Phase 2 creates Pending records; indexing is
   intentionally deferred to Phase 3.
 
