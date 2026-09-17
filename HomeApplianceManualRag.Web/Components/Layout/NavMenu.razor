@@ -4,6 +4,8 @@
     </div>
 </div>
 
+<div class="build-label" title="Application build time">Build @BuildTime</div>
+
 <input type="checkbox" title="Navigation menu" class="navbar-toggler" />
 
 <div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
@@ -29,3 +31,20 @@
         </AuthorizeView>
     </nav>
 </div>
+
+@code {
+    private static string BuildTime
+    {
+        get
+        {
+            var assemblyPath = typeof(Program).Assembly.Location;
+            if (string.IsNullOrWhiteSpace(assemblyPath))
+                return "unknown";
+
+            var timestamp = File.GetLastWriteTimeUtc(assemblyPath);
+            return timestamp == DateTime.MinValue
+                ? "unknown"
+                : timestamp.ToString("yyyy-MM-dd HH:mm 'UTC'");
+        }
+    }
+}

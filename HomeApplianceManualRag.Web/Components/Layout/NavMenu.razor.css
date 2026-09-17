@@ -24,6 +24,13 @@
     font-size: 1.1rem;
 }
 
+.build-label {
+    padding: 0.35rem 1rem 0.45rem;
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 0.68rem;
+    letter-spacing: 0.04em;
+}
+
 .bi {
     display: inline-block;
     position: relative;
