@@ -89,6 +89,7 @@ app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages:
 if (builder.Configuration.GetValue("HttpsRedirection:Enabled", true))
     app.UseHttpsRedirection();
 
+app.UseStaticFiles();
 app.UseWebSockets(new WebSocketOptions
 {
     KeepAliveInterval = TimeSpan.FromSeconds(30)
