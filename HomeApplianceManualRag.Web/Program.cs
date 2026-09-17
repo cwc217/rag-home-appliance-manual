@@ -56,6 +56,7 @@ builder.Services.AddScoped<DocumentService>();
 builder.Services.AddScoped<IDocumentParser, DoclingProcessParser>();
 builder.Services.AddScoped<DocumentChunker>();
 builder.Services.AddScoped<IndexingPipeline>();
+builder.Services.AddSingleton<DocumentProgressNotifier>();
 builder.Services.AddHostedService<IndexingWorker>();
 builder.Services.AddScoped<StorageCleanupService>();
 builder.Services.AddHostedService<StorageCleanupWorker>();

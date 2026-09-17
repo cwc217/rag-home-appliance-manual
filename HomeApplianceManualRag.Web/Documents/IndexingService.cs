@@ -41,6 +41,7 @@ public sealed class IndexingPipeline(
     IDocumentParser parser,
     DocumentChunker chunker,
     IEmbeddingProvider embedding,
+    DocumentProgressNotifier progressNotifier,
     ILogger<IndexingPipeline> logger)
 {
     public async Task ProcessAsync(Guid jobId, CancellationToken cancellationToken)
@@ -56,6 +57,8 @@ public sealed class IndexingPipeline(
         document.LastError = null;
         document.UpdatedAtUtc = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
+        await progressNotifier.PublishAsync(new(
+            document.Id, document.OwnerUserId, document.Status, document.LastError));
 
         await using var content = await storage.OpenReadAsync(document.StorageKey, cancellationToken);
         var parsed = await parser.ParseAsync(new DocumentParseRequest(document.Id, document.DisplayName, content, cancellationToken));
@@ -101,6 +104,8 @@ public sealed class IndexingPipeline(
         await db.SaveChangesAsync(cancellationToken);
         if (transaction is not null)
             await transaction.CommitAsync(cancellationToken);
+        await progressNotifier.PublishAsync(new(
+            document.Id, document.OwnerUserId, document.Status, document.LastError));
         logger.LogInformation("Indexed document {DocumentId} with {ChunkCount} chunks.", document.Id, vectors.Count);
     }
 }
@@ -108,6 +113,7 @@ public sealed class IndexingPipeline(
 public sealed class IndexingWorker(
     IServiceScopeFactory scopeFactory,
     IOptions<DoclingOptions> options,
+    DocumentProgressNotifier progressNotifier,
     ILogger<IndexingWorker> logger) : BackgroundService
 {
     private static readonly TimeSpan LeaseTimeout = TimeSpan.FromMinutes(15);
@@ -223,6 +229,14 @@ public sealed class IndexingWorker(
             job.Document.UpdatedAtUtc = DateTime.UtcNow;
         }
         await db.SaveChangesAsync(ct);
+        if (job.Document is not null)
+        {
+            await progressNotifier.PublishAsync(new(
+                job.Document.Id,
+                job.Document.OwnerUserId,
+                job.Document.Status,
+                job.Document.LastError));
+        }
         logger.LogWarning(exception, "Indexing job {JobId} failed on attempt {Attempt}.", jobId, job.Attempts);
     }
 }

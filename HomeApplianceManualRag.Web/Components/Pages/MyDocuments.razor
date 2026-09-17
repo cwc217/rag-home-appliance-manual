@@ -3,6 +3,7 @@
 @attribute [Authorize(Policy = ApplicationPolicies.RegisteredUser)]
 @inject DocumentService Documents
 @inject ICurrentUser CurrentUser
+@inject DocumentProgressNotifier ProgressNotifier
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.AspNetCore.Components
 @implements IAsyncDisposable
@@ -55,6 +56,7 @@
     private List<ManualDocument> documents = [];
     private readonly CancellationTokenSource refreshCancellation = new();
     private Task? refreshTask;
+    private IDisposable? progressSubscription;
     private bool refreshStopped;
     [SupplyParameterFromQuery(Name = "error")]
     private string? errorMessage { get; set; }
@@ -63,20 +65,24 @@
     protected override async Task OnInitializedAsync()
     {
         await Refresh();
-        StartRefreshLoop();
+        progressSubscription = ProgressNotifier.Subscribe(
+            CurrentUser.UserId,
+            isAdmin,
+            HandleProgressAsync);
+        StartFallbackRefresh();
     }
     private async Task Refresh() => documents = await Documents.ListAsync();
-    private async Task Retry(Guid id) { try { await Documents.RetryAsync(id); refreshStopped = false; await Refresh(); StartRefreshLoop(); } catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException) { refreshStopped = true; errorMessage = ex.Message; } }
-    private async Task Reindex(Guid id) { try { await Documents.ReindexAsync(id); refreshStopped = false; await Refresh(); StartRefreshLoop(); } catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException) { refreshStopped = true; errorMessage = ex.Message; } }
-    private void StartRefreshLoop()
+    private async Task Retry(Guid id) { try { await Documents.RetryAsync(id); refreshStopped = false; await Refresh(); StartFallbackRefresh(); } catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException) { refreshStopped = true; errorMessage = ex.Message; } }
+    private async Task Reindex(Guid id) { try { await Documents.ReindexAsync(id); refreshStopped = false; await Refresh(); StartFallbackRefresh(); } catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException) { refreshStopped = true; errorMessage = ex.Message; } }
+    private void StartFallbackRefresh()
     {
         if (documents.Any(IsProcessing) &&
             (refreshTask is null || refreshTask.IsCompleted))
-            refreshTask = RefreshWhileProcessingAsync(refreshCancellation.Token);
+            refreshTask = FallbackRefreshAsync(refreshCancellation.Token);
     }
-    private async Task RefreshWhileProcessingAsync(CancellationToken ct)
+    private async Task FallbackRefreshAsync(CancellationToken ct)
     {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(3));
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
         while (await timer.WaitForNextTickAsync(ct))
         {
             if (!documents.Any(IsProcessing))
@@ -102,8 +108,22 @@
             }
         }
     }
+    private async Task HandleProgressAsync(DocumentProgressUpdate update)
+    {
+        await InvokeAsync(() =>
+        {
+            var document = documents.FirstOrDefault(x => x.Id == update.DocumentId);
+            if (document is null)
+                return;
+            document.Status = update.Status;
+            document.LastError = update.LastError;
+            document.UpdatedAtUtc = DateTime.UtcNow;
+            refreshStopped = false;
+            StateHasChanged();
+        });
+    }
 
-        private async Task RefreshProgressAsync()
+    private async Task RefreshProgressAsync()
         {
             var progressIds = documents
                 .Where(IsProcessing)
@@ -143,6 +163,7 @@
     private static int GetProgressWidth(DocumentStatus status) => status == DocumentStatus.Processing ? 66 : 33;
     public async ValueTask DisposeAsync()
     {
+        progressSubscription?.Dispose();
         refreshCancellation.Cancel();
         if (refreshTask is not null)
         {
