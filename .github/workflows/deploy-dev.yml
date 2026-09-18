@@ -17,6 +17,8 @@ jobs:
     runs-on: self-hosted
     environment: dev
     timeout-minutes: 30
+    env:
+      DEPLOY_ENV_FILE: ${{ github.workspace }}\deployment.env
 
     steps:
       - name: Checkout dev
@@ -44,9 +46,6 @@ jobs:
           SEED_ADMIN_EMAIL: ${{ secrets.SeedAdmin__Email }}
           SEED_ADMIN_PASSWORD: ${{ secrets.SeedAdmin__Password }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:RAG_DEPLOY_ENV_FILE)) {
-            throw "RAG_DEPLOY_ENV_FILE must point to the host .env file."
-          }
           $required = @(
             "POSTGRES_PASSWORD",
             "POSTGRES_DB",
@@ -65,8 +64,6 @@ jobs:
               throw "Required deployment setting is missing for $name."
             }
           }
-          $directory = Split-Path -Parent $env:RAG_DEPLOY_ENV_FILE
-          New-Item -ItemType Directory -Path $directory -Force | Out-Null
           @"
           POSTGRES_PASSWORD=$env:POSTGRES_PASSWORD
           POSTGRES_DB=$env:POSTGRES_DB
@@ -79,19 +76,19 @@ jobs:
           AzureOpenAI__EmbeddingDimensions=$env:AZURE_OPENAI_EMBEDDING_DIMENSIONS
           SeedAdmin__Email=$env:SEED_ADMIN_EMAIL
           SeedAdmin__Password=$env:SEED_ADMIN_PASSWORD
-          "@ | Set-Content -LiteralPath $env:RAG_DEPLOY_ENV_FILE -Encoding utf8NoBOM
+          "@ | Set-Content -LiteralPath $env:DEPLOY_ENV_FILE -Encoding utf8NoBOM
 
       - name: Verify deployment environment file
         shell: pwsh
         run: |
-          if (-not (Test-Path -LiteralPath $env:RAG_DEPLOY_ENV_FILE -PathType Leaf)) {
-            throw "Deployment environment file was not found: $env:RAG_DEPLOY_ENV_FILE"
+          if (-not (Test-Path -LiteralPath $env:DEPLOY_ENV_FILE -PathType Leaf)) {
+            throw "Deployment environment file was not found: $env:DEPLOY_ENV_FILE"
           }
 
       - name: Deploy with Docker Compose
         shell: pwsh
-        run: docker compose --env-file "$env:RAG_DEPLOY_ENV_FILE" up -d --build --remove-orphans
+        run: docker compose --env-file "$env:DEPLOY_ENV_FILE" up -d --build --remove-orphans
 
       - name: Show service status
         shell: pwsh
-        run: docker compose --env-file "$env:RAG_DEPLOY_ENV_FILE" ps
+        run: docker compose --env-file "$env:DEPLOY_ENV_FILE" ps

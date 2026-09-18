@@ -168,12 +168,9 @@ SeedAdmin__Email
 SeedAdmin__Password
 ```
 
-The workflow creates the `.env` file outside the runner workspace because
-Actions may clean that directory. Set the machine-level
-`RAG_DEPLOY_ENV_FILE` variable on the deployment host to a fixed path, for
-example `D:\deploy-secrets\rag-home-appliance-manual\.env`, and ensure the
-runner service account can write to it. The workflow passes the file with
-`docker compose --env-file` and does not print its contents.
+The workflow creates a temporary deployment env file inside the current
+checkout from the `dev` Environment values. It is recreated on every run,
+passed with `docker compose --env-file`, and is not printed or committed.
 
 To inspect the PostgreSQL database with Adminer, opt in to the `tools` profile:
 
