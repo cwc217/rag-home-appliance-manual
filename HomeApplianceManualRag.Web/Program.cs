@@ -57,7 +57,7 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy(ApplicationPolicies.RegisteredUser, policy => policy.RequireAuthenticatedUser());
 });
 builder.Services.AddScoped<IChatProvider, AzureOpenAiChatProvider>();
-builder.Services.AddScoped<IEmbeddingProvider, AzureOpenAiEmbeddingProvider>();
+builder.Services.AddHttpClient<IEmbeddingProvider, AzureOpenAiEmbeddingProvider>();
 builder.Services.AddScoped<PdfValidator>();
 builder.Services.AddScoped<DocumentService>();
 builder.Services.AddScoped<IDocumentParser>(serviceProvider =>
