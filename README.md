@@ -106,9 +106,10 @@ SeedAdmin__Email
 SeedAdmin__Password
 ```
 
-`POSTGRES_PASSWORD` is required by PostgreSQL. `ConnectionStrings__Default` is
-not part of the Docker `.env` file: Compose supplies the container connection
-string with `Host=postgres`. Upload, retrieval, rate-limit, storage, and
+`POSTGRES_PASSWORD` is required by PostgreSQL and is the only database secret
+that needs to be configured. Compose passes the same value to PostgreSQL and
+builds the web container's `ConnectionStrings__Default` with
+`Host=postgres`. Upload, retrieval, rate-limit, storage, and
 Docling settings use the checked-in `appsettings.json` defaults unless they are
 explicitly added to the Compose service environment.
 
