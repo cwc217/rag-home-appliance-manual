@@ -15,6 +15,7 @@ permissions:
 jobs:
   deploy:
     runs-on: self-hosted
+    environment: dev
     timeout-minutes: 30
 
     steps:
@@ -31,17 +32,17 @@ jobs:
       - name: Create deployment environment file
         shell: pwsh
         env:
-          POSTGRES_PASSWORD: ${{ secrets.DEPLOY_POSTGRES_PASSWORD }}
-          POSTGRES_DB: ${{ vars.DEPLOY_POSTGRES_DB || 'manuals' }}
-          POSTGRES_USER: ${{ vars.DEPLOY_POSTGRES_USER || 'postgres' }}
-          AZURE_OPENAI_ENDPOINT: ${{ secrets.DEPLOY_AZURE_OPENAI_ENDPOINT }}
-          AZURE_OPENAI_API_KEY: ${{ secrets.DEPLOY_AZURE_OPENAI_API_KEY }}
-          AZURE_OPENAI_CHAT_DEPLOYMENT: ${{ secrets.DEPLOY_AZURE_OPENAI_CHAT_DEPLOYMENT }}
-          AZURE_OPENAI_EMBEDDING_DEPLOYMENT: ${{ secrets.DEPLOY_AZURE_OPENAI_EMBEDDING_DEPLOYMENT }}
-          AZURE_OPENAI_API_VERSION: ${{ secrets.DEPLOY_AZURE_OPENAI_API_VERSION }}
-          AZURE_OPENAI_EMBEDDING_DIMENSIONS: ${{ secrets.DEPLOY_AZURE_OPENAI_EMBEDDING_DIMENSIONS }}
-          SEED_ADMIN_EMAIL: ${{ secrets.DEPLOY_SEED_ADMIN_EMAIL }}
-          SEED_ADMIN_PASSWORD: ${{ secrets.DEPLOY_SEED_ADMIN_PASSWORD }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ vars.POSTGRES_DB || 'manuals' }}
+          POSTGRES_USER: ${{ vars.POSTGRES_USER || 'postgres' }}
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.AzureOpenAI__Endpoint }}
+          AZURE_OPENAI_API_KEY: ${{ secrets.AzureOpenAI__ApiKey }}
+          AZURE_OPENAI_CHAT_DEPLOYMENT: ${{ secrets.AzureOpenAI__ChatDeployment }}
+          AZURE_OPENAI_EMBEDDING_DEPLOYMENT: ${{ secrets.AzureOpenAI__EmbeddingDeployment }}
+          AZURE_OPENAI_API_VERSION: ${{ secrets.AzureOpenAI__ApiVersion }}
+          AZURE_OPENAI_EMBEDDING_DIMENSIONS: ${{ vars.AzureOpenAI__EmbeddingDimensions || '1536' }}
+          SEED_ADMIN_EMAIL: ${{ secrets.SeedAdmin__Email }}
+          SEED_ADMIN_PASSWORD: ${{ secrets.SeedAdmin__Password }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:RAG_DEPLOY_ENV_FILE)) {
             throw "RAG_DEPLOY_ENV_FILE must point to the host .env file."

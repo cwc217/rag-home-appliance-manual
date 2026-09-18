@@ -145,37 +145,35 @@ for a connected `/_blazor` WebSocket and confirm the container was rebuilt from
 the current branch. A reverse proxy in front of Docker must forward WebSocket
 upgrade requests.
 
-For GitHub Actions self-hosted deployment, the workflow creates the secrets file
-outside the runner workspace because Actions may clean that directory. Set the
-machine-level `RAG_DEPLOY_ENV_FILE` variable on the deployment host to a fixed
-path, for example:
+For GitHub Actions self-hosted deployment, create a GitHub Environment named
+`dev`. The workflow uses this environment for pushes to the `dev` branch. Add
+these Environment variables:
 
 ```text
-D:\deploy-secrets\rag-home-appliance-manual\.env
+POSTGRES_DB=manuals
+POSTGRES_USER=postgres
+AzureOpenAI__EmbeddingDimensions=1536
 ```
 
-Add these repository Actions secrets; the names are intentionally different
-from the Compose keys so the workflow can map them without exposing values:
+Add these Environment secrets:
 
 ```text
-DEPLOY_POSTGRES_PASSWORD
-DEPLOY_POSTGRES_DB (Actions variable; defaults to `manuals`)
-DEPLOY_POSTGRES_USER (Actions variable; defaults to `postgres`)
-DEPLOY_AZURE_OPENAI_ENDPOINT
-DEPLOY_AZURE_OPENAI_API_KEY
-DEPLOY_AZURE_OPENAI_CHAT_DEPLOYMENT
-DEPLOY_AZURE_OPENAI_EMBEDDING_DEPLOYMENT
-DEPLOY_AZURE_OPENAI_API_VERSION
-DEPLOY_AZURE_OPENAI_EMBEDDING_DIMENSIONS
-DEPLOY_SEED_ADMIN_EMAIL
-DEPLOY_SEED_ADMIN_PASSWORD
+POSTGRES_PASSWORD
+AzureOpenAI__Endpoint
+AzureOpenAI__ApiKey
+AzureOpenAI__ChatDeployment
+AzureOpenAI__EmbeddingDeployment
+AzureOpenAI__ApiVersion
+SeedAdmin__Email
+SeedAdmin__Password
 ```
 
-The workflow writes these secrets to the fixed `.env` path and passes it with
-`docker compose --env-file`; it does not print the file contents. After setting
-`RAG_DEPLOY_ENV_FILE`, restart the self-hosted runner service so it receives the
-machine-level variable. Do not commit the generated file or put its values in
-workflow logs.
+The workflow creates the `.env` file outside the runner workspace because
+Actions may clean that directory. Set the machine-level
+`RAG_DEPLOY_ENV_FILE` variable on the deployment host to a fixed path, for
+example `D:\deploy-secrets\rag-home-appliance-manual\.env`, and ensure the
+runner service account can write to it. The workflow passes the file with
+`docker compose --env-file` and does not print its contents.
 
 To inspect the PostgreSQL database with Adminer, opt in to the `tools` profile:
 
