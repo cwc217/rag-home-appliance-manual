@@ -1,7 +1,8 @@
+using Azure;
+using Azure.AI.OpenAI;
 using HomeApplianceManualRag.Web.Configuration;
 using Microsoft.Extensions.Options;
-using System.Net.Http.Json;
-using System.Text.Json.Serialization;
+using OpenAI.Embeddings;
 
 namespace HomeApplianceManualRag.Web.Providers;
 
@@ -27,41 +28,23 @@ public sealed class AzureOpenAiChatProvider : IChatProvider
     }
 }
 
-public sealed class AzureOpenAiEmbeddingProvider(
-    HttpClient httpClient,
-    IOptions<AzureOpenAiOptions> options) : IEmbeddingProvider
+public sealed class AzureOpenAiEmbeddingProvider(IOptions<AzureOpenAiOptions> options) : IEmbeddingProvider
 {
     private readonly AzureOpenAiOptions settings = options.Value;
+    private readonly EmbeddingClient client =
+        new AzureOpenAIClient(new Uri(options.Value.Endpoint), new AzureKeyCredential(options.Value.ApiKey))
+            .GetEmbeddingClient(options.Value.EmbeddingDeployment);
 
     public async Task<ReadOnlyMemory<float>> EmbedAsync(string text, CancellationToken cancellationToken = default)
     {
-        using var request = new HttpRequestMessage(
-            HttpMethod.Post,
-            $"{settings.Endpoint.TrimEnd('/')}/openai/deployments/{Uri.EscapeDataString(settings.EmbeddingDeployment)}/embeddings?api-version={Uri.EscapeDataString(settings.ApiVersion)}")
-        {
-            Content = JsonContent.Create(new
-            {
-                input = text,
-                dimensions = settings.EmbeddingDimensions
-            })
-        };
-        request.Headers.Add("api-key", settings.ApiKey);
-
-        using var response = await httpClient.SendAsync(request, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        var payload = await response.Content.ReadFromJsonAsync<EmbeddingResponse>(cancellationToken);
-        var embedding = payload?.Data.FirstOrDefault()?.Embedding;
-        if (embedding is null || embedding.Length == 0)
-            throw new InvalidOperationException("Azure OpenAI returned an empty embedding.");
+        var response = await client.GenerateEmbeddingAsync(text, cancellationToken: cancellationToken);
+        var embedding = response.Value.ToFloats();
+        if (embedding.Length != settings.EmbeddingDimensions)
+            throw new InvalidOperationException(
+                $"Azure OpenAI embedding deployment '{settings.EmbeddingDeployment}' returned {embedding.Length} dimensions; expected {settings.EmbeddingDimensions}.");
 
         return embedding;
     }
-
-    private sealed record EmbeddingResponse(
-        [property: JsonPropertyName("data")] EmbeddingItem[] Data);
-
-    private sealed record EmbeddingItem(
-        [property: JsonPropertyName("embedding")] float[] Embedding);
 }
 
 public sealed class DeterministicFakeChatProvider : IChatProvider

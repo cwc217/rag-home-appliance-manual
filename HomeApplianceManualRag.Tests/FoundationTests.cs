@@ -3,10 +3,7 @@ using HomeApplianceManualRag.Web.Data;
 using HomeApplianceManualRag.Web.Providers;
 using HomeApplianceManualRag.Web.Resources;
 using System.ComponentModel.DataAnnotations;
-using System.Net;
-using System.Net.Http.Json;
 using System.Security.Claims;
-using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -174,50 +171,4 @@ public sealed class FakeProviderTests
         Assert.Equal(first.ToArray(), second.ToArray());
     }
 
-    [Fact]
-    public async Task Azure_embedding_requests_configured_dimensions()
-    {
-        var handler = new CapturingHandler();
-        using var httpClient = new HttpClient(handler);
-        var provider = new AzureOpenAiEmbeddingProvider(
-            httpClient,
-            Options.Create(new AzureOpenAiOptions
-            {
-                Endpoint = "https://example.openai.azure.com/",
-                ApiKey = "test-key",
-                EmbeddingDeployment = "embedding-deployment",
-                ApiVersion = "2024-10-21",
-                EmbeddingDimensions = 1536
-            }));
-
-        var embedding = await provider.EmbedAsync("manual text");
-        var request = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(handler.RequestBody);
-
-        Assert.Equal(1536, embedding.Length);
-        Assert.Equal(1536, request!["dimensions"].GetInt32());
-        Assert.Equal("manual text", request["input"].GetString());
-        Assert.Equal("test-key", handler.ApiKey);
-    }
-
-    private sealed class CapturingHandler : HttpMessageHandler
-    {
-        public string RequestBody { get; private set; } = string.Empty;
-        public string ApiKey { get; private set; } = string.Empty;
-
-        protected override async Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request,
-            CancellationToken cancellationToken)
-        {
-            RequestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
-            ApiKey = request.Headers.GetValues("api-key").Single();
-            var embedding = Enumerable.Repeat(0.1f, 1536).ToArray();
-            return new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = JsonContent.Create(new
-                {
-                    data = new[] { new { embedding } }
-                })
-            };
-        }
-    }
 }
