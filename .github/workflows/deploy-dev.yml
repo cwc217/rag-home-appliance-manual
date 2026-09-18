@@ -28,8 +28,20 @@ jobs:
           docker version
           docker compose version
 
+      - name: Verify deployment environment file
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:RAG_DEPLOY_ENV_FILE)) {
+            throw "RAG_DEPLOY_ENV_FILE must point to the host .env file."
+          }
+          if (-not (Test-Path -LiteralPath $env:RAG_DEPLOY_ENV_FILE -PathType Leaf)) {
+            throw "Deployment environment file was not found: $env:RAG_DEPLOY_ENV_FILE"
+          }
+
       - name: Deploy with Docker Compose
-        run: docker compose up -d --build --remove-orphans
+        shell: pwsh
+        run: docker compose --env-file "$env:RAG_DEPLOY_ENV_FILE" up -d --build --remove-orphans
 
       - name: Show service status
-        run: docker compose ps
+        shell: pwsh
+        run: docker compose --env-file "$env:RAG_DEPLOY_ENV_FILE" ps

@@ -136,6 +136,21 @@ for a connected `/_blazor` WebSocket and confirm the container was rebuilt from
 the current branch. A reverse proxy in front of Docker must forward WebSocket
 upgrade requests.
 
+For GitHub Actions self-hosted deployment, keep the secrets outside the runner
+workspace because Actions may clean that directory before a job. Create the
+file once on the deployment host, for example:
+
+```text
+D:\deploy-secrets\rag-home-appliance-manual\.env
+```
+
+Set the machine-level environment variable `RAG_DEPLOY_ENV_FILE` to that full
+path, then restart the self-hosted runner service so the runner receives it.
+The `deploy-dev.yml` workflow passes this file explicitly with
+`docker compose --env-file`; it does not expect `.env` inside the checkout and
+does not print its contents. Do not commit this file or put its values in
+workflow logs.
+
 To inspect the PostgreSQL database with Adminer, opt in to the `tools` profile:
 
 ```powershell
