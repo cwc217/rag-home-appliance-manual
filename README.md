@@ -92,10 +92,10 @@ dotnet user-secrets set "SeedAdmin:Password" "replace-with-a-strong-development-
 
 The `.env.example` file documents Docker Compose environment variables. ASP.NET Core does not load a `.env` file automatically; Docker Compose loads `.env` for Compose variable substitution.
 
-Required settings:
+The Docker Compose deployment uses these settings:
 
 ```text
-ConnectionStrings__Default
+POSTGRES_PASSWORD
 AzureOpenAI__Endpoint
 AzureOpenAI__ApiKey
 AzureOpenAI__ChatDeployment
@@ -105,6 +105,12 @@ AzureOpenAI__EmbeddingDimensions
 SeedAdmin__Email
 SeedAdmin__Password
 ```
+
+`POSTGRES_PASSWORD` is required by PostgreSQL. `ConnectionStrings__Default` is
+not part of the Docker `.env` file: Compose supplies the container connection
+string with `Host=postgres`. Upload, retrieval, rate-limit, storage, and
+Docling settings use the checked-in `appsettings.json` defaults unless they are
+explicitly added to the Compose service environment.
 
 `AzureOpenAI__EmbeddingDimensions` must be `1536` for the current migration and match the selected embedding deployment. Changing the embedding deployment dimension requires a new migration and compatible embedding configuration. `SeedAdmin__Password` and registration passwords must contain at least 8 characters; stronger passwords are still recommended.
 
@@ -136,19 +142,34 @@ for a connected `/_blazor` WebSocket and confirm the container was rebuilt from
 the current branch. A reverse proxy in front of Docker must forward WebSocket
 upgrade requests.
 
-For GitHub Actions self-hosted deployment, keep the secrets outside the runner
-workspace because Actions may clean that directory before a job. Create the
-file once on the deployment host, for example:
+For GitHub Actions self-hosted deployment, the workflow creates the secrets file
+outside the runner workspace because Actions may clean that directory. Set the
+machine-level `RAG_DEPLOY_ENV_FILE` variable on the deployment host to a fixed
+path, for example:
 
 ```text
 D:\deploy-secrets\rag-home-appliance-manual\.env
 ```
 
-Set the machine-level environment variable `RAG_DEPLOY_ENV_FILE` to that full
-path, then restart the self-hosted runner service so the runner receives it.
-The `deploy-dev.yml` workflow passes this file explicitly with
-`docker compose --env-file`; it does not expect `.env` inside the checkout and
-does not print its contents. Do not commit this file or put its values in
+Add these repository Actions secrets; the names are intentionally different
+from the Compose keys so the workflow can map them without exposing values:
+
+```text
+DEPLOY_POSTGRES_PASSWORD
+DEPLOY_AZURE_OPENAI_ENDPOINT
+DEPLOY_AZURE_OPENAI_API_KEY
+DEPLOY_AZURE_OPENAI_CHAT_DEPLOYMENT
+DEPLOY_AZURE_OPENAI_EMBEDDING_DEPLOYMENT
+DEPLOY_AZURE_OPENAI_API_VERSION
+DEPLOY_AZURE_OPENAI_EMBEDDING_DIMENSIONS
+DEPLOY_SEED_ADMIN_EMAIL
+DEPLOY_SEED_ADMIN_PASSWORD
+```
+
+The workflow writes these secrets to the fixed `.env` path and passes it with
+`docker compose --env-file`; it does not print the file contents. After setting
+`RAG_DEPLOY_ENV_FILE`, restart the self-hosted runner service so it receives the
+machine-level variable. Do not commit the generated file or put its values in
 workflow logs.
 
 To inspect the PostgreSQL database with Adminer, opt in to the `tools` profile:

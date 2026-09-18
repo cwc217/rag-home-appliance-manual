@@ -28,12 +28,55 @@ jobs:
           docker version
           docker compose version
 
-      - name: Verify deployment environment file
+      - name: Create deployment environment file
         shell: pwsh
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.DEPLOY_POSTGRES_PASSWORD }}
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.DEPLOY_AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_API_KEY: ${{ secrets.DEPLOY_AZURE_OPENAI_API_KEY }}
+          AZURE_OPENAI_CHAT_DEPLOYMENT: ${{ secrets.DEPLOY_AZURE_OPENAI_CHAT_DEPLOYMENT }}
+          AZURE_OPENAI_EMBEDDING_DEPLOYMENT: ${{ secrets.DEPLOY_AZURE_OPENAI_EMBEDDING_DEPLOYMENT }}
+          AZURE_OPENAI_API_VERSION: ${{ secrets.DEPLOY_AZURE_OPENAI_API_VERSION }}
+          AZURE_OPENAI_EMBEDDING_DIMENSIONS: ${{ secrets.DEPLOY_AZURE_OPENAI_EMBEDDING_DIMENSIONS }}
+          SEED_ADMIN_EMAIL: ${{ secrets.DEPLOY_SEED_ADMIN_EMAIL }}
+          SEED_ADMIN_PASSWORD: ${{ secrets.DEPLOY_SEED_ADMIN_PASSWORD }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:RAG_DEPLOY_ENV_FILE)) {
             throw "RAG_DEPLOY_ENV_FILE must point to the host .env file."
           }
+          $required = @(
+            "POSTGRES_PASSWORD",
+            "AZURE_OPENAI_ENDPOINT",
+            "AZURE_OPENAI_API_KEY",
+            "AZURE_OPENAI_CHAT_DEPLOYMENT",
+            "AZURE_OPENAI_EMBEDDING_DEPLOYMENT",
+            "AZURE_OPENAI_API_VERSION",
+            "AZURE_OPENAI_EMBEDDING_DIMENSIONS",
+            "SEED_ADMIN_EMAIL",
+            "SEED_ADMIN_PASSWORD"
+          )
+          foreach ($name in $required) {
+            if ([string]::IsNullOrWhiteSpace((Get-Item "Env:$name").Value)) {
+              throw "Required GitHub secret is missing for $name."
+            }
+          }
+          $directory = Split-Path -Parent $env:RAG_DEPLOY_ENV_FILE
+          New-Item -ItemType Directory -Path $directory -Force | Out-Null
+          @"
+          POSTGRES_PASSWORD=$env:POSTGRES_PASSWORD
+          AzureOpenAI__Endpoint=$env:AZURE_OPENAI_ENDPOINT
+          AzureOpenAI__ApiKey=$env:AZURE_OPENAI_API_KEY
+          AzureOpenAI__ChatDeployment=$env:AZURE_OPENAI_CHAT_DEPLOYMENT
+          AzureOpenAI__EmbeddingDeployment=$env:AZURE_OPENAI_EMBEDDING_DEPLOYMENT
+          AzureOpenAI__ApiVersion=$env:AZURE_OPENAI_API_VERSION
+          AzureOpenAI__EmbeddingDimensions=$env:AZURE_OPENAI_EMBEDDING_DIMENSIONS
+          SeedAdmin__Email=$env:SEED_ADMIN_EMAIL
+          SeedAdmin__Password=$env:SEED_ADMIN_PASSWORD
+          "@ | Set-Content -LiteralPath $env:RAG_DEPLOY_ENV_FILE -Encoding utf8NoBOM
+
+      - name: Verify deployment environment file
+        shell: pwsh
+        run: |
           if (-not (Test-Path -LiteralPath $env:RAG_DEPLOY_ENV_FILE -PathType Leaf)) {
             throw "Deployment environment file was not found: $env:RAG_DEPLOY_ENV_FILE"
           }
