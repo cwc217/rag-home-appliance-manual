@@ -96,6 +96,8 @@ The Docker Compose deployment uses these settings:
 
 ```text
 POSTGRES_PASSWORD
+POSTGRES_DB
+POSTGRES_USER
 AzureOpenAI__Endpoint
 AzureOpenAI__ApiKey
 AzureOpenAI__ChatDeployment
@@ -106,10 +108,10 @@ SeedAdmin__Email
 SeedAdmin__Password
 ```
 
-`POSTGRES_PASSWORD` is required by PostgreSQL and is the only database secret
-that needs to be configured. Compose passes the same value to PostgreSQL and
-builds the web container's `ConnectionStrings__Default` with
-`Host=postgres`. Upload, retrieval, rate-limit, storage, and
+`POSTGRES_PASSWORD` is required by PostgreSQL. `POSTGRES_DB` and
+`POSTGRES_USER` default to `manuals` and `postgres`; Compose passes the same
+values to PostgreSQL and builds the web container's `ConnectionStrings__Default`
+with `Host=postgres`. Upload, retrieval, rate-limit, storage, and
 Docling settings use the checked-in `appsettings.json` defaults unless they are
 explicitly added to the Compose service environment.
 
@@ -157,6 +159,8 @@ from the Compose keys so the workflow can map them without exposing values:
 
 ```text
 DEPLOY_POSTGRES_PASSWORD
+DEPLOY_POSTGRES_DB (Actions variable; defaults to `manuals`)
+DEPLOY_POSTGRES_USER (Actions variable; defaults to `postgres`)
 DEPLOY_AZURE_OPENAI_ENDPOINT
 DEPLOY_AZURE_OPENAI_API_KEY
 DEPLOY_AZURE_OPENAI_CHAT_DEPLOYMENT

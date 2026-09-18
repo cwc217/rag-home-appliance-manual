@@ -32,6 +32,8 @@ jobs:
         shell: pwsh
         env:
           POSTGRES_PASSWORD: ${{ secrets.DEPLOY_POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ vars.DEPLOY_POSTGRES_DB || 'manuals' }}
+          POSTGRES_USER: ${{ vars.DEPLOY_POSTGRES_USER || 'postgres' }}
           AZURE_OPENAI_ENDPOINT: ${{ secrets.DEPLOY_AZURE_OPENAI_ENDPOINT }}
           AZURE_OPENAI_API_KEY: ${{ secrets.DEPLOY_AZURE_OPENAI_API_KEY }}
           AZURE_OPENAI_CHAT_DEPLOYMENT: ${{ secrets.DEPLOY_AZURE_OPENAI_CHAT_DEPLOYMENT }}
@@ -46,6 +48,8 @@ jobs:
           }
           $required = @(
             "POSTGRES_PASSWORD",
+            "POSTGRES_DB",
+            "POSTGRES_USER",
             "AZURE_OPENAI_ENDPOINT",
             "AZURE_OPENAI_API_KEY",
             "AZURE_OPENAI_CHAT_DEPLOYMENT",
@@ -57,13 +61,15 @@ jobs:
           )
           foreach ($name in $required) {
             if ([string]::IsNullOrWhiteSpace((Get-Item "Env:$name").Value)) {
-              throw "Required GitHub secret is missing for $name."
+              throw "Required deployment setting is missing for $name."
             }
           }
           $directory = Split-Path -Parent $env:RAG_DEPLOY_ENV_FILE
           New-Item -ItemType Directory -Path $directory -Force | Out-Null
           @"
           POSTGRES_PASSWORD=$env:POSTGRES_PASSWORD
+          POSTGRES_DB=$env:POSTGRES_DB
+          POSTGRES_USER=$env:POSTGRES_USER
           AzureOpenAI__Endpoint=$env:AZURE_OPENAI_ENDPOINT
           AzureOpenAI__ApiKey=$env:AZURE_OPENAI_API_KEY
           AzureOpenAI__ChatDeployment=$env:AZURE_OPENAI_CHAT_DEPLOYMENT
