@@ -36,8 +36,7 @@ public sealed class RetrievalOptions
 public sealed class DoclingOptions
 {
     public const string SectionName = "Docling";
-    public string ExecutablePath { get; init; } = "docling";
-    public string ArgumentsTemplate { get; init; } = "--output {output} --format json {input}";
+    [Required, Url] public string ServiceUrl { get; init; } = "http://docling:5001";
     [Range(1, 3600)] public int TimeoutSeconds { get; init; } = 300;
     [Range(1, 4)] public int MaxConcurrentJobs { get; init; } = 1;
 }

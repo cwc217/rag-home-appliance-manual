@@ -1,4 +1,24 @@
 services:
+  docling:
+    image: quay.io/docling-project/docling-serve:v1.34.0
+    restart: unless-stopped
+    environment:
+      UVICORN_HOST: 0.0.0.0
+      UVICORN_PORT: 5001
+      DOCLING_SERVE_LOG_FORMAT: json
+      DOCLING_SERVE_LOAD_MODELS_AT_BOOT: "true"
+      DOCLING_SERVE_MAX_FILE_SIZE: 10485760
+      DOCLING_SERVE_MAX_DOCUMENT_TIMEOUT: 300
+    ports:
+      - "127.0.0.1:5001:5001"
+    volumes:
+      - docling-model-cache:/root/.cache
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5001/version')"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
   postgres:
     image: pgvector/pgvector:pg17
     environment:
@@ -20,12 +40,17 @@ services:
       context: .
       dockerfile: HomeApplianceManualRag.Web/Dockerfile
     depends_on:
+      docling:
+        condition: service_healthy
       postgres:
         condition: service_healthy
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_HTTP_PORTS: 8080
       HttpsRedirection__Enabled: "false"
+      Docling__ServiceUrl: http://docling:5001
+      Docling__TimeoutSeconds: 300
+      Docling__MaxConcurrentJobs: 1
       ConnectionStrings__Default: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-manuals};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
       AzureOpenAI__Endpoint: ${AzureOpenAI__Endpoint:-https://development.invalid/}
       AzureOpenAI__ApiKey: ${AzureOpenAI__ApiKey:-development-placeholder}
@@ -50,4 +75,4 @@ services:
 
 volumes:
   postgres-data:
-
+  docling-model-cache:

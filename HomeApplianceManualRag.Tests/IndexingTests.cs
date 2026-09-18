@@ -5,6 +5,9 @@ using HomeApplianceManualRag.Web.Providers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
 
 namespace HomeApplianceManualRag.Tests;
 
@@ -45,6 +48,79 @@ public sealed class IndexingTests
         ], "fixture");
 
         Assert.Empty(chunker.Chunk(parsed));
+    }
+
+    [Fact]
+    public async Task Docling_parser_maps_page_and_block_provenance()
+    {
+        using var client = new HttpClient(new StubHandler("""
+            {
+              "status": "success",
+              "document": {
+                "json_content": {
+                  "version": "1.8.0",
+                  "texts": [
+                    {
+                      "label": "section_header",
+                      "text": "Safety",
+                      "prov": [{ "page_no": 2 }]
+                    },
+                    {
+                      "label": "text",
+                      "text": "Disconnect power before cleaning.",
+                      "prov": [{ "page_no": 2 }]
+                    }
+                  ],
+                  "tables": [
+                    {
+                      "label": "table",
+                      "prov": [{ "page_no": 3 }]
+                    }
+                  ]
+                }
+              },
+              "errors": []
+            }
+            """))
+        {
+            BaseAddress = new Uri("http://docling:5001/")
+        };
+        var parser = new DoclingHttpParser(
+            client,
+            Options.Create(new DoclingOptions { ServiceUrl = "http://docling:5001" }));
+
+        var result = await parser.ParseAsync(new(
+            Guid.NewGuid(), "manual.pdf", new MemoryStream([1, 2, 3])));
+
+        Assert.Equal("docling-1.8.0", result.ParserVersion);
+        Assert.Equal([2, 3], result.Pages.Select(page => page.PageNumber).ToArray());
+        Assert.Equal("Safety", result.Pages[0].Blocks[0].HeadingPath);
+        Assert.Equal("page:2", result.Pages[0].Blocks[1].SourceReference);
+        Assert.Equal("[table]", result.Pages[1].Blocks[0].Text);
+    }
+
+    [Fact]
+    public async Task Docling_parser_rejects_failed_response()
+    {
+        using var client = new HttpClient(new StubHandler("""
+            {
+              "status": "failure",
+              "document": {},
+              "errors": ["unsupported PDF"]
+            }
+            """))
+        {
+            BaseAddress = new Uri("http://docling:5001/")
+        };
+        var parser = new DoclingHttpParser(
+            client,
+            Options.Create(new DoclingOptions { ServiceUrl = "http://docling:5001" }));
+
+        var exception = await Assert.ThrowsAsync<DocumentParseException>(() =>
+            parser.ParseAsync(new(Guid.NewGuid(), "manual.pdf", new MemoryStream([1]))));
+
+        Assert.Contains("unsupported PDF", exception.Message, StringComparison.Ordinal);
+        Assert.False(exception.Retryable);
     }
 
     [Fact]
@@ -156,5 +232,20 @@ public sealed class IndexingTests
 
         public Task<IReadOnlyCollection<StoredFile>> ListAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyCollection<StoredFile>>([]);
+    }
+
+    private sealed class StubHandler(string response) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.EndsWith("/v1/convert/file", request.RequestUri!.AbsoluteUri, StringComparison.Ordinal);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(JsonDocument.Parse(response).RootElement)
+            });
+        }
     }
 }

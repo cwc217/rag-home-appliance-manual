@@ -45,7 +45,7 @@ deletions and periodically removes unreferenced files older than one hour.
 - ASP.NET Core Identity with PostgreSQL
 - PostgreSQL with `pgvector`
 - Azure OpenAI chat and embedding deployments
-- Local Docling CLI for Phase 3 PDF parsing (pin the Python/Docling environment)
+- Pinned Docling Serve container for Phase 3 PDF parsing
 - xUnit tests (integration and Playwright smoke tests are planned in later phases)
 
 ### Hosting defaults
@@ -113,7 +113,9 @@ SeedAdmin__Password
 values to PostgreSQL and builds the web container's `ConnectionStrings__Default`
 with `Host=postgres`. Upload, retrieval, rate-limit, storage, and
 Docling settings use the checked-in `appsettings.json` defaults unless they are
-explicitly added to the Compose service environment.
+explicitly added to the Compose service environment. Compose starts a separate
+Docling Serve container and the web container calls it over the internal
+`http://docling:5001` network address.
 
 `AzureOpenAI__EmbeddingDimensions` must be `1536` for the current migration and match the selected embedding deployment. Changing the embedding deployment dimension requires a new migration and compatible embedding configuration. `SeedAdmin__Password` and registration passwords must contain at least 8 characters; stronger passwords are still recommended.
 
@@ -184,6 +186,7 @@ For running the website directly on the host:
 
 ```powershell
 docker compose up -d postgres
+docker compose up -d docling
 dotnet ef database update --project HomeApplianceManualRag.Web --startup-project HomeApplianceManualRag.Web
 dotnet run --project HomeApplianceManualRag.Web
 ```
@@ -193,20 +196,29 @@ The Docker Compose PostgreSQL service creates the `manuals` database on first in
 ### Phase 3 document indexing
 
 Phase 3 keeps the upload MVP PDF-only. A durable indexing job is created with
-each new, retried, or re-indexed document. The hosted worker invokes the local
-Docling executable using `Docling:ExecutablePath` and
-`Docling:ArgumentsTemplate`, reads a structured JSON result with page/block
-provenance, creates deterministic page-aware chunks, and validates
+each new, retried, or re-indexed document. The hosted worker uploads the PDF
+to the pinned Docling Serve container, reads its structured JSON result with
+page/block provenance, creates deterministic page-aware chunks, and validates
 `AzureOpenAI:EmbeddingDimensions` before storing vectors atomically.
 
-Install and pin Docling separately in the worker environment; the web Docker
-image does not install Python packages. The default command template expects a
-wrapper/CLI that writes the JSON contract to `{output}`:
+The Compose file pins the official image
+`quay.io/docling-project/docling-serve:v1.34.0`. Do not change it to `latest`;
+update the explicit tag only after checking API compatibility and running the
+parser tests. The Docling model cache is kept in the `docling-model-cache`
+volume. The first startup may take longer while default models are loaded.
+
+The web parser uses:
 
 ```text
-Docling:ExecutablePath = docling
-Docling:ArgumentsTemplate = --output {output} --format json {input}
+Docling:ServiceUrl = http://docling:5001
+Docling:TimeoutSeconds = 300
+Docling:MaxConcurrentJobs = 1
 ```
+
+The service exposes `/v1/convert/file`; the web parser requests JSON output
+with PDF OCR disabled for the current PDF-only phase. If scanned-document OCR
+is required later, add it as an explicit parser configuration and validate its
+resource and failure behavior.
 
 The JSON contract is intentionally application-owned: each page contains
 ordered blocks with `text`, `blockType`, `headingPath`, and optional

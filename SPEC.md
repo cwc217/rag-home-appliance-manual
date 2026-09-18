@@ -92,8 +92,9 @@ Pending -> Processing -> Ready
 ### Extraction and chunking
 
 1. Parse the stored PDF through the `IDocumentParser` boundary. The Phase 3
-   implementation uses a local Docling process and a structured JSON contract;
-   the web process does not load Python packages.
+   implementation uses a pinned Docling Serve container over the internal
+   service network and an application-owned structured JSON contract; the web
+   process does not load Python packages.
 2. Preserve page number, document id, block order, block type, heading path,
    table/image markers, and source references on every parsed block.
 3. Reject empty/textless output with an actionable `Failed` error.

@@ -5,6 +5,7 @@ using HomeApplianceManualRag.Web.Providers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using HomeApplianceManualRag.Web.Resources;
 using HomeApplianceManualRag.Web.Documents;
 
@@ -21,6 +22,12 @@ builder.Services.AddOptions<AzureOpenAiOptions>()
 builder.Services.AddOptions<UploadOptions>().BindConfiguration(UploadOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<RetrievalOptions>().BindConfiguration(RetrievalOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<DoclingOptions>().BindConfiguration(DoclingOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
+builder.Services.AddHttpClient<DoclingHttpParser>((serviceProvider, client) =>
+{
+    var options = serviceProvider.GetRequiredService<IOptions<DoclingOptions>>().Value;
+    client.BaseAddress = new Uri(options.ServiceUrl.TrimEnd('/') + "/");
+    client.Timeout = Timeout.InfiniteTimeSpan;
+});
 builder.Services.AddOptions<RateLimitingOptions>().BindConfiguration(RateLimitingOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<SeedAdminOptions>().BindConfiguration(SeedAdminOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<LocalStorageOptions>().BindConfiguration(LocalStorageOptions.SectionName);
@@ -53,7 +60,8 @@ builder.Services.AddScoped<IChatProvider, AzureOpenAiChatProvider>();
 builder.Services.AddScoped<IEmbeddingProvider, AzureOpenAiEmbeddingProvider>();
 builder.Services.AddScoped<PdfValidator>();
 builder.Services.AddScoped<DocumentService>();
-builder.Services.AddScoped<IDocumentParser, DoclingProcessParser>();
+builder.Services.AddScoped<IDocumentParser>(serviceProvider =>
+    serviceProvider.GetRequiredService<DoclingHttpParser>());
 builder.Services.AddScoped<DocumentChunker>();
 builder.Services.AddScoped<IndexingPipeline>();
 builder.Services.AddSingleton<DocumentProgressNotifier>();
