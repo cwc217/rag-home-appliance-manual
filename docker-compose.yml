@@ -60,6 +60,8 @@ services:
       AzureOpenAI__EmbeddingDimensions: ${AzureOpenAI__EmbeddingDimensions:-1536}
       SeedAdmin__Email: ${SeedAdmin__Email:-admin@example.invalid}
       SeedAdmin__Password: ${SeedAdmin__Password:?Set SeedAdmin__Password in .env}
+    volumes:
+      - document-data:/app/App_Data/uploads
     ports:
       - "8080:8080"
 
@@ -76,3 +78,4 @@ services:
 volumes:
   postgres-data:
   docling-model-cache:
+  document-data:
