@@ -10,7 +10,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d manuals"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-manuals}"]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -26,7 +26,7 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_HTTP_PORTS: 8080
       HttpsRedirection__Enabled: "false"
-      ConnectionStrings__Default: Host=postgres;Port=5432;Database=${POSTGRES_DB:-manuals};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-manuals};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
       AzureOpenAI__Endpoint: ${AzureOpenAI__Endpoint:-https://development.invalid/}
       AzureOpenAI__ApiKey: ${AzureOpenAI__ApiKey:-development-placeholder}
       AzureOpenAI__ChatDeployment: ${AzureOpenAI__ChatDeployment:-development-chat}
@@ -50,3 +50,4 @@ services:
 
 volumes:
   postgres-data:
+
