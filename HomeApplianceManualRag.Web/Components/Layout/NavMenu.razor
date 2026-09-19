@@ -70,6 +70,8 @@
     private bool conversationsLoaded;
     private string? conversationsError;
 
+    [Parameter] public EventCallback OnNavigationRequested { get; set; }
+
     protected override void OnInitialized()
     {
         ConversationState.Changed += OnConversationStateChanged;
@@ -107,6 +109,7 @@
 
     private async Task NewConversation()
     {
+        await OnNavigationRequested.InvokeAsync();
         Navigation.NavigateTo("/");
     }
 

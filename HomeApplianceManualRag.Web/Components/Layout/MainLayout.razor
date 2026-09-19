@@ -18,7 +18,7 @@
     <MudDrawer @bind-Open="_drawerOpen" Variant="DrawerVariant.Responsive"
                Breakpoint="Breakpoint.Md" OverlayAutoClose="true"
                Class="app-drawer" Elevation="1">
-        <NavMenu />
+        <NavMenu OnNavigationRequested="CloseDrawer" />
     </MudDrawer>
     <MudMainContent Class="app-content">
         <MudContainer MaxWidth="MaxWidth.False" Class="pa-4 pa-md-6 app-content-container">
@@ -49,4 +49,9 @@
     };
 
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+    private async Task CloseDrawer()
+    {
+        _drawerOpen = false;
+        await InvokeAsync(StateHasChanged);
+    }
 }
