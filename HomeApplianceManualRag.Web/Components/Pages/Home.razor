@@ -2,6 +2,7 @@
 @rendermode InteractiveServer
 @inject ChatService Chat
 @inject ChatHistoryService History
+@inject ChatConversationState ConversationState
 @inject IJSRuntime JS
 @using HomeApplianceManualRag.Web.Data
 @using HomeApplianceManualRag.Web.Resources
@@ -94,8 +95,19 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        if (!initialized || ConversationId is not Guid id || id == selectedConversationId ||
-            !rooms.Any(x => x.Id == id))
+        if (!initialized)
+            return;
+
+        if (ConversationId is not Guid id)
+        {
+            selectedConversationId = null;
+            messages.Clear();
+            error = null;
+            noContext = null;
+            return;
+        }
+
+        if (id == selectedConversationId || !rooms.Any(x => x.Id == id))
             return;
 
         selectedConversationId = id;
@@ -135,15 +147,11 @@
         IsAuthenticated = (await AuthenticationStateTask!).User.Identity?.IsAuthenticated == true;
         rooms.Clear();
         rooms.AddRange(await History.GetConversationsAsync(IsAuthenticated ? null : anonymousAccessKey));
-        if (rooms.Count == 0)
-        {
-            var created = await History.CreateConversationAsync(IsAuthenticated ? null : anonymousAccessKey);
-            rooms.Add(created);
-        }
         selectedConversationId = ConversationId is Guid requestedId && rooms.Any(x => x.Id == requestedId)
             ? requestedId
-            : rooms[0].Id;
-        await LoadSelected();
+            : null;
+        if (selectedConversationId is not null)
+            await LoadSelected();
     }
 
     private async Task LoadSelected()
@@ -179,14 +187,26 @@
         form.Question = string.Empty;
         try
         {
+            var conversationId = selectedConversationId ?? Guid.Empty;
+            if (selectedConversationId is not Guid)
+            {
+                var created = await History.CreateConversationAsync(
+                    IsAuthenticated ? null : anonymousAccessKey);
+                rooms.Insert(0, created);
+                selectedConversationId = created.Id;
+                conversationId = created.Id;
+                ConversationState.NotifyChanged();
+            }
+
             var result = await Chat.StartAsync(question);
             if (!result.Response.HasContext)
             {
                 noContext = ChatMessages.NoContext(CultureInfo.CurrentUICulture.Name);
                 messages.Add(new UiMessage(ChatMessageRole.Assistant, noContext, result.Response.Citations));
-                await History.PersistExchangeAsync(selectedConversationId!.Value, question, noContext, result.Response.Citations,
+                await History.PersistExchangeAsync(conversationId, question, noContext, result.Response.Citations,
                     IsAuthenticated ? null : anonymousAccessKey);
-                await SaveAnonymousCache(selectedConversationId.Value);
+                ConversationState.NotifyChanged();
+                await SaveAnonymousCache(conversationId);
                 return;
             }
 
@@ -197,9 +217,10 @@
                 assistant.Content += token;
                 await InvokeAsync(StateHasChanged);
             }
-            await History.PersistExchangeAsync(selectedConversationId!.Value, question, assistant.Content, assistant.Citations,
+            await History.PersistExchangeAsync(conversationId, question, assistant.Content, assistant.Citations,
                 IsAuthenticated ? null : anonymousAccessKey);
-            await SaveAnonymousCache(selectedConversationId.Value);
+            ConversationState.NotifyChanged();
+            await SaveAnonymousCache(conversationId);
         }
         catch (ChatRateLimitException ex)
         {

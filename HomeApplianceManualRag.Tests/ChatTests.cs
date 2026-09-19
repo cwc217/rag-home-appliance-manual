@@ -34,6 +34,18 @@ public sealed class ChatTests
     }
 
     [Fact]
+    public void Conversation_state_notifies_navigation_list()
+    {
+        var state = new ChatConversationState();
+        var notifications = 0;
+        state.Changed += (_, _) => notifications++;
+
+        state.NotifyChanged();
+
+        Assert.Equal(1, notifications);
+    }
+
+    [Fact]
     public async Task In_memory_retrieval_applies_ready_and_owner_scope()
     {
         await using var db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()

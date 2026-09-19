@@ -1,9 +1,15 @@
 @inject ChatHistoryService History
+@inject ChatConversationState ConversationState
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
+@implements IDisposable
 
 <MudNavMenu Class="pa-3 nav-menu">
     <MudText Typo="Typo.overline" Color="Color.Secondary" Class="px-3">Navigation</MudText>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+               Class="nav-new-conversation" OnClick="NewConversation">
+        New chat
+    </MudButton>
     <AuthorizeView>
             <NotAuthorized>
                 <MudNavLink Href="/login" Icon="@Icons.Material.Filled.Login">Login</MudNavLink>
@@ -26,10 +32,6 @@
     <MudDivider Class="my-3" />
     <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Chat">Conversations</MudNavLink>
     <div class="nav-conversations" aria-label="Conversation rooms">
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
-                   Class="nav-new-conversation" OnClick="NewConversation">
-            New chat
-        </MudButton>
         @if (!conversationsLoaded)
         {
             <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-3">Loading chats…</MudText>
@@ -68,6 +70,11 @@
     private bool conversationsLoaded;
     private string? conversationsError;
 
+    protected override void OnInitialized()
+    {
+        ConversationState.Changed += OnConversationStateChanged;
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
@@ -85,8 +92,7 @@
                 }
             }
 
-            conversations.AddRange(await History.GetConversationsAsync(
-                isAuthenticated ? null : anonymousAccessKey));
+            await LoadConversations();
         }
         catch
         {
@@ -101,10 +107,28 @@
 
     private async Task NewConversation()
     {
-        var conversation = await History.CreateConversationAsync(
-            isAuthenticated ? null : anonymousAccessKey);
-        conversations.Insert(0, conversation);
-        Navigation.NavigateTo($"/?conversationId={conversation.Id}");
+        Navigation.NavigateTo("/");
+    }
+
+    private async void OnConversationStateChanged(object? sender, EventArgs args)
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadConversations();
+            StateHasChanged();
+        });
+    }
+
+    private async Task LoadConversations()
+    {
+        conversations.Clear();
+        conversations.AddRange(await History.GetConversationsAsync(
+            isAuthenticated ? null : anonymousAccessKey));
+    }
+
+    public void Dispose()
+    {
+        ConversationState.Changed -= OnConversationStateChanged;
     }
 
     private static string GetConversationTitle(ChatConversation conversation) =>
