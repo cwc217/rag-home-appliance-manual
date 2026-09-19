@@ -8,14 +8,6 @@
 
 <PageTitle>Chat Room</PageTitle>
 <main class="chat-shell">
-    <MudPaper Class="chat-header pa-4" Elevation="0">
-        <MudText Typo="Typo.overline" Color="Color.Primary">Home appliance manuals</MudText>
-        <MudText Typo="Typo.h4" GutterBottom="true">How can I help?</MudText>
-        <MudText Typo="Typo.body2" Color="Color.Secondary">
-            Ask a question and get an answer grounded in your available manuals.
-        </MudText>
-    </MudPaper>
-
     <section class="chat-transcript" aria-label="Conversation" aria-live="polite">
         @if (loadingHistory)
         {
@@ -24,7 +16,7 @@
         else if (messages.Count == 0)
         {
             <MudText Class="chat-state" Color="Color.Secondary">
-                No questions yet. Try asking how to clean a filter or troubleshoot an error.
+                Ask a question and get an answer grounded in your available manuals.
             </MudText>
         }
         @foreach (var message in messages)
