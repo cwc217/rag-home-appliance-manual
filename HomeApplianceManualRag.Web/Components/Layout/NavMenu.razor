@@ -1,15 +1,14 @@
 @inject ChatHistoryService History
 @inject ChatConversationState ConversationState
 @inject IJSRuntime JS
-@inject NavigationManager Navigation
 @implements IDisposable
 
 <MudNavMenu Class="pa-3 nav-menu">
     <MudText Typo="Typo.overline" Color="Color.Secondary" Class="px-3">Navigation</MudText>
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
-               Class="nav-new-conversation" OnClick="NewConversation">
+    <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Add"
+                Class="nav-new-conversation" OnClick="NewConversation">
         New chat
-    </MudButton>
+    </MudNavLink>
     <AuthorizeView>
             <NotAuthorized>
                 <MudNavLink Href="/login" Icon="@Icons.Material.Filled.Login">Login</MudNavLink>
@@ -110,7 +109,6 @@
     private async Task NewConversation()
     {
         await OnNavigationRequested.InvokeAsync();
-        Navigation.NavigateTo("/");
     }
 
     private async void OnConversationStateChanged(object? sender, EventArgs args)
