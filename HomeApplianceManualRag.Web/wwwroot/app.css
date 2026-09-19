@@ -58,3 +58,25 @@ h1:focus {
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
     text-align: start;
 }
+
+.chat-shell { max-width: 50rem; margin: 0 auto; padding: 1rem 0 2rem; }
+.chat-header { display: flex; justify-content: space-between; gap: 1rem; align-items: start; margin-bottom: 1.5rem; }
+.eyebrow { color: var(--bs-primary); font-size: .75rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; margin-bottom: .35rem; }
+.chat-transcript { min-height: 24rem; display: flex; flex-direction: column; gap: 1rem; padding: 1rem 0; }
+.chat-message { display: flex; flex-direction: column; max-width: min(85%, 42rem); }
+.chat-message-user { align-self: end; align-items: end; }
+.chat-message-assistant { align-self: start; }
+.chat-bubble { white-space: pre-wrap; border-radius: 1rem; padding: .8rem 1rem; }
+.chat-message-user .chat-bubble { background: var(--bs-primary); color: white; border-bottom-right-radius: .25rem; }
+.chat-message-assistant .chat-bubble { background: var(--bs-tertiary-bg); border-bottom-left-radius: .25rem; }
+.chat-citations { font-size: .8rem; color: var(--bs-secondary-color); padding: .4rem .75rem; }
+.chat-citations ul { margin: .2rem 0 0; padding-left: 1.2rem; }
+.chat-state { color: var(--bs-secondary-color); text-align: center; margin: auto; }
+.chat-composer { position: sticky; bottom: 0; background: var(--bs-body-bg); border-top: 1px solid var(--bs-border-color); padding-top: .75rem; }
+.composer-actions { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: .5rem; }
+@media (max-width: 576px) {
+    .chat-shell { padding-inline: .5rem; }
+    .chat-header { flex-direction: column; }
+    .chat-message { max-width: 95%; }
+    .composer-actions { align-items: end; flex-direction: column; }
+}

@@ -1,91 +1,159 @@
 @page "/"
 @rendermode InteractiveServer
 @inject ChatService Chat
+@inject ChatHistoryService History
+@inject ICurrentUser CurrentUser
+@using HomeApplianceManualRag.Web.Data
 @using HomeApplianceManualRag.Web.Resources
 @using System.Globalization
 
 <PageTitle>Chat Room</PageTitle>
-<h1>Chat Room</h1>
-<p class="text-muted">Ask a question about your available appliance manuals.</p>
-
-<EditForm Model="form" OnValidSubmit="Ask">
-    <div class="input-group mb-3">
-        <InputText class="form-control" @bind-Value="form.Question" aria-label="Question" placeholder="How do I clean the filter?" />
-        <button class="btn btn-primary" type="submit" disabled="@busy">@(busy ? "Thinking..." : "Ask")</button>
-    </div>
-</EditForm>
-
-@if (!string.IsNullOrWhiteSpace(error))
-{
-    <div class="alert alert-danger" role="alert">@error</div>
-}
-@if (!string.IsNullOrWhiteSpace(noContext))
-{
-    <div class="alert alert-info" role="status">@noContext</div>
-}
-@if (answer.Length > 0)
-{
-    <section class="card" aria-live="polite">
-        <div class="card-body">
-            <p class="mb-3" style="white-space: pre-wrap">@answer</p>
-            @if (citations.Count > 0)
-            {
-                <h2 class="h6">Sources</h2>
-                <ul>
-                    @foreach (var citation in citations)
-                    {
-                        <li>@citation.Label</li>
-                    }
-                </ul>
-            }
+<main class="chat-shell">
+    <header class="chat-header">
+        <div>
+            <p class="eyebrow">Home appliance manuals</p>
+            <h1>How can I help?</h1>
+            <p class="text-muted mb-0">Ask a question and get an answer grounded in your available manuals.</p>
         </div>
+        @if (CurrentUser.IsAuthenticated)
+        {
+            <span class="badge text-bg-light">Your chat history is saved</span>
+        }
+        else
+        {
+            <span class="badge text-bg-light">Anonymous chat is not saved</span>
+        }
+    </header>
+
+    <section class="chat-transcript" aria-label="Conversation" aria-live="polite">
+        @if (loadingHistory)
+        {
+            <p class="chat-state" role="status">Loading conversation history…</p>
+        }
+        else if (messages.Count == 0)
+        {
+            <p class="chat-state">No questions yet. Try asking how to clean a filter or troubleshoot an error.</p>
+        }
+        @foreach (var message in messages)
+        {
+            <article class="chat-message @(message.Role == ChatMessageRole.User ? "chat-message-user" : "chat-message-assistant")">
+                <h2 class="visually-hidden">@(message.Role == ChatMessageRole.User ? "You" : "Assistant")</h2>
+                <div class="chat-bubble">@message.Content</div>
+                @if (message.Citations.Count > 0)
+                {
+                    <div class="chat-citations">
+                        <span class="fw-semibold">Sources</span>
+                        <ul>
+                            @foreach (var citation in message.Citations)
+                            {
+                                <li>@citation.Label</li>
+                            }
+                        </ul>
+                    </div>
+                }
+            </article>
+        }
+        @if (busy)
+        {
+            <p class="chat-state" role="status">Thinking…</p>
+        }
+        @if (!string.IsNullOrWhiteSpace(error))
+        {
+            <div class="alert alert-danger" role="alert">@error</div>
+        }
+        @if (!string.IsNullOrWhiteSpace(noContext))
+        {
+            <div class="alert alert-info" role="status">@noContext</div>
+        }
     </section>
-}
+
+    <EditForm Model="form" OnValidSubmit="Ask" class="chat-composer">
+        <label for="question" class="visually-hidden">Question</label>
+        <InputTextArea id="question" class="form-control" @bind-Value="form.Question"
+                       placeholder="How do I clean the filter?" rows="2" disabled="@busy"
+                       aria-describedby="composer-help" />
+        <div class="composer-actions">
+            <span id="composer-help" class="text-muted small">Use the manual wording when possible.</span>
+            <button class="btn btn-primary" type="submit" disabled="@busy || string.IsNullOrWhiteSpace(form.Question)">
+                @(busy ? "Thinking…" : "Ask")
+            </button>
+        </div>
+    </EditForm>
+</main>
 
 @code {
-    private string answer = string.Empty;
+    private readonly ChatForm form = new();
+    private readonly List<UiMessage> messages = [];
     private string? error;
     private string? noContext;
     private bool busy;
-    private readonly List<ChatCitation> citations = [];
-    private readonly ChatForm form = new();
+    private bool loadingHistory = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            foreach (var message in await History.GetHistoryAsync())
+                messages.Add(new UiMessage(message.Role, message.Content, message.Citations));
+        }
+        catch
+        {
+            error = "Conversation history is temporarily unavailable.";
+        }
+        finally
+        {
+            loadingHistory = false;
+        }
+    }
 
     private async Task Ask()
     {
-        if (busy) return;
+        if (busy || string.IsNullOrWhiteSpace(form.Question)) return;
         busy = true;
-        answer = string.Empty;
         error = null;
         noContext = null;
-        citations.Clear();
+        var question = form.Question.Trim();
+        messages.Add(new UiMessage(ChatMessageRole.User, question, []));
+        form.Question = string.Empty;
         try
         {
-            var result = await Chat.StartAsync(form.Question);
-            citations.AddRange(result.Response.Citations);
+            var result = await Chat.StartAsync(question);
             if (!result.Response.HasContext)
             {
                 noContext = ChatMessages.NoContext(CultureInfo.CurrentUICulture.Name);
+                messages.Add(new UiMessage(ChatMessageRole.Assistant, noContext, result.Response.Citations));
+                await History.PersistExchangeAsync(question, noContext, result.Response.Citations);
                 return;
             }
+
+            var assistant = new UiMessage(ChatMessageRole.Assistant, string.Empty, result.Response.Citations);
+            messages.Add(assistant);
             await foreach (var token in result.Stream!)
             {
-                answer += token;
+                assistant.Content += token;
                 await InvokeAsync(StateHasChanged);
             }
-
+            await History.PersistExchangeAsync(question, assistant.Content, assistant.Citations);
         }
         catch (ChatRateLimitException ex)
         {
+            messages.RemoveAt(messages.Count - 1);
             error = ChatMessages.RateLimited(CultureInfo.CurrentUICulture.Name,
                 Math.Max(1, (int)Math.Ceiling(ex.RetryAfter.TotalSeconds)));
         }
         catch (ChatProviderException)
         {
+            messages.RemoveAt(messages.Count - 1);
             error = "The answer service is temporarily unavailable. Please try again.";
         }
         catch (ArgumentException ex)
         {
+            messages.RemoveAt(messages.Count - 1);
             error = ex.Message;
+        }
+        catch
+        {
+            error = "Your answer was generated, but it could not be saved. Please try again.";
         }
         finally
         {
@@ -93,8 +161,11 @@
         }
     }
 
-    private sealed class ChatForm
+    private sealed class ChatForm { public string Question { get; set; } = string.Empty; }
+    private sealed class UiMessage(ChatMessageRole role, string content, IReadOnlyList<ChatCitation> citations)
     {
-        public string Question { get; set; } = string.Empty;
+        public ChatMessageRole Role { get; } = role;
+        public string Content { get; set; } = content;
+        public IReadOnlyList<ChatCitation> Citations { get; } = citations;
     }
 }

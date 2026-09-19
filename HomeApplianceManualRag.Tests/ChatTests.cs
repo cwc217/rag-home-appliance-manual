@@ -57,9 +57,62 @@ public sealed class ChatTests
         Assert.Equal("mine.pdf", item.DocumentName);
     }
 
+    [Fact]
+    public async Task History_is_owned_and_ordered_for_authenticated_user()
+    {
+        var databaseName = Guid.NewGuid().ToString();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(databaseName).Options;
+        await using var db = new ApplicationDbContext(options);
+        db.Conversations.Add(new Conversation
+        {
+            UserId = "other",
+            Messages = [new ChatMessage { Role = ChatMessageRole.User, Content = "private" }]
+        });
+        await db.SaveChangesAsync();
+
+        var current = new FakeCurrentUser("user-1");
+        var service = new ChatHistoryService(new TestDbFactory(options), current);
+        await service.PersistExchangeAsync("first", "answer", []);
+        await service.PersistExchangeAsync("second", "answer 2", []);
+
+        var history = await service.GetHistoryAsync();
+        Assert.Equal(["first", "answer", "second", "answer 2"], history.Select(x => x.Content));
+        Assert.DoesNotContain(history, x => x.Content == "private");
+    }
+
+    [Fact]
+    public async Task Anonymous_history_is_ephemeral()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        await using var db = new ApplicationDbContext(options);
+        var service = new ChatHistoryService(new TestDbFactory(options), new FakeCurrentUser(null));
+
+        await service.PersistExchangeAsync("question", "answer", []);
+
+        Assert.Empty(await service.GetHistoryAsync());
+        Assert.Empty(db.Conversations);
+    }
+
     private static ManualChunk Chunk(ManualDocument document, string text) => new()
     {
         Id = Guid.NewGuid(), DocumentId = document.Id, Document = document, Text = text,
         PageNumber = 2, Embedding = new Vector(Enumerable.Repeat(.1f, 1536).ToArray())
     };
+
+    private sealed class FakeCurrentUser(string? id) : ICurrentUser
+    {
+        public string? UserId => id;
+        public string? Email => null;
+        public bool IsAuthenticated => id is not null;
+        public bool IsInRole(string role) => false;
+    }
+
+    private sealed class TestDbFactory(DbContextOptions<ApplicationDbContext> options) : IDbContextFactory<ApplicationDbContext>
+    {
+        public ApplicationDbContext CreateDbContext() => new(options);
+        public Task<ApplicationDbContext> CreateDbContextAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ApplicationDbContext(options));
+    }
 }

@@ -14,6 +14,8 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<ManualChunk> ManualChunks => Set<ManualChunk>();
     public DbSet<IndexingJob> IndexingJobs => Set<IndexingJob>();
     public DbSet<StorageCleanup> StorageCleanups => Set<StorageCleanup>();
+    public DbSet<Conversation> Conversations => Set<Conversation>();
+    public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -26,6 +28,13 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
         builder.Entity<ManualDocument>().HasIndex(x => new { x.Status, x.OwnerUserId });
         builder.Entity<ManualChunk>().HasIndex(x => x.DocumentId);
         builder.Entity<IndexingJob>().HasIndex(x => new { x.Status, x.NextAttemptAtUtc });
+        builder.Entity<Conversation>().HasIndex(x => x.UserId).IsUnique();
+        builder.Entity<ChatMessage>().HasIndex(x => new { x.ConversationId, x.CreatedAtUtc });
+        builder.Entity<Conversation>()
+            .HasMany(x => x.Messages)
+            .WithOne(x => x.Conversation)
+            .HasForeignKey(x => x.ConversationId)
+            .OnDelete(DeleteBehavior.Cascade);
         builder.Entity<IndexingJob>()
             .HasOne(x => x.Document)
             .WithMany()
@@ -34,6 +43,29 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
         if (!Database.IsNpgsql())
             builder.Entity<ManualChunk>().Ignore(x => x.Embedding);
     }
+
+}
+
+public sealed class Conversation
+{
+    public Guid Id { get; set; }
+    public string UserId { get; set; } = string.Empty;
+    public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
+    public ICollection<ChatMessage> Messages { get; set; } = [];
+}
+
+public enum ChatMessageRole { User, Assistant }
+
+public sealed class ChatMessage
+{
+    public Guid Id { get; set; }
+    public Guid ConversationId { get; set; }
+    public ChatMessageRole Role { get; set; }
+    public string Content { get; set; } = string.Empty;
+    public string? CitationsJson { get; set; }
+    public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+    public Conversation? Conversation { get; set; }
 }
 
 public enum DocumentStatus { Pending, Processing, Ready, Failed }

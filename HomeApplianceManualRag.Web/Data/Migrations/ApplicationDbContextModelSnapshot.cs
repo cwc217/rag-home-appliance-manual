@@ -91,6 +91,59 @@ namespace HomeApplianceManualRag.Web.Data.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
+            modelBuilder.Entity("HomeApplianceManualRag.Web.Data.ChatMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CitationsJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Role")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConversationId", "CreatedAtUtc");
+
+                    b.ToTable("ChatMessages");
+                });
+
+            modelBuilder.Entity("HomeApplianceManualRag.Web.Data.Conversation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("Conversations");
+                });
+
             modelBuilder.Entity("HomeApplianceManualRag.Web.Data.IndexingJob", b =>
                 {
                     b.Property<Guid>("Id")
@@ -379,6 +432,17 @@ namespace HomeApplianceManualRag.Web.Data.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("HomeApplianceManualRag.Web.Data.ChatMessage", b =>
+                {
+                    b.HasOne("HomeApplianceManualRag.Web.Data.Conversation", "Conversation")
+                        .WithMany("Messages")
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Conversation");
+                });
+
             modelBuilder.Entity("HomeApplianceManualRag.Web.Data.IndexingJob", b =>
                 {
                     b.HasOne("HomeApplianceManualRag.Web.Data.ManualDocument", "Document")
@@ -450,6 +514,11 @@ namespace HomeApplianceManualRag.Web.Data.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("HomeApplianceManualRag.Web.Data.Conversation", b =>
+                {
+                    b.Navigation("Messages");
                 });
 
             modelBuilder.Entity("HomeApplianceManualRag.Web.Data.ManualDocument", b =>

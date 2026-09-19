@@ -10,6 +10,8 @@
 - Admin 可上載不限數量的 PDF；每份最多 10 MB，admin 可查看、刪除及重新索引。
 - User 最多有 3 份 active/processing 文件；failed 文件不佔額，刪除後可補位。
 - 回覆使用 streaming，顯示文件名稱及頁碼 citations；找不到答案時必須明確表示不知道。
+- 登入使用者的問答會儲存於自己的 conversation/message history，並按時間順序重載；
+  anonymous chat 只存在目前 circuit，不會寫入資料庫。
 - Retrieval applies the authorized scope and `Ready` status in the PostgreSQL query
   before pgvector cosine ranking. Anonymous visitors use admin/public documents;
   normal users use their own documents; admins use an explicit all-documents scope.

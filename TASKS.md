@@ -61,6 +61,7 @@
 - [x] Render citations as manual name + page number.
 - [x] Add basic per-user chat rate limit and localized `429` state.
 - [x] Test scope isolation, prompt rules, streaming adapter, citations, and no-result behavior.
+- [x] Persist authenticated conversations/messages with ownership-safe chronological history; keep anonymous chat ephemeral.
 
 ## Phase 5 — Localization and UX quality
 
@@ -69,7 +70,7 @@
 - [ ] Localize navigation, validation, status, errors, empty states, quota messages, and chat states.
 - [ ] Add empty state when no admin document is ready.
 - [x] Add processing progress/status refresh without exposing internal errors or secrets.
-- [ ] Add responsive layout and keyboard-accessible controls.
+- [x] Add responsive messaging layout and keyboard-accessible controls.
 - [ ] Add Playwright smoke flows for anonymous, user, and admin journeys.
 
 ## Phase 6 — Operational readiness

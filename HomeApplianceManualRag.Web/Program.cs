@@ -61,6 +61,7 @@ builder.Services.AddScoped<IChatProvider, AzureOpenAiChatProvider>();
 builder.Services.AddScoped<IEmbeddingProvider, AzureOpenAiEmbeddingProvider>();
 builder.Services.AddScoped<ManualRetriever>();
 builder.Services.AddScoped<ChatService>();
+builder.Services.AddScoped<ChatHistoryService>();
 builder.Services.AddSingleton<ChatRateLimiter>();
 builder.Services.AddScoped<PdfValidator>();
 builder.Services.AddScoped<DocumentService>();
