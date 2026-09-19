@@ -11,7 +11,9 @@
 - User 最多有 3 份 active/processing 文件；failed 文件不佔額，刪除後可補位。
 - 回覆使用 streaming，顯示文件名稱及頁碼 citations；找不到答案時必須明確表示不知道。
 - 登入使用者的問答會儲存於自己的 conversation/message history，並按時間順序重載；
-  anonymous chat 只存在目前 circuit，不會寫入資料庫。
+  anonymous chat 也會在伺服器保存 30 天；瀏覽器 localStorage 只保存匿名存取金鑰及 UI cache，
+  不是真實資料來源。匿名對話按金鑰隔離，清除網站資料後將無法取回。
+- Chat Room 支援建立多個 conversation；管理員可在 `/admin/chat-review` 以唯讀方式檢視最近對話。
 - Retrieval applies the authorized scope and `Ready` status in the PostgreSQL query
   before pgvector cosine ranking. Anonymous visitors use admin/public documents;
   normal users use their own documents; admins use an explicit all-documents scope.

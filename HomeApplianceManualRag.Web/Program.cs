@@ -74,6 +74,7 @@ builder.Services.AddSingleton<DocumentProgressNotifier>();
 builder.Services.AddHostedService<IndexingWorker>();
 builder.Services.AddScoped<StorageCleanupService>();
 builder.Services.AddHostedService<StorageCleanupWorker>();
+builder.Services.AddHostedService<ChatHistoryService.AnonymousChatCleanupWorker>();
 builder.Services.AddSingleton<IFileStorage, LocalFileStorage>();
 
 // Add services to the container.

@@ -8,6 +8,9 @@
             </NotAuthorized>
             <Authorized>
                 <MudNavLink Href="/my-documents" Icon="@Icons.Material.Filled.Description">My documents</MudNavLink>
+                <AuthorizeView Roles="@ApplicationRoles.Admin" Context="adminContext">
+                    <MudNavLink Href="/admin/chat-review" Icon="@Icons.Material.Filled.Visibility">Chat review</MudNavLink>
+                </AuthorizeView>
                 <form method="post" action="/account/logout">
                     <AntiforgeryToken />
                     <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Text"

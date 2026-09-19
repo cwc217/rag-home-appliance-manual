@@ -1,0 +1,30 @@
+@page "/admin/chat-review"
+@attribute [Authorize(Policy = ApplicationPolicies.AdminOnly)]
+@inject ChatHistoryService History
+
+<PageTitle>Chat review</PageTitle>
+<MudContainer MaxWidth="MaxWidth.Large" Class="pa-6">
+    <MudText Typo="Typo.h4">Chat review</MudText>
+    <MudText Color="Color.Secondary" Class="mb-4">Read-only review of recent authenticated and anonymous conversations.</MudText>
+    @if (items is null)
+    {
+        <MudProgressCircular Indeterminate="true" />
+    }
+    else
+    {
+        @foreach (var item in items)
+        {
+            <MudExpansionPanel Text="@($"{item.Conversation.Title} · {item.Conversation.UpdatedAtUtc:u}")">
+                @foreach (var message in item.Messages)
+                {
+                    <MudText Class="mb-2"><b>@message.Role:</b> @message.Content</MudText>
+                }
+            </MudExpansionPanel>
+        }
+    }
+</MudContainer>
+
+@code {
+    private IReadOnlyList<(ChatConversation Conversation, IReadOnlyList<ChatHistoryMessage> Messages)>? items;
+    protected override async Task OnInitializedAsync() => items = await History.GetAllForAdminAsync();
+}

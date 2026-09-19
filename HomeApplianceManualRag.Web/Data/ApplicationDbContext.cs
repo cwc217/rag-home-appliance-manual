@@ -28,7 +28,8 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
         builder.Entity<ManualDocument>().HasIndex(x => new { x.Status, x.OwnerUserId });
         builder.Entity<ManualChunk>().HasIndex(x => x.DocumentId);
         builder.Entity<IndexingJob>().HasIndex(x => new { x.Status, x.NextAttemptAtUtc });
-        builder.Entity<Conversation>().HasIndex(x => x.UserId).IsUnique();
+        builder.Entity<Conversation>().HasIndex(x => x.UserId);
+        builder.Entity<Conversation>().HasIndex(x => x.AnonymousAccessKeyHash);
         builder.Entity<ChatMessage>().HasIndex(x => new { x.ConversationId, x.CreatedAtUtc });
         builder.Entity<Conversation>()
             .HasMany(x => x.Messages)
@@ -49,7 +50,9 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
 public sealed class Conversation
 {
     public Guid Id { get; set; }
-    public string UserId { get; set; } = string.Empty;
+    public string? UserId { get; set; }
+    public string? AnonymousAccessKeyHash { get; set; }
+    public string Title { get; set; } = "New chat";
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
     public ICollection<ChatMessage> Messages { get; set; } = [];

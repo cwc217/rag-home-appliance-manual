@@ -2,12 +2,26 @@
 @rendermode InteractiveServer
 @inject ChatService Chat
 @inject ChatHistoryService History
+@inject IJSRuntime JS
 @using HomeApplianceManualRag.Web.Data
 @using HomeApplianceManualRag.Web.Resources
 @using System.Globalization
+@using System.Text.Json
+@using Microsoft.JSInterop
 
 <PageTitle>Chat Room</PageTitle>
 <main class="chat-shell">
+    <aside class="chat-rooms" aria-label="Conversations">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" OnClick="NewChat">New chat</MudButton>
+        @foreach (var room in rooms)
+        {
+            <MudButton Variant="Variant.Text" FullWidth="true" Class="@($"room-button {(room.Id == selectedConversationId ? "selected" : "")}")"
+                       OnClick="@(() => SelectChat(room.Id))">@room.Title</MudButton>
+        }
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-3">
+            Chats are stored securely on the server. This browser keeps only a private access key and a small cache; clearing site data loses anonymous access.
+        </MudText>
+    </aside>
     <section class="chat-transcript" aria-label="Conversation" aria-live="polite">
         @if (loadingHistory)
         {
@@ -81,13 +95,25 @@
     private string? noContext;
     private bool busy;
     private bool loadingHistory = true;
+    private bool initialized;
+    private Guid? selectedConversationId;
+    private string? anonymousAccessKey;
+    private readonly List<ChatConversation> rooms = [];
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (!firstRender || initialized) return;
+        initialized = true;
         try
         {
-            foreach (var message in await History.GetHistoryAsync())
-                messages.Add(new UiMessage(message.Role, message.Content, message.Citations));
+            if (!OperatingSystem.IsBrowser())
+                anonymousAccessKey = await JS.InvokeAsync<string?>("localStorage.getItem", "chat-anonymous-access-key");
+            if (string.IsNullOrWhiteSpace(anonymousAccessKey) && !IsAuthenticated)
+            {
+                anonymousAccessKey = Guid.NewGuid().ToString("N");
+                await JS.InvokeVoidAsync("localStorage.setItem", "chat-anonymous-access-key", anonymousAccessKey);
+            }
+            await LoadRooms();
         }
         catch
         {
@@ -96,7 +122,62 @@
         finally
         {
             loadingHistory = false;
+            await InvokeAsync(StateHasChanged);
         }
+    }
+
+    [CascadingParameter] private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+    private bool IsAuthenticated { get; set; }
+    private async Task LoadRooms()
+    {
+        IsAuthenticated = (await AuthenticationStateTask!).User.Identity?.IsAuthenticated == true;
+        rooms.Clear();
+        rooms.AddRange(await History.GetConversationsAsync(IsAuthenticated ? null : anonymousAccessKey));
+        if (rooms.Count == 0)
+        {
+            var created = await History.CreateConversationAsync(IsAuthenticated ? null : anonymousAccessKey);
+            rooms.Add(created);
+        }
+        selectedConversationId = rooms[0].Id;
+        await LoadSelected();
+    }
+
+    private async Task LoadSelected()
+    {
+        messages.Clear();
+        if (selectedConversationId is not Guid id)
+            return;
+
+        var history = await History.GetHistoryAsync(id, IsAuthenticated ? null : anonymousAccessKey);
+        if (history.Count > 0)
+        {
+            foreach (var message in history)
+                messages.Add(new UiMessage(message.Role, message.Content, message.Citations));
+            await SaveAnonymousCache(id);
+            return;
+        }
+
+        if (!IsAuthenticated)
+        {
+            foreach (var message in await LoadAnonymousCache(id))
+                messages.Add(message);
+        }
+    }
+
+    private async Task NewChat()
+    {
+        var room = await History.CreateConversationAsync(IsAuthenticated ? null : anonymousAccessKey);
+        rooms.Insert(0, room);
+        selectedConversationId = room.Id;
+        messages.Clear();
+        await SaveAnonymousCache(room.Id);
+    }
+
+    private async Task SelectChat(Guid id)
+    {
+        if (busy || id == selectedConversationId) return;
+        selectedConversationId = id;
+        await LoadSelected();
     }
 
     private async Task Ask()
@@ -115,7 +196,9 @@
             {
                 noContext = ChatMessages.NoContext(CultureInfo.CurrentUICulture.Name);
                 messages.Add(new UiMessage(ChatMessageRole.Assistant, noContext, result.Response.Citations));
-                await History.PersistExchangeAsync(question, noContext, result.Response.Citations);
+                await History.PersistExchangeAsync(selectedConversationId!.Value, question, noContext, result.Response.Citations,
+                    IsAuthenticated ? null : anonymousAccessKey);
+                await SaveAnonymousCache(selectedConversationId.Value);
                 return;
             }
 
@@ -126,7 +209,9 @@
                 assistant.Content += token;
                 await InvokeAsync(StateHasChanged);
             }
-            await History.PersistExchangeAsync(question, assistant.Content, assistant.Citations);
+            await History.PersistExchangeAsync(selectedConversationId!.Value, question, assistant.Content, assistant.Citations,
+                IsAuthenticated ? null : anonymousAccessKey);
+            await SaveAnonymousCache(selectedConversationId.Value);
         }
         catch (ChatRateLimitException ex)
         {
@@ -155,10 +240,43 @@
     }
 
     private sealed class ChatForm { public string Question { get; set; } = string.Empty; }
+    private sealed record CachedMessage(ChatMessageRole Role, string Content, IReadOnlyList<ChatCitation> Citations);
     private sealed class UiMessage(ChatMessageRole role, string content, IReadOnlyList<ChatCitation> citations)
     {
         public ChatMessageRole Role { get; } = role;
         public string Content { get; set; } = content;
         public IReadOnlyList<ChatCitation> Citations { get; } = citations;
     }
+
+    private async Task SaveAnonymousCache(Guid conversationId)
+    {
+        if (IsAuthenticated || string.IsNullOrWhiteSpace(anonymousAccessKey))
+            return;
+
+        var cache = messages.Select(x => new CachedMessage(x.Role, x.Content, x.Citations)).ToArray();
+        await JS.InvokeVoidAsync("localStorage.setItem", CacheKey(conversationId), JsonSerializer.Serialize(cache));
+    }
+
+    private async Task<IReadOnlyList<UiMessage>> LoadAnonymousCache(Guid conversationId)
+    {
+        if (IsAuthenticated || string.IsNullOrWhiteSpace(anonymousAccessKey))
+            return [];
+
+        var json = await JS.InvokeAsync<string?>("localStorage.getItem", CacheKey(conversationId));
+        if (string.IsNullOrWhiteSpace(json))
+            return [];
+
+        try
+        {
+            var cache = JsonSerializer.Deserialize<CachedMessage[]>(json) ?? [];
+            return cache.Select(x => new UiMessage(x.Role, x.Content, x.Citations)).ToArray();
+        }
+        catch (JsonException)
+        {
+            await JS.InvokeVoidAsync("localStorage.removeItem", CacheKey(conversationId));
+            return [];
+        }
+    }
+
+    private static string CacheKey(Guid conversationId) => $"chat-cache-{conversationId:N}";
 }

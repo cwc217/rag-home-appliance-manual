@@ -61,7 +61,7 @@
 - [x] Render citations as manual name + page number.
 - [x] Add basic per-user chat rate limit and localized `429` state.
 - [x] Test scope isolation, prompt rules, streaming adapter, citations, and no-result behavior.
-- [x] Persist authenticated conversations/messages with ownership-safe chronological history; keep anonymous chat ephemeral.
+- [x] Persist multiple authenticated and anonymous conversations/messages with ownership-safe access; clean anonymous conversations after 30 days.
 
 ## Phase 5 — Localization and UX quality
 

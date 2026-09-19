@@ -82,7 +82,7 @@ public sealed class ChatTests
     }
 
     [Fact]
-    public async Task Anonymous_history_is_ephemeral()
+    public async Task Anonymous_history_requires_an_access_key()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
@@ -93,6 +93,26 @@ public sealed class ChatTests
 
         Assert.Empty(await service.GetHistoryAsync());
         Assert.Empty(db.Conversations);
+    }
+
+    [Fact]
+    public async Task Anonymous_conversations_are_key_owned_and_expire_after_thirty_days()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        var service = new ChatHistoryService(new TestDbFactory(options), new FakeCurrentUser(null));
+        var room = await service.CreateConversationAsync("key-a");
+        await service.PersistExchangeAsync(room.Id, "question", "answer", [], "key-a");
+
+        Assert.Single(await service.GetConversationsAsync("key-a"));
+        Assert.Empty(await service.GetConversationsAsync("key-b"));
+        await using (var db = new ApplicationDbContext(options))
+        {
+            var entity = await db.Conversations.SingleAsync();
+            entity.UpdatedAtUtc = DateTime.UtcNow.AddDays(-31);
+            await db.SaveChangesAsync();
+        }
+        Assert.Equal(1, await service.DeleteExpiredAnonymousAsync());
     }
 
     private static ManualChunk Chunk(ManualDocument document, string text) => new()

@@ -83,6 +83,25 @@ body {
     overflow: hidden;
 }
 
+.chat-rooms {
+    display: flex;
+    gap: .35rem;
+    overflow-x: auto;
+    padding-bottom: .5rem;
+}
+
+.chat-rooms .room-button {
+    flex: 0 0 auto;
+    max-width: 14rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chat-rooms .room-button.selected {
+    background: rgb(37 99 235 / 12%);
+}
+
 .chat-header {
     margin-bottom: .5rem;
 }
@@ -164,6 +183,10 @@ body {
 @media (max-width: 576px) {
     .chat-shell {
         height: calc(100dvh - 7rem);
+    }
+
+    .chat-rooms {
+        flex-wrap: nowrap;
     }
 
     .chat-message {
