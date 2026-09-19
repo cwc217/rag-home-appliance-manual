@@ -15,7 +15,9 @@
         <MudLink Href="https://learn.microsoft.com/aspnet/core/" Target="_blank"
                  Color="Color.Inherit" Underline="Underline.None">About</MudLink>
     </MudAppBar>
-    <MudDrawer @bind-Open="_drawerOpen" Variant="DrawerVariant.Responsive" Elevation="1">
+    <MudDrawer @bind-Open="_drawerOpen" Variant="DrawerVariant.Responsive"
+               Breakpoint="Breakpoint.Md" OverlayAutoClose="true"
+               Class="app-drawer" Elevation="1">
         <NavMenu />
     </MudDrawer>
     <MudMainContent Class="app-content">

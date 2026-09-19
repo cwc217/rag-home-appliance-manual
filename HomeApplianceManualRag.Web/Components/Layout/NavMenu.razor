@@ -1,4 +1,4 @@
-<MudNavMenu Class="pa-3">
+<MudNavMenu Class="pa-3 nav-menu">
     <MudText Typo="Typo.overline" Color="Color.Secondary" Class="px-3">Navigation</MudText>
     <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Chat">Chat Room</MudNavLink>
         <AuthorizeView>
@@ -18,7 +18,8 @@
             </Authorized>
         </AuthorizeView>
     <MudDivider Class="my-3" />
-    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-3" title="Application build time">
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-3 nav-build-version"
+             title="Application build time">
         Build @BuildTime
     </MudText>
 </MudNavMenu>

@@ -57,6 +57,22 @@ body {
     text-transform: none;
 }
 
+.app-drawer .mud-drawer-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.nav-menu {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+}
+
+.nav-build-version {
+    margin-top: auto;
+    padding-bottom: .5rem;
+}
+
 .chat-shell {
     max-width: 50rem;
     height: calc(100dvh - 8rem);
