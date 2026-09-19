@@ -73,6 +73,20 @@ body {
     padding-bottom: .5rem;
 }
 
+.nav-conversations {
+    display: grid;
+    gap: .15rem;
+    margin-top: .5rem;
+    max-height: min(40dvh, 22rem);
+    overflow-y: auto;
+}
+
+.nav-conversation-link {
+    min-height: 2.5rem;
+    padding-left: 2.25rem !important;
+    font-size: .9rem;
+}
+
 .chat-shell {
     width: min(100%, 90rem);
     height: calc(100dvh - 8rem);

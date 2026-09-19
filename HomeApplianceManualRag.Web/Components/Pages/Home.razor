@@ -122,6 +122,19 @@
     private string? anonymousAccessKey;
     private readonly List<ChatConversation> rooms = [];
 
+    [SupplyParameterFromQuery(Name = "conversationId")]
+    private Guid? ConversationId { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!initialized || ConversationId is not Guid id || id == selectedConversationId ||
+            !rooms.Any(x => x.Id == id))
+            return;
+
+        selectedConversationId = id;
+        await LoadSelected();
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender || initialized) return;
@@ -160,7 +173,9 @@
             var created = await History.CreateConversationAsync(IsAuthenticated ? null : anonymousAccessKey);
             rooms.Add(created);
         }
-        selectedConversationId = rooms[0].Id;
+        selectedConversationId = ConversationId is Guid requestedId && rooms.Any(x => x.Id == requestedId)
+            ? requestedId
+            : rooms[0].Id;
         await LoadSelected();
     }
 
