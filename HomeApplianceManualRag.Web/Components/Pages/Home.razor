@@ -8,9 +8,9 @@
 <h1>Chat Room</h1>
 <p class="text-muted">Ask a question about your available appliance manuals.</p>
 
-<EditForm OnValidSubmit="Ask">
+<EditForm Model="form" OnValidSubmit="Ask">
     <div class="input-group mb-3">
-        <InputText class="form-control" @bind-Value="question" aria-label="Question" placeholder="How do I clean the filter?" />
+        <InputText class="form-control" @bind-Value="form.Question" aria-label="Question" placeholder="How do I clean the filter?" />
         <button class="btn btn-primary" type="submit" disabled="@busy">@(busy ? "Thinking..." : "Ask")</button>
     </div>
 </EditForm>
@@ -43,12 +43,12 @@
 }
 
 @code {
-    private string question = string.Empty;
     private string answer = string.Empty;
     private string? error;
     private string? noContext;
     private bool busy;
     private readonly List<ChatCitation> citations = [];
+    private readonly ChatForm form = new();
 
     private async Task Ask()
     {
@@ -60,7 +60,7 @@
         citations.Clear();
         try
         {
-            var result = await Chat.StartAsync(question);
+            var result = await Chat.StartAsync(form.Question);
             citations.AddRange(result.Response.Citations);
             if (!result.Response.HasContext)
             {
@@ -72,6 +72,7 @@
                 answer += token;
                 await InvokeAsync(StateHasChanged);
             }
+
         }
         catch (ChatRateLimitException ex)
         {
@@ -90,5 +91,10 @@
         {
             busy = false;
         }
+    }
+
+    private sealed class ChatForm
+    {
+        public string Question { get; set; } = string.Empty;
     }
 }
