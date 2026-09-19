@@ -3,6 +3,7 @@ using Azure.AI.OpenAI;
 using HomeApplianceManualRag.Web.Configuration;
 using Microsoft.Extensions.Options;
 using OpenAI.Embeddings;
+using OpenAI.Chat;
 
 namespace HomeApplianceManualRag.Web.Providers;
 
@@ -18,13 +19,28 @@ public interface IEmbeddingProvider
 
 public sealed class AzureOpenAiChatProvider : IChatProvider
 {
+    private readonly ChatClient client;
+
+    public AzureOpenAiChatProvider(IOptions<AzureOpenAiOptions> options)
+    {
+        var settings = options.Value;
+        client = new AzureOpenAIClient(new Uri(settings.Endpoint), new AzureKeyCredential(settings.ApiKey))
+            .GetChatClient(settings.ChatDeployment);
+    }
+
     public async IAsyncEnumerable<string> StreamAsync(string prompt, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        await Task.Yield();
-        throw new InvalidOperationException("Azure OpenAI chat provider is not enabled until Phase 4.");
-#pragma warning disable CS0162
-        yield break;
-#pragma warning restore CS0162
+        var messages = new ChatMessage[]
+        {
+            new SystemChatMessage("You are a careful appliance manual assistant."),
+            new UserChatMessage(prompt)
+        };
+        await foreach (var update in client.CompleteChatStreamingAsync(messages, options: null, cancellationToken))
+        {
+            foreach (var part in update.ContentUpdate)
+                if (!string.IsNullOrEmpty(part.Text))
+                    yield return part.Text;
+        }
     }
 }
 

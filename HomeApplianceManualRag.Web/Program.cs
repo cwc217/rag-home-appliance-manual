@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using HomeApplianceManualRag.Web.Resources;
 using HomeApplianceManualRag.Web.Documents;
+using HomeApplianceManualRag.Web.Chat;
 
 var builder = WebApplication.CreateBuilder(args);
 ConfigurationValidation.ValidateProduction(builder.Configuration, builder.Environment);
@@ -58,6 +59,9 @@ builder.Services.AddAuthorization(options =>
 });
 builder.Services.AddScoped<IChatProvider, AzureOpenAiChatProvider>();
 builder.Services.AddScoped<IEmbeddingProvider, AzureOpenAiEmbeddingProvider>();
+builder.Services.AddScoped<ManualRetriever>();
+builder.Services.AddScoped<ChatService>();
+builder.Services.AddSingleton<ChatRateLimiter>();
 builder.Services.AddScoped<PdfValidator>();
 builder.Services.AddScoped<DocumentService>();
 builder.Services.AddScoped<IDocumentParser>(serviceProvider =>

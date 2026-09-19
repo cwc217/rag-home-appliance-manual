@@ -51,16 +51,16 @@
 
 ## Phase 4 — Retrieval and chat
 
-- [ ] Implement pgvector cosine similarity query.
-- [ ] Implement explicit retrieval scopes: anonymous admin-public, normal-user-own, admin-admin scope.
-- [ ] Ensure status and ownership/visibility filters execute in SQL before similarity ranking.
-- [ ] Build grounded prompt with retrieved context and citation metadata.
-- [ ] Add Azure chat client abstraction and streaming response adapter.
-- [ ] Add no-context/no-answer behavior and provider error mapping.
-- [ ] Add `/` Chat Room with anonymous and authenticated scope behavior.
-- [ ] Render citations as manual name + page number.
-- [ ] Add basic per-user chat rate limit and localized `429` state.
-- [ ] Test scope isolation, prompt rules, streaming adapter, citations, and no-result behavior.
+- [x] Implement pgvector cosine similarity query.
+- [x] Implement explicit retrieval scopes: anonymous admin-public, normal-user-own, admin-admin scope.
+- [x] Ensure status and ownership/visibility filters execute in SQL before similarity ranking.
+- [x] Build grounded prompt with retrieved context and citation metadata.
+- [x] Add Azure chat client abstraction and streaming response adapter.
+- [x] Add no-context/no-answer behavior and provider error mapping.
+- [x] Add `/` Chat Room with anonymous and authenticated scope behavior.
+- [x] Render citations as manual name + page number.
+- [x] Add basic per-user chat rate limit and localized `429` state.
+- [x] Test scope isolation, prompt rules, streaming adapter, citations, and no-result behavior.
 
 ## Phase 5 — Localization and UX quality
 
