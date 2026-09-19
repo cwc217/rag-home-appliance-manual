@@ -115,6 +115,7 @@ body {
     min-height: 2.75rem;
     padding: .55rem .75rem;
     text-align: left;
+    text-transform: none;
     overflow: hidden;
 }
 
@@ -140,6 +141,8 @@ body {
 
 .chat-transcript {
     grid-column: 2;
+    width: min(100%, 52rem);
+    justify-self: center;
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
@@ -275,6 +278,10 @@ body {
     .chat-transcript,
     .chat-composer {
         grid-column: 1;
+    }
+
+    .chat-transcript {
+        width: 100%;
     }
 
     .chat-message {

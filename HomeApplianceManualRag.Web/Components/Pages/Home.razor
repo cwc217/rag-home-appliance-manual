@@ -174,7 +174,9 @@
     }
 
     private string GetRoomTitle(ChatConversation room) =>
-        room.Title == "New chat" ? "Current chat" : room.Title;
+        room.Title == "New chat"
+            ? room.Id == selectedConversationId ? "Current chat" : "New chat"
+            : room.Title;
 
     private async Task NewChat()
     {
