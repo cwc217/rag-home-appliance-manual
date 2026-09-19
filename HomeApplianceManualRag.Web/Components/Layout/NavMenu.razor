@@ -1,5 +1,6 @@
 @inject ChatHistoryService History
 @inject IJSRuntime JS
+@inject NavigationManager Navigation
 
 <MudNavMenu Class="pa-3 nav-menu">
     <MudText Typo="Typo.overline" Color="Color.Secondary" Class="px-3">Navigation</MudText>
@@ -24,30 +25,34 @@
         </AuthorizeView>
     <MudDivider Class="my-3" />
     <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Chat">Conversations</MudNavLink>
-        <div class="nav-conversations" aria-label="Conversation rooms">
-            @if (!conversationsLoaded)
+    <div class="nav-conversations" aria-label="Conversation rooms">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                   Class="nav-new-conversation" OnClick="NewConversation">
+            New chat
+        </MudButton>
+        @if (!conversationsLoaded)
+        {
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-3">Loading chats…</MudText>
+        }
+        else if (!string.IsNullOrWhiteSpace(conversationsError))
+        {
+            <MudText Typo="Typo.caption" Color="Color.Error" Class="px-3">@conversationsError</MudText>
+        }
+        else if (conversations.Count == 0)
+        {
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-3">No conversations yet</MudText>
+        }
+        else
+        {
+            @foreach (var conversation in conversations.Take(8))
             {
-                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-3">Loading chats…</MudText>
+                <MudNavLink Href="@($"/?conversationId={conversation.Id}")"
+                            Icon="@Icons.Material.Filled.Forum"
+                            Class="nav-conversation-link">
+                    @GetConversationTitle(conversation)
+                </MudNavLink>
             }
-            else if (!string.IsNullOrWhiteSpace(conversationsError))
-            {
-                <MudText Typo="Typo.caption" Color="Color.Error" Class="px-3">@conversationsError</MudText>
-            }
-            else if (conversations.Count == 0)
-            {
-                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-3">No conversations yet</MudText>
-            }
-            else
-            {
-                @foreach (var conversation in conversations.Take(8))
-                {
-                    <MudNavLink Href="@($"/?conversationId={conversation.Id}")"
-                                Icon="@Icons.Material.Filled.Forum"
-                                Class="nav-conversation-link">
-                        @GetConversationTitle(conversation)
-                    </MudNavLink>
-                }
-            }
+        }
         </div>
         <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-3 nav-build-version"
              title="Application build time">
@@ -58,6 +63,8 @@
 @code {
     [CascadingParameter] private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
     private readonly List<ChatConversation> conversations = [];
+    private bool isAuthenticated;
+    private string? anonymousAccessKey;
     private bool conversationsLoaded;
     private string? conversationsError;
 
@@ -67,8 +74,7 @@
 
         try
         {
-            var isAuthenticated = (await AuthenticationStateTask!).User.Identity?.IsAuthenticated == true;
-            string? anonymousAccessKey = null;
+            isAuthenticated = (await AuthenticationStateTask!).User.Identity?.IsAuthenticated == true;
             if (!isAuthenticated)
             {
                 anonymousAccessKey = await JS.InvokeAsync<string?>("localStorage.getItem", "chat-anonymous-access-key");
@@ -91,6 +97,14 @@
             conversationsLoaded = true;
             await InvokeAsync(StateHasChanged);
         }
+    }
+
+    private async Task NewConversation()
+    {
+        var conversation = await History.CreateConversationAsync(
+            isAuthenticated ? null : anonymousAccessKey);
+        conversations.Insert(0, conversation);
+        Navigation.NavigateTo($"/?conversationId={conversation.Id}");
     }
 
     private static string GetConversationTitle(ChatConversation conversation) =>

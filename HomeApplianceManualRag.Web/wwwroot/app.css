@@ -75,10 +75,15 @@ body {
 
 .nav-conversations {
     display: grid;
-    gap: .15rem;
+    gap: .5rem;
     margin-top: .5rem;
     max-height: min(40dvh, 22rem);
     overflow-y: auto;
+}
+
+.nav-new-conversation {
+    justify-content: flex-start;
+    text-transform: none;
 }
 
 .nav-conversation-link {
@@ -93,74 +98,9 @@ body {
     min-height: 0;
     margin: 0 auto;
     display: grid;
-    grid-template-columns: 17rem minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) auto;
-    column-gap: 2rem;
     overflow: hidden;
-}
-
-.chat-mobile-toolbar {
-    display: none;
-}
-
-.chat-rooms {
-    grid-row: 1 / -1;
-    display: flex;
-    min-height: 0;
-    flex-direction: column;
-    gap: 1rem;
-    padding: .5rem .25rem .5rem 0;
-    border-right: 1px solid #e2e8f0;
-}
-
-.chat-rooms-header {
-    display: grid;
-    gap: .75rem;
-    padding-right: 1rem;
-}
-
-.chat-rooms-actions {
-    display: flex;
-    align-items: center;
-    gap: .25rem;
-}
-
-.chat-rooms-close {
-    display: none;
-}
-
-.chat-room-list {
-    display: flex;
-    min-height: 0;
-    flex-direction: column;
-    gap: .25rem;
-    overflow-y: auto;
-    padding-right: 1rem;
-}
-
-.chat-rooms .room-button {
-    justify-content: flex-start;
-    min-height: 2.75rem;
-    padding: .55rem .75rem;
-    text-align: left;
-    text-transform: none;
-    overflow: hidden;
-}
-
-.chat-rooms .room-button.selected {
-    background: rgb(37 99 235 / 12%);
-}
-
-.room-title {
-    display: block;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.chat-privacy-note {
-    padding-right: 1rem;
 }
 
 .chat-header {
@@ -260,79 +200,10 @@ body {
 
 @media (max-width: 576px) {
     .chat-shell {
-        position: relative;
         width: 100%;
         height: calc(100dvh - 7rem);
         grid-template-columns: minmax(0, 1fr);
-        grid-template-rows: auto minmax(0, 1fr) auto;
-        column-gap: 0;
-    }
-
-    .chat-mobile-toolbar {
-        grid-row: 1;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 1rem;
-        min-height: 3.25rem;
-        padding: .25rem 0 .5rem;
-    }
-
-    .chat-rooms {
-        position: absolute;
-        z-index: 3;
-        top: 3.25rem;
-        left: 0;
-        display: none;
-        width: min(22rem, 100%);
-        max-height: calc(100% - 3.25rem);
-        gap: .75rem;
-        overflow: hidden;
-        padding: .75rem;
-        border-right: 0;
-        border: 1px solid #e2e8f0;
-        border-radius: .75rem;
-        background: #fff;
-        box-shadow: 0 16px 36px rgb(15 23 42 / 16%);
-    }
-
-    .chat-rooms.mobile-open {
-        display: flex;
-    }
-
-    .chat-rooms-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding-right: 0;
-    }
-
-    .chat-rooms-actions {
-        gap: .5rem;
-    }
-
-    .chat-rooms-header .mud-button {
-        min-width: auto;
-    }
-
-    .chat-rooms-close {
-        display: inline-flex;
-    }
-
-    .chat-room-list {
-        flex-direction: column;
-        overflow-x: hidden;
-        overflow-y: auto;
-        padding-right: 0;
-    }
-
-    .chat-rooms .room-button {
-        flex: 0 0 auto;
-        max-width: none;
-    }
-
-    .chat-privacy-note {
-        display: none;
+        grid-template-rows: minmax(0, 1fr) auto;
     }
 
     .chat-transcript,
