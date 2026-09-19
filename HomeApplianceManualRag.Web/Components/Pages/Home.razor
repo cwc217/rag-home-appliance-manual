@@ -11,11 +11,23 @@
 
 <PageTitle>Chat Room</PageTitle>
 <main class="chat-shell">
-    <aside class="chat-rooms" aria-label="Conversations">
+    <div class="chat-mobile-toolbar">
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Menu"
+                   OnClick="@(() => mobileRoomsOpen = !mobileRoomsOpen)"
+                   aria-expanded="@mobileRoomsOpen" aria-controls="conversation-list">
+            Conversations
+        </MudButton>
+        <MudText Typo="Typo.caption" Color="Color.Secondary">Choose a chat room</MudText>
+    </div>
+    <aside id="conversation-list" class="chat-rooms @(mobileRoomsOpen ? "mobile-open" : "")" aria-label="Conversations">
         <div class="chat-rooms-header">
             <MudText Typo="Typo.h6">Conversations</MudText>
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
-                       OnClick="NewChat">New chat</MudButton>
+            <div class="chat-rooms-actions">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="NewChat">New chat</MudButton>
+                <MudIconButton Class="chat-rooms-close" Icon="@Icons.Material.Filled.Close"
+                               aria-label="Close conversations" OnClick="@(() => mobileRoomsOpen = false)" />
+            </div>
         </div>
         <div class="chat-room-list">
             @foreach (var room in rooms)
@@ -105,6 +117,7 @@
     private bool busy;
     private bool loadingHistory = true;
     private bool initialized;
+    private bool mobileRoomsOpen;
     private Guid? selectedConversationId;
     private string? anonymousAccessKey;
     private readonly List<ChatConversation> rooms = [];
@@ -184,6 +197,7 @@
         rooms.Insert(0, room);
         selectedConversationId = room.Id;
         messages.Clear();
+        mobileRoomsOpen = false;
         await SaveAnonymousCache(room.Id);
     }
 
@@ -191,6 +205,7 @@
     {
         if (busy || id == selectedConversationId) return;
         selectedConversationId = id;
+        mobileRoomsOpen = false;
         await LoadSelected();
     }
 
