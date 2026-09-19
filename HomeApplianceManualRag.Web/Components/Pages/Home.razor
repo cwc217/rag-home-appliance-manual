@@ -2,7 +2,6 @@
 @rendermode InteractiveServer
 @inject ChatService Chat
 @inject ChatHistoryService History
-@inject ICurrentUser CurrentUser
 @using HomeApplianceManualRag.Web.Data
 @using HomeApplianceManualRag.Web.Resources
 @using System.Globalization
@@ -15,14 +14,6 @@
             <h1>How can I help?</h1>
             <p class="text-muted mb-0">Ask a question and get an answer grounded in your available manuals.</p>
         </div>
-        @if (CurrentUser.IsAuthenticated)
-        {
-            <span class="badge text-bg-light">Your chat history is saved</span>
-        }
-        else
-        {
-            <span class="badge text-bg-light">Anonymous chat is not saved</span>
-        }
     </header>
 
     <section class="chat-transcript" aria-label="Conversation" aria-live="polite">
