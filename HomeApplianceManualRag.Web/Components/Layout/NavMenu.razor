@@ -1,36 +1,27 @@
-﻿<div class="top-row ps-3 navbar navbar-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="">Home Appliance Manual</a>
-    </div>
-</div>
-
-<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
-
-<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
-    <nav class="nav flex-column">
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
-            </NavLink>
-        </div>
+<MudNavMenu Class="pa-3">
+    <MudText Typo="Typo.overline" Color="Color.Secondary" Class="px-3">Navigation</MudText>
+    <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Chat">Chat Room</MudNavLink>
         <AuthorizeView>
             <NotAuthorized>
-                <div class="nav-item px-3"><NavLink class="nav-link" href="login">Login</NavLink></div>
-                <div class="nav-item px-3"><NavLink class="nav-link" href="register">Register</NavLink></div>
+                <MudNavLink Href="/login" Icon="@Icons.Material.Filled.Login">Login</MudNavLink>
+                <MudNavLink Href="/register" Icon="@Icons.Material.Filled.PersonAdd">Register</MudNavLink>
             </NotAuthorized>
             <Authorized>
-                <div class="nav-item px-3"><NavLink class="nav-link" href="my-documents">My documents</NavLink></div>
-                <div class="nav-item px-3">
-                    <form method="post" action="/account/logout">
-                        <button type="submit" class="nav-link border-0 bg-transparent w-100 text-start">Logout</button>
-                    </form>
-                </div>
+                <MudNavLink Href="/my-documents" Icon="@Icons.Material.Filled.Description">My documents</MudNavLink>
+                <form method="post" action="/account/logout">
+                    <AntiforgeryToken />
+                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Text"
+                               StartIcon="@Icons.Material.Filled.Logout" Class="nav-logout">
+                        Logout
+                    </MudButton>
+                </form>
             </Authorized>
         </AuthorizeView>
-    </nav>
-</div>
-
-<div class="build-label" title="Application build time">Build @BuildTime</div>
+    <MudDivider Class="my-3" />
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-3" title="Application build time">
+        Build @BuildTime
+    </MudText>
+</MudNavMenu>
 
 @code {
     private static string BuildTime

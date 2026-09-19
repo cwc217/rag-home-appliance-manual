@@ -8,32 +8,34 @@
 
 <PageTitle>Chat Room</PageTitle>
 <main class="chat-shell">
-    <header class="chat-header">
-        <div>
-            <p class="eyebrow">Home appliance manuals</p>
-            <h1>How can I help?</h1>
-            <p class="text-muted mb-0">Ask a question and get an answer grounded in your available manuals.</p>
-        </div>
-    </header>
+    <MudPaper Class="chat-header pa-4" Elevation="0">
+        <MudText Typo="Typo.overline" Color="Color.Primary">Home appliance manuals</MudText>
+        <MudText Typo="Typo.h4" GutterBottom="true">How can I help?</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            Ask a question and get an answer grounded in your available manuals.
+        </MudText>
+    </MudPaper>
 
     <section class="chat-transcript" aria-label="Conversation" aria-live="polite">
         @if (loadingHistory)
         {
-            <p class="chat-state" role="status">Loading conversation history…</p>
+            <MudText Class="chat-state" Color="Color.Secondary">Loading conversation history…</MudText>
         }
         else if (messages.Count == 0)
         {
-            <p class="chat-state">No questions yet. Try asking how to clean a filter or troubleshoot an error.</p>
+            <MudText Class="chat-state" Color="Color.Secondary">
+                No questions yet. Try asking how to clean a filter or troubleshoot an error.
+            </MudText>
         }
         @foreach (var message in messages)
         {
             <article class="chat-message @(message.Role == ChatMessageRole.User ? "chat-message-user" : "chat-message-assistant")">
-                <h2 class="visually-hidden">@(message.Role == ChatMessageRole.User ? "You" : "Assistant")</h2>
-                <div class="chat-bubble">@message.Content</div>
+                <MudText Class="sr-only">@(message.Role == ChatMessageRole.User ? "You" : "Assistant")</MudText>
+                <MudPaper Class="chat-bubble pa-3" Elevation="1">@message.Content</MudPaper>
                 @if (message.Citations.Count > 0)
                 {
                     <div class="chat-citations">
-                        <span class="fw-semibold">Sources</span>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Sources</MudText>
                         <ul>
                             @foreach (var citation in message.Citations)
                             {
@@ -46,28 +48,36 @@
         }
         @if (busy)
         {
-            <p class="chat-state" role="status">Thinking…</p>
+            <MudText Class="chat-state" Color="Color.Secondary">Thinking…</MudText>
         }
         @if (!string.IsNullOrWhiteSpace(error))
         {
-            <div class="alert alert-danger" role="alert">@error</div>
+            <MudAlert Severity="Severity.Error">@error</MudAlert>
         }
         @if (!string.IsNullOrWhiteSpace(noContext))
         {
-            <div class="alert alert-info" role="status">@noContext</div>
+            <MudAlert Severity="Severity.Info">@noContext</MudAlert>
         }
     </section>
 
     <EditForm Model="form" OnValidSubmit="Ask" class="chat-composer">
-        <label for="question" class="visually-hidden">Question</label>
-        <InputTextArea id="question" class="form-control" @bind-Value="form.Question"
-                       placeholder="How do I clean the filter?" rows="2" disabled="@busy"
-                       aria-describedby="composer-help" />
+        <MudTextField T="string" @bind-Value="form.Question" Label="Question" Variant="Variant.Outlined"
+                      Placeholder="How do I clean the filter?" Lines="2" Disabled="@busy"
+                      FullWidth="true" />
         <div class="composer-actions">
-            <span id="composer-help" class="text-muted small">Use the manual wording when possible.</span>
-            <button class="btn btn-primary" type="submit" disabled="@busy || string.IsNullOrWhiteSpace(form.Question)">
-                @(busy ? "Thinking…" : "Ask")
-            </button>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Use the manual wording when possible.</MudText>
+            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary"
+                       Disabled="@(busy || string.IsNullOrWhiteSpace(form.Question))">
+                @if (busy)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-2" />
+                    <span>Thinking…</span>
+                }
+                else
+                {
+                    <span>Ask</span>
+                }
+            </MudButton>
         </div>
     </EditForm>
 </main>

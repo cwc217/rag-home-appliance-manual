@@ -3,8 +3,8 @@
         <Found Context="routeData">
             <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
                 <NotAuthorized>
-                    <p>You must be signed in to view this page.</p>
-                    <a href="/login">Sign in</a>
+                    <MudAlert Severity="Severity.Info">You must be signed in to view this page.</MudAlert>
+                    <MudButton Href="/login" Variant="Variant.Filled" Color="Color.Primary" Class="mt-3">Sign in</MudButton>
                 </NotAuthorized>
             </AuthorizeRouteView>
             <FocusOnNavigate RouteData="routeData" Selector="h1" />

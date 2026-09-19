@@ -49,6 +49,7 @@ deletions and periodically removes unreferenced files older than one hour.
 
 - .NET 10 ASP.NET Core Blazor Web App
 - Interactive Server rendering
+- MudBlazor 8.14 component library with a shared theme and responsive application shell
 - ASP.NET Core Identity with PostgreSQL
 - PostgreSQL with `pgvector`
 - Azure OpenAI chat and embedding deployments

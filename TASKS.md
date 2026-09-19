@@ -71,6 +71,7 @@
 - [ ] Add empty state when no admin document is ready.
 - [x] Add processing progress/status refresh without exposing internal errors or secrets.
 - [x] Add responsive messaging layout and keyboard-accessible controls.
+- [x] Adopt a shared MudBlazor theme and responsive component-based UI across the application shell and pages.
 - [ ] Add Playwright smoke flows for anonymous, user, and admin journeys.
 
 ## Phase 6 — Operational readiness

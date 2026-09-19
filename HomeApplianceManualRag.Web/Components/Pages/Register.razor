@@ -1,13 +1,31 @@
 @page "/register"
 @using HomeApplianceManualRag.Web.Resources
 <PageTitle>Register</PageTitle>
-<h1>Register</h1>
+<MudPaper Class="auth-card pa-6" Elevation="2">
+<MudText Typo="Typo.h4" GutterBottom="true">Register</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-6">Create an account to upload your own appliance manuals.</MudText>
 <form method="post" action="/account/register">
     <AntiforgeryToken />
-    <div class="mb-3"><label for="email">Email</label><input id="email" name="email" type="email" required class="form-control" /></div>
-    <div class="mb-3"><label for="password">Password</label><input id="password" name="password" type="password" minlength="8" required class="form-control" /></div>
-    <div class="mb-3"><label for="confirmPassword">Confirm password</label><input id="confirmPassword" name="confirmPassword" type="password" minlength="8" required class="form-control" /></div>
-    @if (!string.IsNullOrWhiteSpace(Error)) { <div class="text-danger" role="alert">@Error</div> }
-    <button class="btn btn-primary" type="submit">Register</button>
+    <MudStack Spacing="3">
+        <div class="auth-field">
+            <label for="email">Email</label>
+            <input id="email" name="email" type="email" autocomplete="email" required class="auth-input" />
+        </div>
+        <div class="auth-field">
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password" autocomplete="new-password" minlength="8" required class="auth-input" />
+        </div>
+        <div class="auth-field">
+            <label for="confirmPassword">Confirm password</label>
+            <input id="confirmPassword" name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required class="auth-input" />
+        </div>
+        @if (!string.IsNullOrWhiteSpace(Error))
+        {
+            <MudAlert Severity="Severity.Error">@Error</MudAlert>
+        }
+        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary"
+                   FullWidth="true">Register</MudButton>
+    </MudStack>
 </form>
+</MudPaper>
 @code { [SupplyParameterFromQuery] public string? Error { get; set; } }

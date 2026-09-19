@@ -9,6 +9,7 @@ using Microsoft.Extensions.Options;
 using HomeApplianceManualRag.Web.Resources;
 using HomeApplianceManualRag.Web.Documents;
 using HomeApplianceManualRag.Web.Chat;
+using MudBlazor.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 ConfigurationValidation.ValidateProduction(builder.Configuration, builder.Environment);
@@ -78,6 +79,7 @@ builder.Services.AddSingleton<IFileStorage, LocalFileStorage>();
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+builder.Services.AddMudServices();
 
 var app = builder.Build();
 
