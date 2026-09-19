@@ -1,7 +1,6 @@
 <MudNavMenu Class="pa-3 nav-menu">
     <MudText Typo="Typo.overline" Color="Color.Secondary" Class="px-3">Navigation</MudText>
-    <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Chat">Conversations</MudNavLink>
-        <AuthorizeView>
+    <AuthorizeView>
             <NotAuthorized>
                 <MudNavLink Href="/login" Icon="@Icons.Material.Filled.Login">Login</MudNavLink>
                 <MudNavLink Href="/register" Icon="@Icons.Material.Filled.PersonAdd">Register</MudNavLink>
@@ -21,6 +20,7 @@
             </Authorized>
         </AuthorizeView>
     <MudDivider Class="my-3" />
+    <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Chat">Conversations</MudNavLink>
     <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-3 nav-build-version"
              title="Application build time">
         Build @BuildTime
