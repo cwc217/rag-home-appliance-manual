@@ -74,32 +74,64 @@ body {
 }
 
 .chat-shell {
-    max-width: 50rem;
+    width: min(100%, 90rem);
     height: calc(100dvh - 8rem);
     min-height: 0;
     margin: 0 auto;
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-columns: 17rem minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    column-gap: 2rem;
     overflow: hidden;
 }
 
 .chat-rooms {
+    grid-row: 1 / -1;
     display: flex;
-    gap: .35rem;
-    overflow-x: auto;
-    padding-bottom: .5rem;
+    min-height: 0;
+    flex-direction: column;
+    gap: 1rem;
+    padding: .5rem .25rem .5rem 0;
+    border-right: 1px solid #e2e8f0;
+}
+
+.chat-rooms-header {
+    display: grid;
+    gap: .75rem;
+    padding-right: 1rem;
+}
+
+.chat-room-list {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+    gap: .25rem;
+    overflow-y: auto;
+    padding-right: 1rem;
 }
 
 .chat-rooms .room-button {
-    flex: 0 0 auto;
-    max-width: 14rem;
+    justify-content: flex-start;
+    min-height: 2.75rem;
+    padding: .55rem .75rem;
+    text-align: left;
+    overflow: hidden;
+}
+
+.chat-rooms .room-button.selected {
+    background: rgb(37 99 235 / 12%);
+}
+
+.room-title {
+    display: block;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.chat-rooms .room-button.selected {
-    background: rgb(37 99 235 / 12%);
+.chat-privacy-note {
+    padding-right: 1rem;
 }
 
 .chat-header {
@@ -107,6 +139,7 @@ body {
 }
 
 .chat-transcript {
+    grid-column: 2;
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
@@ -163,7 +196,21 @@ body {
 }
 
 .chat-composer {
+    grid-column: 2;
+    width: min(100%, 52rem);
+    margin: 0 auto;
     padding-top: .75rem;
+    padding-bottom: .25rem;
+}
+
+.chat-composer .mud-input-control {
+    border-radius: 1.5rem;
+    background: #fff;
+    box-shadow: 0 8px 24px rgb(15 23 42 / 8%);
+}
+
+.chat-composer .mud-input-outlined-border {
+    border-color: #cbd5e1;
 }
 
 .composer-actions {
@@ -182,11 +229,52 @@ body {
 
 @media (max-width: 576px) {
     .chat-shell {
+        width: 100%;
         height: calc(100dvh - 7rem);
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: auto minmax(0, 1fr) auto;
+        column-gap: 0;
     }
 
     .chat-rooms {
-        flex-wrap: nowrap;
+        grid-row: 1;
+        gap: .75rem;
+        overflow: hidden;
+        padding: .25rem 0 .5rem;
+        border-right: 0;
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+    .chat-rooms-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-right: 0;
+    }
+
+    .chat-rooms-header .mud-button {
+        min-width: auto;
+    }
+
+    .chat-room-list {
+        flex-direction: row;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding-right: 0;
+    }
+
+    .chat-rooms .room-button {
+        flex: 0 0 auto;
+        max-width: 12rem;
+    }
+
+    .chat-privacy-note {
+        display: none;
+    }
+
+    .chat-transcript,
+    .chat-composer {
+        grid-column: 1;
     }
 
     .chat-message {

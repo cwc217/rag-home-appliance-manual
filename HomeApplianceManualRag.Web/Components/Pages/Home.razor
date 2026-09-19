@@ -12,14 +12,23 @@
 <PageTitle>Chat Room</PageTitle>
 <main class="chat-shell">
     <aside class="chat-rooms" aria-label="Conversations">
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" OnClick="NewChat">New chat</MudButton>
-        @foreach (var room in rooms)
-        {
-            <MudButton Variant="Variant.Text" FullWidth="true" Class="@($"room-button {(room.Id == selectedConversationId ? "selected" : "")}")"
-                       OnClick="@(() => SelectChat(room.Id))">@room.Title</MudButton>
-        }
-        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-3">
-            Chats are stored securely on the server. This browser keeps only a private access key and a small cache; clearing site data loses anonymous access.
+        <div class="chat-rooms-header">
+            <MudText Typo="Typo.h6">Conversations</MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="NewChat">New chat</MudButton>
+        </div>
+        <div class="chat-room-list">
+            @foreach (var room in rooms)
+            {
+                <MudButton Variant="Variant.Text" FullWidth="true"
+                           Class="@($"room-button {(room.Id == selectedConversationId ? "selected" : "")}")"
+                           OnClick="@(() => SelectChat(room.Id))">
+                    <span class="room-title">@GetRoomTitle(room)</span>
+                </MudButton>
+            }
+        </div>
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="chat-privacy-note">
+            Anonymous chats are saved securely for 30 days. This browser keeps a private access key and cache.
         </MudText>
     </aside>
     <section class="chat-transcript" aria-label="Conversation" aria-live="polite">
@@ -163,6 +172,9 @@
                 messages.Add(message);
         }
     }
+
+    private string GetRoomTitle(ChatConversation room) =>
+        room.Title == "New chat" ? "Current chat" : room.Title;
 
     private async Task NewChat()
     {
