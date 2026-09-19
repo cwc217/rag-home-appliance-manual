@@ -108,7 +108,7 @@ body {
 }
 
 .chat-transcript {
-    grid-column: 2;
+    grid-column: 1;
     width: min(100%, 52rem);
     justify-self: center;
     min-height: 0;
@@ -167,7 +167,7 @@ body {
 }
 
 .chat-composer {
-    grid-column: 2;
+    grid-column: 1;
     width: min(100%, 52rem);
     margin: 0 auto;
     padding-top: .75rem;
