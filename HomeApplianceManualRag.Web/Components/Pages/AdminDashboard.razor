@@ -2,6 +2,8 @@
 @attribute [Authorize(Policy = ApplicationPolicies.AdminOnly)]
 @using HomeApplianceManualRag.Web.Admin
 @inject AdminDashboardService Dashboard
+@inject AdminConversationService Conversations
+@inject IDialogService DialogService
 
 <PageTitle>Admin dashboard</PageTitle>
 
@@ -70,33 +72,40 @@
         <MudGrid Spacing="3">
             <MudItem xs="12" md="7">
                 <MudPaper Class="pa-4" Elevation="1">
-                    <MudText Typo="Typo.h6" Class="mb-3">Recent activity</MudText>
-                    @if (snapshot.RecentActivity.Count == 0)
+                    <MudText Typo="Typo.h6" Class="mb-3">Recent conversations</MudText>
+                    @if (snapshot.RecentConversations.Count == 0)
                     {
-                        <MudText Typo="Typo.body2" Color="Color.Secondary">No recent activity.</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">No conversations yet.</MudText>
                     }
                     else
                     {
-                        <MudStack Spacing="1">
-                            @foreach (var activity in snapshot.RecentActivity)
-                            {
-                                <MudPaper Class="pa-2" Outlined="true">
-                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                                        <MudIcon Icon="@GetActivityIcon(activity.Category)" Color="Color.Secondary" />
-                                        <div>
-                                            <MudText Typo="Typo.body2">@activity.Title</MudText>
-                                            <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                                @activity.Category · @activity.Detail
-                                            </MudText>
-                                        </div>
-                                        <MudSpacer />
-                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                            @activity.TimestampUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
-                                        </MudText>
-                                    </MudStack>
-                                </MudPaper>
-                            }
-                        </MudStack>
+                        <MudTable T="AdminConversationSummary" Items="@snapshot.RecentConversations"
+                                  Dense="true" Hover="true" Breakpoint="Breakpoint.Sm">
+                            <HeaderContent>
+                                <MudTh>Conversation</MudTh>
+                                <MudTh>Owner</MudTh>
+                                <MudTh>Updated</MudTh>
+                                <MudTh></MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="Conversation">
+                                    <MudText Typo="Typo.body2" Class="text-break">@context.Title</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        @context.MessageCount messages
+                                    </MudText>
+                                </MudTd>
+                                <MudTd DataLabel="Owner">@context.Owner</MudTd>
+                                <MudTd DataLabel="Updated">
+                                    @context.UpdatedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+                                </MudTd>
+                                <MudTd DataLabel="Actions">
+                                    <MudButton Size="Size.Small" Variant="Variant.Text"
+                                               OnClick="() => ShowConversationAsync(context.Id)">
+                                        Detail
+                                    </MudButton>
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
                     }
                 </MudPaper>
             </MudItem>
@@ -149,8 +158,15 @@
         _ => Color.Warning
     };
 
-    private static string GetActivityIcon(string category) =>
-        category == "Document"
-            ? Icons.Material.Filled.Description
-            : Icons.Material.Filled.Chat;
+    private async Task ShowConversationAsync(Guid conversationId)
+    {
+        var detail = await Conversations.GetDetailAsync(conversationId);
+        if (detail is null)
+            return;
+
+        await DialogService.ShowAsync<AdminConversationDialog>(
+            "Conversation detail",
+            new DialogParameters { ["Detail"] = detail },
+            new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Large, FullWidth = true });
+    }
 }

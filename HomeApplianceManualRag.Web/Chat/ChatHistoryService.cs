@@ -87,20 +87,6 @@ public sealed class ChatHistoryService(IDbContextFactory<ApplicationDbContext> d
         await PersistExchangeAsync(conversation.Id, question, answer, citations, null, ct);
     }
 
-    public async Task<IReadOnlyList<(ChatConversation Conversation, IReadOnlyList<ChatHistoryMessage> Messages)>>
-        GetAllForAdminAsync(CancellationToken ct = default)
-    {
-        if (!currentUser.IsInRole(ApplicationRoles.Admin))
-            throw new UnauthorizedAccessException("Administrator access is required.");
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var conversations = await db.Conversations.AsNoTracking().Include(x => x.Messages)
-            .OrderByDescending(x => x.UpdatedAtUtc).Take(200).ToListAsync(ct);
-        return conversations.Select(x => (
-            new ChatConversation(x.Id, x.Title, x.CreatedAtUtc, x.UpdatedAtUtc),
-            (IReadOnlyList<ChatHistoryMessage>)x.Messages.OrderBy(m => m.CreatedAtUtc).ThenBy(m => m.Id).Select(ToHistoryMessage).ToArray()
-        )).ToArray();
-    }
-
     public async Task<int> DeleteExpiredAnonymousAsync(DateTime? nowUtc = null, CancellationToken ct = default)
     {
         var cutoff = (nowUtc ?? DateTime.UtcNow).AddDays(-30);
@@ -147,7 +133,7 @@ public sealed class ChatHistoryService(IDbContextFactory<ApplicationDbContext> d
     private static string HashKey(string key) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key)));
 
-    private static ChatHistoryMessage ToHistoryMessage(ChatMessage message) =>
+    internal static ChatHistoryMessage ToHistoryMessage(ChatMessage message) =>
         new(message.Role, message.Content, string.IsNullOrWhiteSpace(message.CitationsJson)
             ? [] : JsonSerializer.Deserialize<IReadOnlyList<ChatCitation>>(message.CitationsJson) ?? [], message.CreatedAtUtc);
 }

@@ -12,17 +12,12 @@ public sealed record AdminDashboardSnapshot(
     int ConversationsLast24Hours,
     int ActiveIndexingJobs,
     int FailedIndexingJobs,
-    IReadOnlyList<AdminActivityItem> RecentActivity);
-
-public sealed record AdminActivityItem(
-    string Category,
-    string Title,
-    string Detail,
-    DateTime TimestampUtc);
+    IReadOnlyList<AdminConversationSummary> RecentConversations);
 
 public sealed class AdminDashboardService(
     IDbContextFactory<ApplicationDbContext> dbFactory,
-    ICurrentUser currentUser)
+    ICurrentUser currentUser,
+    AdminConversationService conversations)
 {
     public async Task<AdminDashboardSnapshot> GetSnapshotAsync(
         CancellationToken cancellationToken = default)
@@ -48,39 +43,7 @@ public sealed class AdminDashboardService(
         var failedIndexingJobs = await db.IndexingJobs
             .CountAsync(job => job.Status == IndexingJobStatus.Failed, cancellationToken);
 
-        var recentDocuments = await db.ManualDocuments
-            .AsNoTracking()
-            .OrderByDescending(document => document.UpdatedAtUtc)
-            .Take(10)
-            .Select(document => new
-            {
-                document.DisplayName,
-                document.Status,
-                document.LastError,
-                document.UpdatedAtUtc
-            })
-            .ToListAsync(cancellationToken);
-        var recentConversations = await db.Conversations
-            .AsNoTracking()
-            .OrderByDescending(conversation => conversation.UpdatedAtUtc)
-            .Take(10)
-            .Select(conversation => new AdminActivityItem(
-                "Conversation",
-                conversation.Title,
-                conversation.UserId == null ? "Anonymous conversation" : "Authenticated conversation",
-                conversation.UpdatedAtUtc))
-            .ToListAsync(cancellationToken);
-
-        var recentDocumentActivity = recentDocuments.Select(document => new AdminActivityItem(
-            "Document",
-            document.DisplayName,
-            $"Status: {GetDocumentStatus(document.Status, document.LastError)}",
-            document.UpdatedAtUtc));
-        var recentActivity = recentDocumentActivity
-            .Concat(recentConversations)
-            .OrderByDescending(activity => activity.TimestampUtc)
-            .Take(8)
-            .ToArray();
+        var recentConversations = await conversations.GetRecentSummariesAsync(10, cancellationToken);
 
         return new AdminDashboardSnapshot(
             registeredUsers,
@@ -90,7 +53,7 @@ public sealed class AdminDashboardService(
             conversationsLast24Hours,
             activeIndexingJobs,
             failedIndexingJobs,
-            recentActivity);
+            recentConversations);
     }
 
     private void EnsureAdmin()
@@ -99,8 +62,4 @@ public sealed class AdminDashboardService(
             throw new UnauthorizedAccessException("Administrator access is required.");
     }
 
-    private static string GetDocumentStatus(DocumentStatus status, string? lastError) =>
-        string.IsNullOrWhiteSpace(lastError)
-            ? status.ToString()
-            : "Failed";
 }

@@ -15,20 +15,28 @@ public sealed class AdminDashboardTests
             .Options;
         await using (var db = new ApplicationDbContext(options))
         {
-            db.Users.Add(new ApplicationUser { Id = "user-1", UserName = "user@example.invalid" });
+            db.Users.Add(new ApplicationUser
+            {
+                Id = "user-1",
+                UserName = "user@example.invalid",
+                Email = "user@example.invalid"
+            });
             db.ManualDocuments.AddRange(
                 new ManualDocument { DisplayName = "ready.pdf", Status = DocumentStatus.Ready },
                 new ManualDocument { DisplayName = "failed.pdf", Status = DocumentStatus.Failed, LastError = "parse failed" });
-            db.Conversations.Add(new Conversation { Title = "Anonymous question" });
+            db.Conversations.AddRange(
+                new Conversation { Title = "Anonymous question" },
+                new Conversation { Title = "User question", UserId = "user-1" });
             db.IndexingJobs.AddRange(
                 new IndexingJob { DocumentId = Guid.NewGuid(), Status = IndexingJobStatus.Processing },
                 new IndexingJob { DocumentId = Guid.NewGuid(), Status = IndexingJobStatus.Failed });
             await db.SaveChangesAsync();
         }
 
-        var service = new AdminDashboardService(
-            new TestDbFactory(options),
-            new FakeCurrentUser(isAdmin: true));
+        var currentUser = new FakeCurrentUser(isAdmin: true);
+        var factory = new TestDbFactory(options);
+        var conversationService = new AdminConversationService(factory, currentUser);
+        var service = new AdminDashboardService(factory, currentUser, conversationService);
 
         var snapshot = await service.GetSnapshotAsync();
 
@@ -36,11 +44,11 @@ public sealed class AdminDashboardTests
         Assert.Equal(2, snapshot.TotalDocuments);
         Assert.Equal(1, snapshot.DocumentsByStatus[DocumentStatus.Ready]);
         Assert.Equal(1, snapshot.DocumentsByStatus[DocumentStatus.Failed]);
-        Assert.Equal(1, snapshot.TotalConversations);
+        Assert.Equal(2, snapshot.TotalConversations);
         Assert.Equal(1, snapshot.ActiveIndexingJobs);
         Assert.Equal(1, snapshot.FailedIndexingJobs);
-        Assert.Contains(snapshot.RecentActivity, item => item.Title == "ready.pdf");
-        Assert.Contains(snapshot.RecentActivity, item => item.Detail == "Anonymous conversation");
+        Assert.Contains(snapshot.RecentConversations, item => item.Title == "Anonymous question" && item.Owner == "Anonymous");
+        Assert.Contains(snapshot.RecentConversations, item => item.Title == "User question" && item.Owner == "user@example.invalid");
     }
 
     [Fact]
@@ -49,11 +57,46 @@ public sealed class AdminDashboardTests
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
+        var currentUser = new FakeCurrentUser(isAdmin: false);
         var service = new AdminDashboardService(
             new TestDbFactory(options),
-            new FakeCurrentUser(isAdmin: false));
+            currentUser,
+            new AdminConversationService(new TestDbFactory(options), currentUser));
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.GetSnapshotAsync());
+    }
+
+    [Fact]
+    public async Task Conversation_detail_returns_messages_for_admin()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        var conversationId = Guid.NewGuid();
+        await using (var db = new ApplicationDbContext(options))
+        {
+            db.Conversations.Add(new Conversation
+            {
+                Id = conversationId,
+                Title = "Details",
+                Messages =
+                [
+                    new ChatMessage { Role = ChatMessageRole.User, Content = "Question" },
+                    new ChatMessage { Role = ChatMessageRole.Assistant, Content = "Answer" }
+                ]
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new AdminConversationService(
+            new TestDbFactory(options),
+            new FakeCurrentUser(isAdmin: true));
+
+        var detail = await service.GetDetailAsync(conversationId);
+
+        Assert.NotNull(detail);
+        Assert.Equal("Anonymous", detail.Summary.Owner);
+        Assert.Equal(["Question", "Answer"], detail.Messages.Select(message => message.Content));
     }
 
     private sealed class FakeCurrentUser(bool isAdmin) : ICurrentUser

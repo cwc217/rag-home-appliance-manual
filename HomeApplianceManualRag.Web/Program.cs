@@ -65,6 +65,7 @@ builder.Services.AddScoped<ManualRetriever>();
 builder.Services.AddScoped<ChatService>();
 builder.Services.AddScoped<ChatHistoryService>();
 builder.Services.AddScoped<AdminDashboardService>();
+builder.Services.AddScoped<AdminConversationService>();
 builder.Services.AddScoped<ChatConversationState>();
 builder.Services.AddSingleton<ChatRateLimiter>();
 builder.Services.AddScoped<PdfValidator>();

@@ -92,6 +92,11 @@ body {
     font-size: .9rem;
 }
 
+.admin-conversation-messages {
+    max-height: min(60dvh, 36rem);
+    overflow-y: auto;
+}
+
 .chat-shell {
     width: min(100%, 90rem);
     height: calc(100dvh - 8rem);
