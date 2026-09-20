@@ -9,6 +9,7 @@ using Microsoft.Extensions.Options;
 using HomeApplianceManualRag.Web.Resources;
 using HomeApplianceManualRag.Web.Documents;
 using HomeApplianceManualRag.Web.Chat;
+using HomeApplianceManualRag.Web.Admin;
 using MudBlazor.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -63,6 +64,7 @@ builder.Services.AddScoped<IEmbeddingProvider, AzureOpenAiEmbeddingProvider>();
 builder.Services.AddScoped<ManualRetriever>();
 builder.Services.AddScoped<ChatService>();
 builder.Services.AddScoped<ChatHistoryService>();
+builder.Services.AddScoped<AdminDashboardService>();
 builder.Services.AddScoped<ChatConversationState>();
 builder.Services.AddSingleton<ChatRateLimiter>();
 builder.Services.AddScoped<PdfValidator>();
@@ -190,7 +192,6 @@ app.MapGet("/documents/{id:guid}/download", async (Guid id, DocumentService docu
     }
 }).RequireAuthorization(ApplicationPolicies.RegisteredUser);
 
-app.MapGet("/admin", () => Results.Ok(new { message = "Admin area" })).RequireAuthorization(ApplicationPolicies.AdminOnly);
 app.MapGet("/account/me", (ICurrentUser currentUser) => Results.Ok(new { currentUser.UserId, currentUser.Email }))
     .RequireAuthorization(ApplicationPolicies.RegisteredUser);
 

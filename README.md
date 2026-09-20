@@ -13,7 +13,8 @@
 - 登入使用者的問答會儲存於自己的 conversation/message history，並按時間順序重載；
   anonymous chat 也會在伺服器保存 30 天；瀏覽器 localStorage 只保存匿名存取金鑰及 UI cache，
   不是真實資料來源。匿名對話按金鑰隔離，清除網站資料後將無法取回。
-- Chat Room 支援建立多個 conversation；管理員可在 `/admin/chat-review` 以唯讀方式檢視最近對話。
+- Chat Room 支援建立多個 conversation；管理員可在 `/admin` 查看 users、manuals、indexing
+  及 chat activity 概覽，並在 `/admin/chat-review` 以唯讀方式檢視最近對話。
 - Retrieval applies the authorized scope and `Ready` status in the PostgreSQL query
   before pgvector cosine ranking. Anonymous visitors use admin/public documents;
   normal users use their own documents; admins use an explicit all-documents scope.

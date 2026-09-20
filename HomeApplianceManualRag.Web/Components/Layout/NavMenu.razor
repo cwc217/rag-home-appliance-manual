@@ -14,6 +14,9 @@
                 <MudNavLink Href="/register" Icon="@Icons.Material.Filled.PersonAdd">Register</MudNavLink>
             </NotAuthorized>
             <Authorized>
+                <AuthorizeView Roles="@ApplicationRoles.Admin" Context="dashboardContext">
+                    <MudNavLink Href="/admin" Icon="@Icons.Material.Filled.Dashboard">Admin dashboard</MudNavLink>
+                </AuthorizeView>
                 <MudNavLink Href="/my-documents" Icon="@Icons.Material.Filled.Description">My documents</MudNavLink>
                 <AuthorizeView Roles="@ApplicationRoles.Admin" Context="adminContext">
                     <MudNavLink Href="/admin/chat-review" Icon="@Icons.Material.Filled.Visibility">Chat review</MudNavLink>

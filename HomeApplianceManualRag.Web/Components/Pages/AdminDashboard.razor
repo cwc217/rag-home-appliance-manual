@@ -1,0 +1,156 @@
+@page "/admin"
+@attribute [Authorize(Policy = ApplicationPolicies.AdminOnly)]
+@using HomeApplianceManualRag.Web.Admin
+@inject AdminDashboardService Dashboard
+
+<PageTitle>Admin dashboard</PageTitle>
+
+<MudStack Spacing="3">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <div>
+            <MudText Typo="Typo.h4">Admin dashboard</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                A quick operational overview of users, manuals, indexing, and chat activity.
+            </MudText>
+        </div>
+        <MudStack Row="true" Spacing="1">
+            <MudButton Href="/my-documents" Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Filled.Description">Documents</MudButton>
+            <MudButton Href="/admin/chat-review" Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Filled.Visibility">Chat review</MudButton>
+        </MudStack>
+    </MudStack>
+
+    @if (snapshot is null && errorMessage is null)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+    else if (errorMessage is not null)
+    {
+        <MudAlert Severity="Severity.Error">@errorMessage</MudAlert>
+    }
+    else if (snapshot is not null)
+    {
+        <MudGrid Spacing="3">
+            <MudItem xs="12" sm="6" lg="3">
+                <MudPaper Class="pa-4 h-100" Elevation="1">
+                    <MudText Typo="Typo.overline" Color="Color.Secondary">Registered users</MudText>
+                    <MudText Typo="Typo.h4">@snapshot.RegisteredUsers</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" lg="3">
+                <MudPaper Class="pa-4 h-100" Elevation="1">
+                    <MudText Typo="Typo.overline" Color="Color.Secondary">Manuals</MudText>
+                    <MudText Typo="Typo.h4">@snapshot.TotalDocuments</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        @GetDocumentCount(DocumentStatus.Ready) ready · @GetDocumentCount(DocumentStatus.Failed) failed
+                    </MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" lg="3">
+                <MudPaper Class="pa-4 h-100" Elevation="1">
+                    <MudText Typo="Typo.overline" Color="Color.Secondary">Conversations</MudText>
+                    <MudText Typo="Typo.h4">@snapshot.TotalConversations</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        @snapshot.ConversationsLast24Hours in the last 24 hours
+                    </MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" lg="3">
+                <MudPaper Class="pa-4 h-100" Elevation="1">
+                    <MudText Typo="Typo.overline" Color="Color.Secondary">Indexing jobs</MudText>
+                    <MudText Typo="Typo.h4">@snapshot.ActiveIndexingJobs active</MudText>
+                    <MudText Typo="Typo.caption" Color="@(snapshot.FailedIndexingJobs > 0 ? Color.Error : Color.Secondary)">
+                        @snapshot.FailedIndexingJobs failed
+                    </MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <MudGrid Spacing="3">
+            <MudItem xs="12" md="7">
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudText Typo="Typo.h6" Class="mb-3">Recent activity</MudText>
+                    @if (snapshot.RecentActivity.Count == 0)
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">No recent activity.</MudText>
+                    }
+                    else
+                    {
+                        <MudStack Spacing="1">
+                            @foreach (var activity in snapshot.RecentActivity)
+                            {
+                                <MudPaper Class="pa-2" Outlined="true">
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                        <MudIcon Icon="@GetActivityIcon(activity.Category)" Color="Color.Secondary" />
+                                        <div>
+                                            <MudText Typo="Typo.body2">@activity.Title</MudText>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                @activity.Category · @activity.Detail
+                                            </MudText>
+                                        </div>
+                                        <MudSpacer />
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                            @activity.TimestampUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+                                        </MudText>
+                                    </MudStack>
+                                </MudPaper>
+                            }
+                        </MudStack>
+                    }
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="5">
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudText Typo="Typo.h6" Class="mb-3">Manual status</MudText>
+                    @foreach (var status in Enum.GetValues<DocumentStatus>())
+                    {
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mb-2">
+                            <MudText Typo="Typo.body2">@status</MudText>
+                            <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(status)">
+                                @GetDocumentCount(status)
+                            </MudChip>
+                        </MudStack>
+                    }
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    }
+</MudStack>
+
+@code {
+    private AdminDashboardSnapshot? snapshot;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            snapshot = await Dashboard.GetSnapshotAsync();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            errorMessage = "Administrator access is required.";
+        }
+        catch (Exception)
+        {
+            errorMessage = "Dashboard data is temporarily unavailable.";
+        }
+    }
+
+    private int GetDocumentCount(DocumentStatus status) =>
+        snapshot?.DocumentsByStatus.GetValueOrDefault(status) ?? 0;
+
+    private static Color GetStatusColor(DocumentStatus status) => status switch
+    {
+        DocumentStatus.Ready => Color.Success,
+        DocumentStatus.Failed => Color.Error,
+        DocumentStatus.Processing => Color.Info,
+        _ => Color.Warning
+    };
+
+    private static string GetActivityIcon(string category) =>
+        category == "Document"
+            ? Icons.Material.Filled.Description
+            : Icons.Material.Filled.Chat;
+}
