@@ -62,6 +62,8 @@
 - [x] Add basic per-user chat rate limit and localized `429` state.
 - [x] Test scope isolation, prompt rules, streaming adapter, citations, and no-result behavior.
 - [x] Persist multiple authenticated and anonymous conversations/messages with ownership-safe access; clean anonymous conversations after 30 days.
+- [x] Add admin conversation summaries, latest-conversation review table, and read-only detail modal with message timestamps.
+- [x] Add admin dashboard metrics and latest-conversation activity listing.
 
 ## Phase 5 — Localization and UX quality
 

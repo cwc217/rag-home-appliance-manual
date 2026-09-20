@@ -148,8 +148,10 @@ The application must not claim that an answer is grounded when no chunk was retr
 - Authenticated normal users see their own scope.
 - Responses stream to the UI.
 - Each answer displays citations with manual name and page number.
-- Conversation state is scoped to the current page/session and is not persisted across devices.
-- Do not store raw prompts or model responses as permanent history in MVP.
+- The browser UI state is scoped to the current page/session and is not persisted across
+  devices. Authenticated conversation messages are persisted server-side for the owning
+  user; anonymous conversation messages are persisted server-side for 30 days and remain
+  isolated by the anonymous access key.
 - Show loading, empty-index, no-results, provider-error, and rate-limit states.
 - If no admin document is `Ready`, anonymous chat shows a setup/empty state instead of pretending retrieval succeeded.
 
@@ -158,6 +160,10 @@ The application must not claim that an answer is grounded when no chunk was retr
 - `/`: Chat Room.
 - `/login`: Identity login.
 - `/register`: User registration.
+- `/admin`: admin-only operational dashboard with user, document, indexing, and conversation
+  metrics, plus the latest 10 conversation summaries.
+- `/admin/chat-review`: admin-only table of the latest 20 conversation summaries. Each row
+  can open a read-only detail modal containing the ordered messages and their timestamps.
 - `/my-documents`: authenticated, role-aware document list, upload, status, retry, and
   delete. Normal users see only their own documents and have a three-active quota.
   Admins see all documents with owner information, have unlimited uploads, and can
