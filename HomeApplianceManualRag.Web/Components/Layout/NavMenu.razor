@@ -1,6 +1,5 @@
 @inject ChatHistoryService History
 @inject ChatConversationState ConversationState
-@inject IJSRuntime JS
 @implements IDisposable
 
 <MudNavMenu Class="pa-3 nav-menu">
@@ -28,33 +27,36 @@
                 </form>
             </Authorized>
         </AuthorizeView>
-    <MudDivider Class="my-3" />
-    <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Chat">Conversations</MudNavLink>
-    <div class="nav-conversations" aria-label="Conversation rooms">
-        @if (!conversationsLoaded)
-        {
-            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-3">Loading chats…</MudText>
-        }
-        else if (!string.IsNullOrWhiteSpace(conversationsError))
-        {
-            <MudText Typo="Typo.caption" Color="Color.Error" Class="px-3">@conversationsError</MudText>
-        }
-        else if (conversations.Count == 0)
-        {
-            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-3">No conversations yet</MudText>
-        }
-        else
-        {
-            @foreach (var conversation in conversations.Take(8))
+    @if (isAuthenticated)
+    {
+        <MudDivider Class="my-3" />
+        <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Chat">Conversations</MudNavLink>
+        <div class="nav-conversations" aria-label="Conversation rooms">
+            @if (!conversationsLoaded)
             {
-                <MudNavLink Href="@($"/?conversationId={conversation.Id}")"
-                            Icon="@Icons.Material.Filled.Forum"
-                            Class="nav-conversation-link">
-                    @GetConversationTitle(conversation)
-                </MudNavLink>
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-3">Loading chats…</MudText>
             }
-        }
+            else if (!string.IsNullOrWhiteSpace(conversationsError))
+            {
+                <MudText Typo="Typo.caption" Color="Color.Error" Class="px-3">@conversationsError</MudText>
+            }
+            else if (conversations.Count == 0)
+            {
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-3">No conversations yet</MudText>
+            }
+            else
+            {
+                @foreach (var conversation in conversations.Take(8))
+                {
+                    <MudNavLink Href="@($"/?conversationId={conversation.Id}")"
+                                Icon="@Icons.Material.Filled.Forum"
+                                Class="nav-conversation-link">
+                        @GetConversationTitle(conversation)
+                    </MudNavLink>
+                }
+            }
         </div>
+    }
         <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-3 nav-build-version"
              title="Application build time">
         Build @BuildTime
@@ -65,7 +67,6 @@
     [CascadingParameter] private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
     private readonly List<ChatConversation> conversations = [];
     private bool isAuthenticated;
-    private string? anonymousAccessKey;
     private bool conversationsLoaded;
     private string? conversationsError;
 
@@ -83,17 +84,8 @@
         try
         {
             isAuthenticated = (await AuthenticationStateTask!).User.Identity?.IsAuthenticated == true;
-            if (!isAuthenticated)
-            {
-                anonymousAccessKey = await JS.InvokeAsync<string?>("localStorage.getItem", "chat-anonymous-access-key");
-                if (string.IsNullOrWhiteSpace(anonymousAccessKey))
-                {
-                    anonymousAccessKey = Guid.NewGuid().ToString("N");
-                    await JS.InvokeVoidAsync("localStorage.setItem", "chat-anonymous-access-key", anonymousAccessKey);
-                }
-            }
-
-            await LoadConversations();
+            if (isAuthenticated)
+                await LoadConversations();
         }
         catch
         {
@@ -113,6 +105,9 @@
 
     private async void OnConversationStateChanged(object? sender, EventArgs args)
     {
+        if (!isAuthenticated)
+            return;
+
         await InvokeAsync(async () =>
         {
             await LoadConversations();
@@ -123,8 +118,7 @@
     private async Task LoadConversations()
     {
         conversations.Clear();
-        conversations.AddRange(await History.GetConversationsAsync(
-            isAuthenticated ? null : anonymousAccessKey));
+        conversations.AddRange(await History.GetConversationsAsync(null));
     }
 
     public void Dispose()
