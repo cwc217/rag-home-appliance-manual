@@ -16,7 +16,12 @@
                 @foreach (var message in Detail.Messages)
                 {
                     <MudPaper Class="pa-3 mb-2" Outlined="true">
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">@message.Role</MudText>
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@message.Role</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @message.CreatedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+                            </MudText>
+                        </MudStack>
                         <MudText Typo="Typo.body2" Class="text-break">@message.Content</MudText>
                     </MudPaper>
                 }
