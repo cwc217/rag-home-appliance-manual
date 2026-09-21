@@ -28,6 +28,9 @@
             <article class="chat-message @(message.Role == ChatMessageRole.User ? "chat-message-user" : "chat-message-assistant")">
                 <MudText Class="sr-only">@(message.Role == ChatMessageRole.User ? "You" : "Assistant")</MudText>
                 <MudPaper Class="chat-bubble pa-3" Elevation="1">@message.Content</MudPaper>
+                <MudText Class="chat-message-time" Typo="Typo.caption">
+                    @message.CreatedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+                </MudText>
                 @if (message.Citations.Count > 0)
                 {
                     <div class="chat-citations">
@@ -164,7 +167,7 @@
         if (history.Count > 0)
         {
             foreach (var message in history)
-                messages.Add(new UiMessage(message.Role, message.Content, message.Citations));
+                messages.Add(new UiMessage(message.Role, message.Content, message.Citations, message.CreatedAtUtc));
             await SaveAnonymousCache(id);
             return;
         }
@@ -183,7 +186,7 @@
         error = null;
         noContext = null;
         var question = form.Question.Trim();
-        messages.Add(new UiMessage(ChatMessageRole.User, question, []));
+        messages.Add(new UiMessage(ChatMessageRole.User, question, [], DateTime.UtcNow));
         form.Question = string.Empty;
         try
         {
@@ -203,7 +206,7 @@
             {
                 noContext = ChatMessages.NoContext(CultureInfo.CurrentUICulture.Name);
                 var noContextCitations = CitationSelector.SelectReferenced(noContext, result.Response.Citations);
-                messages.Add(new UiMessage(ChatMessageRole.Assistant, noContext, noContextCitations));
+                messages.Add(new UiMessage(ChatMessageRole.Assistant, noContext, noContextCitations, DateTime.UtcNow));
                 await History.PersistExchangeAsync(conversationId, question, noContext, noContextCitations,
                     IsAuthenticated ? null : anonymousAccessKey);
                 ConversationState.NotifyChanged();
@@ -211,7 +214,7 @@
                 return;
             }
 
-            var assistant = new UiMessage(ChatMessageRole.Assistant, string.Empty, []);
+            var assistant = new UiMessage(ChatMessageRole.Assistant, string.Empty, [], DateTime.UtcNow);
             messages.Add(assistant);
             await foreach (var token in result.Stream!)
             {
@@ -252,12 +255,21 @@
     }
 
     private sealed class ChatForm { public string Question { get; set; } = string.Empty; }
-    private sealed record CachedMessage(ChatMessageRole Role, string Content, IReadOnlyList<ChatCitation> Citations);
-    private sealed class UiMessage(ChatMessageRole role, string content, IReadOnlyList<ChatCitation> citations)
+    private sealed record CachedMessage(
+        ChatMessageRole Role,
+        string Content,
+        IReadOnlyList<ChatCitation> Citations,
+        DateTime CreatedAtUtc);
+    private sealed class UiMessage(
+        ChatMessageRole role,
+        string content,
+        IReadOnlyList<ChatCitation> citations,
+        DateTime createdAtUtc)
     {
         public ChatMessageRole Role { get; } = role;
         public string Content { get; set; } = content;
         public IReadOnlyList<ChatCitation> Citations { get; set; } = citations;
+        public DateTime CreatedAtUtc { get; } = createdAtUtc;
     }
 
     private async Task SaveAnonymousCache(Guid conversationId)
@@ -265,7 +277,8 @@
         if (IsAuthenticated || string.IsNullOrWhiteSpace(anonymousAccessKey))
             return;
 
-        var cache = messages.Select(x => new CachedMessage(x.Role, x.Content, x.Citations)).ToArray();
+        var cache = messages.Select(x => new CachedMessage(
+            x.Role, x.Content, x.Citations, x.CreatedAtUtc)).ToArray();
         await JS.InvokeVoidAsync("localStorage.setItem", CacheKey(conversationId), JsonSerializer.Serialize(cache));
     }
 
@@ -284,7 +297,8 @@
             return cache.Select(x => new UiMessage(
                 x.Role,
                 x.Content,
-                CitationSelector.SelectReferenced(x.Content, x.Citations))).ToArray();
+                CitationSelector.SelectReferenced(x.Content, x.Citations),
+                x.CreatedAtUtc == default ? DateTime.UtcNow : x.CreatedAtUtc)).ToArray();
         }
         catch (JsonException)
         {

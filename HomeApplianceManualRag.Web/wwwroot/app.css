@@ -145,6 +145,11 @@ body {
     border-radius: 1rem !important;
 }
 
+.chat-message-time {
+    color: #64748b;
+    margin: .25rem .75rem 0;
+}
+
 .chat-message-user .chat-bubble {
     background: #2563eb;
     color: white;
