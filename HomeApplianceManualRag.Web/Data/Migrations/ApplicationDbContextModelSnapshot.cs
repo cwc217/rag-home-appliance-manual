@@ -231,6 +231,12 @@ namespace HomeApplianceManualRag.Web.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("ApplianceCategory")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Brand")
+                        .HasColumnType("text");
+
                     b.Property<string>("ContentType")
                         .IsRequired()
                         .HasColumnType("text");
@@ -248,10 +254,28 @@ namespace HomeApplianceManualRag.Web.Data.Migrations
                     b.Property<DateTime?>("IndexedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Language")
+                        .HasColumnType("text");
+
                     b.Property<string>("LastError")
                         .HasColumnType("text");
 
+                    b.Property<double?>("MetadataConfidence")
+                        .HasColumnType("double precision");
+
+                    b.Property<DateTime?>("MetadataExtractedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("MetadataStatus")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ModelNumber")
+                        .HasColumnType("text");
+
                     b.Property<string>("OwnerUserId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ProductName")
                         .HasColumnType("text");
 
                     b.Property<long>("SizeBytes")
