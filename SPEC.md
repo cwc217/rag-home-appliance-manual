@@ -178,6 +178,10 @@ The application must not claim that an answer is grounded when no chunk was retr
   metrics, plus the latest 10 conversation summaries.
 - `/admin/chat-review`: admin-only table of the latest 20 conversation summaries. Each row
   can open a read-only detail modal containing the ordered messages and their timestamps.
+- User conversation deletion is a soft delete: the conversation and messages remain in the
+  database for administrative review, while deleted conversations are excluded from the
+  owner's conversation list and history. Loading a conversation scrolls the transcript to
+  the newest message.
 - `/my-documents`: authenticated, role-aware document list, upload, status, retry, and
   delete. Normal users see only their own documents and have a three-active quota.
   Admins see all documents with owner information, have unlimited uploads, and can

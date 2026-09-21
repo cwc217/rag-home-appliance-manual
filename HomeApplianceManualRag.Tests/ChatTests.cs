@@ -154,6 +154,22 @@ public sealed class ChatTests
     }
 
     [Fact]
+    public async Task Deleting_conversation_hides_it_but_keeps_database_record()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        var service = new ChatHistoryService(new TestDbFactory(options), new FakeCurrentUser("user-1"));
+        var conversation = await service.CreateConversationAsync();
+
+        await service.DeleteConversationAsync(conversation.Id);
+
+        Assert.Empty(await service.GetConversationsAsync());
+        await using var db = new ApplicationDbContext(options);
+        var retained = await db.Conversations.SingleAsync(x => x.Id == conversation.Id);
+        Assert.NotNull(retained.DeletedAtUtc);
+    }
+
+    [Fact]
     public async Task Anonymous_conversations_are_key_owned_and_expire_after_thirty_days()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()

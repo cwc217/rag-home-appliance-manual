@@ -55,6 +55,7 @@ public sealed class Conversation
     public string Title { get; set; } = "New chat";
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
+    public DateTime? DeletedAtUtc { get; set; }
     public ICollection<ChatMessage> Messages { get; set; } = [];
 }
 

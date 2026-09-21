@@ -15,7 +15,9 @@
   不是真實資料來源。匿名對話按金鑰隔離，清除網站資料後將無法取回。
 - Chat Room 支援建立多個 conversation；管理員可在 `/admin` 查看 users、manuals、indexing
   及最新 10 個 conversations，並在 `/admin/chat-review` 以 table 檢視最新 20 個對話。
-  兩個頁面都可按 `Detail` 在 modal 查看完整 messages 及每個 message 的時間。
+  使用者可在 navbar 的 conversation title 後按 delete；刪除採 soft delete，資料庫保留
+  conversation/messages 供管理及稽核，使用者列表不再顯示。載入 conversation 後會自動捲到最新訊息。
+  兩個管理頁面都可按 `Detail` 在 modal 查看完整 messages 及每個 message 的時間。
 - Retrieval applies the authorized scope and `Ready` status in the PostgreSQL query
   before pgvector cosine ranking. Anonymous visitors use admin/public documents;
   normal users use their own documents; admins use an explicit all-documents scope.

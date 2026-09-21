@@ -1,5 +1,7 @@
 @inject ChatHistoryService History
 @inject ChatConversationState ConversationState
+@inject IDialogService DialogService
+@inject NavigationManager Navigation
 @implements IDisposable
 
 <MudNavMenu Class="pa-3 nav-menu">
@@ -51,11 +53,18 @@
             {
                 @foreach (var conversation in conversations.Take(8))
                 {
-                    <MudNavLink Href="@($"/?conversationId={conversation.Id}")"
-                                Icon="@Icons.Material.Filled.Forum"
-                                Class="nav-conversation-link">
-                        @GetConversationTitle(conversation)
-                    </MudNavLink>
+                    <div class="nav-conversation-row">
+                        <MudNavLink Href="@($"/?conversationId={conversation.Id}")"
+                                    Icon="@Icons.Material.Filled.Forum"
+                                    Class="nav-conversation-link">
+                            @GetConversationTitle(conversation)
+                        </MudNavLink>
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                       Color="Color.Error"
+                                       Size="Size.Small"
+                                       title="@($"Delete conversation {GetConversationTitle(conversation)}")"
+                                       OnClick="@(() => ConfirmDelete(conversation))" />
+                    </div>
                 }
             }
         </div>
@@ -104,6 +113,26 @@
     private async Task NewConversation()
     {
         await OnNavigationRequested.InvokeAsync();
+    }
+
+    private async Task ConfirmDelete(ChatConversation conversation)
+    {
+        var title = GetConversationTitle(conversation);
+        var confirmed = await DialogService.ShowMessageBox(
+            "Delete conversation?",
+            $"Delete \"{title}\"? The conversation will be hidden but retained for records.",
+            yesText: "Delete",
+            cancelText: "Cancel",
+            options: new DialogOptions { CloseOnEscapeKey = true });
+        if (confirmed != true)
+            return;
+
+        await History.DeleteConversationAsync(conversation.Id);
+        conversations.RemoveAll(item => item.Id == conversation.Id);
+        if (Navigation.ToAbsoluteUri(Navigation.Uri).Query.Contains(conversation.Id.ToString(), StringComparison.OrdinalIgnoreCase))
+            Navigation.NavigateTo("/");
+        else
+            await InvokeAsync(StateHasChanged);
     }
 
     private async void OnConversationStateChanged(object? sender, EventArgs args)

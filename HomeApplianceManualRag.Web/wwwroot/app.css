@@ -87,9 +87,20 @@ body {
 }
 
 .nav-conversation-link {
+    flex: 1;
     min-height: 2.5rem;
     padding-left: 2.25rem !important;
     font-size: .9rem;
+}
+
+.nav-conversation-row {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.nav-conversation-row .mud-icon-button {
+    flex: 0 0 auto;
 }
 
 .admin-conversation-messages {

@@ -19,6 +19,12 @@
     <ReconnectModal />
     <script src="@Assets["_framework/blazor.web.js"]"></script>
     <script src="_content/MudBlazor/MudBlazor.min.js"></script>
+    <script>
+        window.chatScrollToLatest = () => {
+            const transcript = document.querySelector('.chat-transcript');
+            if (transcript) transcript.scrollTop = transcript.scrollHeight;
+        };
+    </script>
 </body>
 
 </html>

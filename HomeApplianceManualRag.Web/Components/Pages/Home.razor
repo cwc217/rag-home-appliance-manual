@@ -89,6 +89,7 @@
     private bool busy;
     private bool loadingHistory = true;
     private bool initialized;
+    private bool scrollToLatest;
     private Guid? selectedConversationId;
     private string? anonymousAccessKey;
     private readonly List<ChatConversation> rooms = [];
@@ -119,6 +120,11 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (scrollToLatest)
+        {
+            scrollToLatest = false;
+            await JS.InvokeVoidAsync("chatScrollToLatest");
+        }
         if (!firstRender || initialized) return;
         initialized = true;
         try
@@ -154,7 +160,10 @@
             ? requestedId
             : null;
         if (selectedConversationId is not null)
+        {
             await LoadSelected();
+            scrollToLatest = true;
+        }
     }
 
     private async Task LoadSelected()
@@ -168,6 +177,7 @@
         {
             foreach (var message in history)
                 messages.Add(new UiMessage(message.Role, message.Content, message.Citations, message.CreatedAtUtc));
+            scrollToLatest = true;
             await SaveAnonymousCache(id);
             return;
         }
@@ -216,9 +226,11 @@
 
             var assistant = new UiMessage(ChatMessageRole.Assistant, string.Empty, [], DateTime.UtcNow);
             messages.Add(assistant);
+            scrollToLatest = true;
             await foreach (var token in result.Stream!)
             {
                 assistant.Content += token;
+                scrollToLatest = true;
                 await InvokeAsync(StateHasChanged);
             }
             assistant.Citations = CitationSelector.SelectReferenced(

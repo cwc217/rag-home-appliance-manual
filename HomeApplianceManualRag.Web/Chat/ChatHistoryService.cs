@@ -58,6 +58,16 @@ public sealed class ChatHistoryService(IDbContextFactory<ApplicationDbContext> d
         return new ChatConversation(conversation.Id, conversation.Title, conversation.CreatedAtUtc, conversation.UpdatedAtUtc);
     }
 
+    public async Task DeleteConversationAsync(
+        Guid conversationId, string? anonymousAccessKey = null, CancellationToken ct = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var conversation = await FindOwnedConversation(db, conversationId, anonymousAccessKey, ct)
+            ?? throw new UnauthorizedAccessException("Conversation access denied.");
+        conversation.DeletedAtUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+    }
+
     public async Task PersistExchangeAsync(
         Guid conversationId, string question, string answer, IReadOnlyList<ChatCitation> citations,
         string? anonymousAccessKey = null, CancellationToken ct = default)
@@ -99,9 +109,10 @@ public sealed class ChatHistoryService(IDbContextFactory<ApplicationDbContext> d
 
     private IQueryable<Conversation> OwnedConversations(ApplicationDbContext db, string? key) =>
         currentUser.IsAuthenticated && !string.IsNullOrWhiteSpace(currentUser.UserId)
-            ? db.Conversations.Where(x => x.UserId == currentUser.UserId)
+            ? db.Conversations.Where(x => x.UserId == currentUser.UserId && x.DeletedAtUtc == null)
             : !string.IsNullOrWhiteSpace(key)
-                ? db.Conversations.Where(x => x.UserId == null && x.AnonymousAccessKeyHash == HashKey(key))
+                ? db.Conversations.Where(x => x.UserId == null && x.AnonymousAccessKeyHash == HashKey(key)
+                    && x.DeletedAtUtc == null)
                 : db.Conversations.Where(_ => false);
 
     private async Task<Conversation?> FindOwnedConversation(ApplicationDbContext db, Guid? id, string? key, CancellationToken ct)
