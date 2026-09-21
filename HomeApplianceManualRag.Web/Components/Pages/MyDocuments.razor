@@ -4,6 +4,7 @@
 @inject DocumentService Documents
 @inject ICurrentUser CurrentUser
 @inject DocumentProgressNotifier ProgressNotifier
+@inject IDialogService DialogService
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.AspNetCore.Components
 @implements IAsyncDisposable
@@ -55,7 +56,7 @@
                 <MudButton Variant="Variant.Outlined" Size="Size.Small" Href="@($"/documents/{document.Id}/download")">Download</MudButton>
                 @if (document.Status == DocumentStatus.Failed) { <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="() => Retry(document.Id)" Disabled="@IsBusy(document.Id)">Retry</MudButton> }
                 @if (isAdmin) { <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="() => Reindex(document.Id)" Disabled="@IsBusy(document.Id)">Re-index</MudButton> }
-                <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small" OnClick="() => Delete(document.Id)" Disabled="@IsBusy(document.Id)">Delete</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small" OnClick="() => ConfirmDelete(document)" Disabled="@IsBusy(document.Id)">Delete</MudButton>
             </MudCardActions>
         </MudCard>
     </MudItem>
@@ -123,9 +124,17 @@
     {
         await RunDocumentAction(id, () => Documents.ReindexAsync(id));
     }
-    private async Task Delete(Guid id)
+    private async Task ConfirmDelete(ManualDocument document)
     {
-        await RunDocumentAction(id, () => Documents.DeleteAsync(id));
+        var confirmed = await DialogService.ShowMessageBox(
+            "Delete document?",
+            $"Delete \"{document.DisplayName}\"? This action cannot be undone.",
+            yesText: "Delete",
+            cancelText: "Cancel",
+            options: new DialogOptions { CloseOnEscapeKey = true });
+
+        if (confirmed == true)
+            await RunDocumentAction(document.Id, () => Documents.DeleteAsync(document.Id));
     }
     private async Task RunDocumentAction(Guid id, Func<Task> action)
     {
