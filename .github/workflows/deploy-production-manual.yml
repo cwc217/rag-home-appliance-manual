@@ -18,7 +18,7 @@ jobs:
     environment: production
     timeout-minutes: 30
     env:
-      DEPLOY_ENV_FILE: ${{ github.workspace }}\deployment.env
+      DEPLOY_ENV_FILE: ${{ github.workspace }}/deployment.env
 
     steps:
       - name: Checkout dev
