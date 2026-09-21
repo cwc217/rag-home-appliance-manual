@@ -24,13 +24,13 @@
 </MudPaper>
 @if (!string.IsNullOrWhiteSpace(errorMessage))
 {
-    <MudAlert Severity="Severity.Error">@errorMessage</MudAlert>
+    <MudAlert Severity="Severity.Error" Class="document-error">@errorMessage</MudAlert>
 }
 <MudGrid Spacing="3">
 @foreach (var document in documents)
 {
     <MudItem xs="12" md="6" xl="4">
-        <MudCard Class="h-100">
+        <MudCard Class="h-100 document-card">
             <MudCardContent>
                 <MudText Typo="Typo.h6" Class="text-break">@document.DisplayName</MudText>
                 <MudText Typo="Typo.body2" Class="mb-2">Status: <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(document)">@GetStage(document)</MudChip></MudText>
@@ -44,7 +44,12 @@
                     </MudStack>
                 }
                 @if (isAdmin) { <MudText Typo="Typo.caption" Color="Color.Secondary">Owner: @(document.OwnerEmail ?? "Admin/public")</MudText> }
-                @if (!string.IsNullOrWhiteSpace(document.LastError)) { <MudAlert Severity="Severity.Error" Dense="true" Class="mt-2">@document.LastError</MudAlert> }
+                @if (!string.IsNullOrWhiteSpace(document.LastError))
+                {
+                    <MudAlert Severity="Severity.Error" Dense="true" Class="mt-2 document-error">
+                        <MudText Class="document-error-message">@document.LastError</MudText>
+                    </MudAlert>
+                }
             </MudCardContent>
             <MudCardActions Class="mt-auto">
                 <MudButton Variant="Variant.Outlined" Size="Size.Small" Href="@($"/documents/{document.Id}/download")">Download</MudButton>

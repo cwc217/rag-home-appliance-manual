@@ -203,6 +203,25 @@ body {
     color: white;
 }
 
+.document-card,
+.document-error {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.document-error .mud-alert-message {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.document-error-message {
+    max-height: 7.5rem;
+    overflow: auto;
+    white-space: pre-wrap;
+}
+
 @media (max-width: 576px) {
     .chat-shell {
         width: 100%;
