@@ -113,6 +113,9 @@ namespace HomeApplianceManualRag.Web.Data.Migrations
                     b.Property<int>("Role")
                         .HasColumnType("integer");
 
+                    b.Property<int>("Sequence")
+                        .HasColumnType("integer");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ConversationId", "CreatedAtUtc");

@@ -170,6 +170,40 @@ public sealed class ChatTests
     }
 
     [Fact]
+    public async Task History_orders_user_before_assistant_when_timestamps_match()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        var conversationId = Guid.NewGuid();
+        var timestamp = DateTime.UtcNow;
+        await using (var db = new ApplicationDbContext(options))
+        {
+            db.Conversations.Add(new Conversation { Id = conversationId, UserId = "user-1" });
+            db.ChatMessages.AddRange(
+                new ChatMessage
+                {
+                    ConversationId = conversationId,
+                    Role = ChatMessageRole.Assistant,
+                    Content = "answer",
+                    CreatedAtUtc = timestamp
+                },
+                new ChatMessage
+                {
+                    ConversationId = conversationId,
+                    Role = ChatMessageRole.User,
+                    Content = "question",
+                    CreatedAtUtc = timestamp
+                });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new ChatHistoryService(new TestDbFactory(options), new FakeCurrentUser("user-1"));
+        var history = await service.GetHistoryAsync(conversationId);
+
+        Assert.Equal([ChatMessageRole.User, ChatMessageRole.Assistant], history.Select(x => x.Role));
+    }
+
+    [Fact]
     public async Task Anonymous_conversations_are_key_owned_and_expire_after_thirty_days()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()

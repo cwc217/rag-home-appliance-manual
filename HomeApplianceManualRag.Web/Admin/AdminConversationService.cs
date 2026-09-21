@@ -78,7 +78,9 @@ public sealed class AdminConversationService(
             conversation.UpdatedAtUtc,
             conversation.Messages.Count);
         var messages = conversation.Messages
-            .OrderBy(message => message.CreatedAtUtc)
+            .OrderBy(message => message.Sequence)
+            .ThenBy(message => message.CreatedAtUtc)
+            .ThenBy(message => message.Role)
             .ThenBy(message => message.Id)
             .Select(ChatHistoryService.ToHistoryMessage)
             .ToArray();

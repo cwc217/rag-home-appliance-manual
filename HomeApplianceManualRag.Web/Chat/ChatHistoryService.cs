@@ -37,7 +37,8 @@ public sealed class ChatHistoryService(IDbContextFactory<ApplicationDbContext> d
         if (conversation is null) return [];
         var messages = await db.ChatMessages.AsNoTracking()
             .Where(x => x.ConversationId == conversation.Id)
-            .OrderBy(x => x.CreatedAtUtc).ThenBy(x => x.Id).ToListAsync(ct);
+            .OrderBy(x => x.Sequence).ThenBy(x => x.CreatedAtUtc).ThenBy(x => x.Role).ThenBy(x => x.Id)
+            .ToListAsync(ct);
         return messages.Select(ToHistoryMessage).ToArray();
     }
 
@@ -78,13 +79,18 @@ public sealed class ChatHistoryService(IDbContextFactory<ApplicationDbContext> d
         var conversation = await FindOwnedConversation(db, conversationId, anonymousAccessKey, ct)
             ?? throw new UnauthorizedAccessException("Conversation access denied.");
         var now = DateTime.UtcNow;
+        var nextSequence = (await db.ChatMessages
+            .Where(x => x.ConversationId == conversation.Id)
+            .MaxAsync(x => (int?)x.Sequence, ct) ?? 0) + 1;
         conversation.UpdatedAtUtc = now;
         if (conversation.Title == "New chat")
             conversation.Title = question.Trim().Length > 80 ? question.Trim()[..80] : question.Trim();
         db.ChatMessages.AddRange(
-            new ChatMessage { ConversationId = conversation.Id, Role = ChatMessageRole.User, Content = question.Trim(), CreatedAtUtc = now },
+            new ChatMessage { ConversationId = conversation.Id, Role = ChatMessageRole.User, Content = question.Trim(),
+                Sequence = nextSequence, CreatedAtUtc = now },
             new ChatMessage { ConversationId = conversation.Id, Role = ChatMessageRole.Assistant, Content = answer.Trim(),
-                CitationsJson = JsonSerializer.Serialize(citations), CreatedAtUtc = now.AddTicks(1) });
+                CitationsJson = JsonSerializer.Serialize(citations), Sequence = nextSequence + 1,
+                CreatedAtUtc = now.AddMilliseconds(1) });
         await db.SaveChangesAsync(ct);
     }
 
