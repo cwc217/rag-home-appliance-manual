@@ -28,6 +28,14 @@ public static class CitationSelector
             .Where(citation => answer.Contains(citation.Label, StringComparison.OrdinalIgnoreCase))
             .DistinctBy(citation => (citation.DocumentId, citation.PageNumber))
             .ToArray();
+
+    public static string RemoveMarkers(string answer, IReadOnlyList<ChatCitation> citations)
+    {
+        foreach (var citation in citations)
+            answer = answer.Replace(citation.Label, string.Empty, StringComparison.OrdinalIgnoreCase);
+
+        return answer;
+    }
 }
 
 public sealed record ChatResponse(

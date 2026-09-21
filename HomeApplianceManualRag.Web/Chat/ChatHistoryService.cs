@@ -133,10 +133,17 @@ public sealed class ChatHistoryService(IDbContextFactory<ApplicationDbContext> d
     private static string HashKey(string key) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key)));
 
-    internal static ChatHistoryMessage ToHistoryMessage(ChatMessage message) =>
-        new(message.Role, message.Content, string.IsNullOrWhiteSpace(message.CitationsJson)
-            ? [] : CitationSelector.SelectReferenced(
+    internal static ChatHistoryMessage ToHistoryMessage(ChatMessage message)
+    {
+        IReadOnlyList<ChatCitation> citations = string.IsNullOrWhiteSpace(message.CitationsJson)
+            ? []
+            : CitationSelector.SelectReferenced(
                 message.Content,
-                JsonSerializer.Deserialize<IReadOnlyList<ChatCitation>>(message.CitationsJson) ?? []),
+                JsonSerializer.Deserialize<IReadOnlyList<ChatCitation>>(message.CitationsJson) ?? []);
+        return new ChatHistoryMessage(
+            message.Role,
+            CitationSelector.RemoveMarkers(message.Content, citations).TrimEnd(),
+            citations,
             message.CreatedAtUtc);
+    }
 }

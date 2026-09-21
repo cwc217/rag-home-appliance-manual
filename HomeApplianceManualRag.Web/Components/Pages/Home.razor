@@ -223,6 +223,8 @@
             }
             assistant.Citations = CitationSelector.SelectReferenced(
                 assistant.Content, result.Response.Citations);
+            assistant.Content = CitationSelector.RemoveMarkers(
+                assistant.Content, assistant.Citations).TrimEnd();
             await History.PersistExchangeAsync(conversationId, question, assistant.Content, assistant.Citations,
                 IsAuthenticated ? null : anonymousAccessKey);
             ConversationState.NotifyChanged();
@@ -296,7 +298,9 @@
             var cache = JsonSerializer.Deserialize<CachedMessage[]>(json) ?? [];
             return cache.Select(x => new UiMessage(
                 x.Role,
-                x.Content,
+                CitationSelector.RemoveMarkers(
+                    x.Content,
+                    CitationSelector.SelectReferenced(x.Content, x.Citations)).TrimEnd(),
                 CitationSelector.SelectReferenced(x.Content, x.Citations),
                 x.CreatedAtUtc == default ? DateTime.UtcNow : x.CreatedAtUtc)).ToArray();
         }

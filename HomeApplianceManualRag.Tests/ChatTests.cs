@@ -54,6 +54,21 @@ public sealed class ChatTests
     }
 
     [Fact]
+    public void Citation_markers_are_removed_from_displayed_answer()
+    {
+        var citations = new[]
+        {
+            new ChatCitation(Guid.NewGuid(), "manual.pdf", 16)
+        };
+
+        var answer = CitationSelector.RemoveMarkers(
+            "Turn it off. [manual.pdf, p. 16]",
+            citations);
+
+        Assert.Equal("Turn it off. ", answer);
+    }
+
+    [Fact]
     public void Rate_limiter_rejects_requests_over_configured_limit()
     {
         var limiter = new ChatRateLimiter(Options.Create(new RateLimitingOptions { RequestsPerMinute = 1 }));
