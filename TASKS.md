@@ -7,7 +7,7 @@
 - [x] Create a .NET 10 Blazor Web App using Interactive Server.
 - [x] Add EF Core PostgreSQL provider, ASP.NET Core Identity, pgvector support, PDF text extraction library, Azure OpenAI client abstraction, and test projects.
 - [x] Add Docker Compose PostgreSQL image with pgvector.
-- [x] Add strongly typed options for database, Azure OpenAI, upload limits, retrieval, rate limiting, and seed admin.
+- [x] Add strongly typed options for database, Azure OpenAI, TypeSafe, upload limits, retrieval, rate limiting, and seed admin.
 - [x] Add safe configuration validation at startup; fail clearly for missing production-required settings.
 - [x] Add `.env.example` with placeholders only.
 - [x] Add initial xUnit test project and a deterministic fake chat/embedding provider.
@@ -31,8 +31,9 @@
 - [x] Implement transactional user quota enforcement for active/processing documents.
 - [x] Restrict normal users to one simultaneously progressing document and reject conflicting uploads/retries.
 - [x] Implement document commands: upload, list, delete, retry, and admin re-index.
-- [x] Implement status values `Pending`, `Processing`, `Ready`, `Failed`.
+- [x] Implement status values `Pending`, `Processing`, `Ready`, `Failed`, `Rejected`.
 - [x] Create the role-aware `/my-documents` page with normal-user and admin actions.
+- [x] Classify extracted documents with TypeSafe Jev before chunking/embedding; reject non-manual documents.
 - [ ] Add unit and integration tests for file validation, quota concurrency, ownership, and admin permissions.
 - [x] Add storage cleanup/reconciliation for failures between file and database operations.
 
@@ -42,6 +43,7 @@
 - [x] Add hosted worker with bounded retry and cancellation.
 - [x] Extract text page-by-page from valid PDFs through a Docling parser boundary.
 - [x] Reject empty/textless PDFs with an actionable `Failed` error.
+- [x] Keep long parser and classification errors contained within the document card UI.
 - [x] Implement deterministic configurable chunking with overlap and page metadata.
 - [x] Call Azure embedding through an interface and validate embedding dimensions.
 - [x] Persist chunks atomically for a document version.
@@ -71,7 +73,7 @@
 - [ ] Add browser-culture default and language selector.
 - [ ] Localize navigation, validation, status, errors, empty states, quota messages, and chat states.
 - [ ] Add empty state when no admin document is ready.
-- [x] Add processing progress/status refresh without exposing internal errors or secrets.
+- [x] Add processing progress/status refresh with bounded error details and no secret exposure.
 - [x] Add responsive messaging layout and keyboard-accessible controls.
 - [x] Adopt a shared MudBlazor theme and responsive component-based UI across the application shell and pages.
 - [ ] Add Playwright smoke flows for anonymous, user, and admin journeys.

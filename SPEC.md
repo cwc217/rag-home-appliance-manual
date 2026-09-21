@@ -83,11 +83,15 @@ Pending -> Processing -> Ready
 - Retry is allowed for `Failed` documents by admin or the owning user.
 - The document listing receives server-pushed status updates through the
   Interactive Server circuit while a document is `Pending` or `Processing` and
-  presents stage-based progress (`Queued`, `Processing`, `Ready`, or `Failed`)
+  presents stage-based progress (`Queued`, `Processing`, `Ready`, `Failed`, or
+  `Rejected`)
   with a loading indicator. The initial listing may load all authorized
   documents. A low-frequency refresh is retained as a reconnect fallback, and
   the UI must not claim a numeric percentage unless the worker persists a
   reliable progress metric.
+  Long processing/parser error messages must remain contained within the
+  document card, wrap safely, and use an internal scroll area rather than
+  overflowing the page.
 - Deleting a document must cancel/ignore outstanding work and remove its chunks from retrieval.
 - Store `LastError` for failed processing; do not silently convert failure to an empty document.
 - Indexing jobs carry a document version. Retrying or re-indexing supersedes

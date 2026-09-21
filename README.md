@@ -31,13 +31,17 @@
   (including its owner), have unlimited uploads, and can retry, re-index, or delete
   any document. Uploads are server-validated PDFs (extension, `application/pdf`
   content type, `%PDF-` signature) up to 10 MB and stored beneath `Storage:RootPath`
-  with generated keys. Failed and deleted records do not consume a normal user's
-  quota. A normal user may have only one document in `Pending` or `Processing` at
-  a time; another upload or retry is rejected until it reaches `Ready` or `Failed`.
+  with generated keys. Failed, rejected, and deleted records do not consume a
+  normal user's quota. A normal user may have only one document in `Pending` or
+  `Processing` at a time; another upload or retry is rejected until it reaches
+  `Ready` or `Failed`. A document rejected as a non-manual cannot be retried as
+  a processing failure.
   The listing loads all authorized documents initially, then receives server-pushed
   status updates from the Interactive Server circuit while indexing. A focused
   three-second refresh remains as a reconnect fallback. The page shows a
-  stage-based progress bar with a loading indicator. There is no separate
+  stage-based progress bar with a loading indicator. Processing errors stay
+  inside the document card, wrap long parser/JSON messages, and scroll within a
+  bounded error area instead of expanding the page. There is no separate
   `/admin/documents` route. Phase 2 creates Pending records; indexing is
   intentionally deferred to Phase 3. Upload, delete, retry, and re-index are
   handled by Blazor component events; the protected download route remains a
