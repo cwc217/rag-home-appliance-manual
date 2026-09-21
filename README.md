@@ -142,7 +142,7 @@ Copy-Item .env.example .env
 docker compose up --build
 ```
 
-Open `http://localhost:8080`. The web container waits for PostgreSQL to become healthy and applies EF Core migrations automatically in the Development environment. Stop the stack with `docker compose down`; add `-v` if you also want to remove the PostgreSQL data volume.
+Open `http://localhost:8080`. The web container waits for PostgreSQL to become healthy and applies EF Core migrations automatically before Identity seeding in every environment. Stop the stack with `docker compose down`; add `-v` if you also want to remove the PostgreSQL data volume.
 
 When source code has changed, rebuild and recreate the web container so it
 contains the current Blazor progress-update implementation:
