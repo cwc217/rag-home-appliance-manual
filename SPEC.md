@@ -39,6 +39,10 @@ The selected scope is intentional: after login, a normal user searches only thei
 - Validate extension, declared content type, file signature/magic bytes, and request size on the server.
 - Do not trust the original file name. Generate a storage-safe identifier and retain the display name as metadata.
 - Scanned/image-only PDFs are unsupported in MVP and must reach `Failed` with a user-visible explanation.
+- After text extraction, classify the document as a household appliance manual before
+  chunking or embedding. A high-confidence TypeSafe Jev `appliance_manual`
+  decision continues indexing; other documents reach `Rejected` with a
+  user-visible explanation and do not participate in retrieval.
 
 ### Ownership and quota
 
@@ -58,14 +62,16 @@ The selected scope is intentional: after login, a normal user searches only thei
 ```text
 Pending -> Processing -> Ready
                      \-> Failed
+                     \-> Rejected
 ```
 
 - `Pending`: The document has been uploaded and stored, but background processing has not started.
 - `Processing`: A background worker is extracting text, creating chunks, and generating embeddings.
 - `Ready`: Processing completed successfully and all required chunks and embeddings were persisted. The document is available for retrieval.
 - `Failed`: Processing could not complete. `LastError` stores an actionable failure message, and the document can be retried by the owner or an admin.
-- `Pending`, `Processing`, and `Failed` documents must not participate in retrieval.
-- `Failed` documents do not count toward the normal user's active document quota.
+- `Rejected`: Classification determined that the file is not a supported household appliance manual. `LastError` stores the explanation and the document cannot be retried as a processing failure.
+- `Pending`, `Processing`, `Failed`, and `Rejected` documents must not participate in retrieval.
+- `Failed` and `Rejected` documents do not count toward the normal user's active document quota.
 - During Phase 2, upload writes the original PDF to local storage first, then saves
   the metadata record as `Pending`. Durable queueing and background indexing begin
   in Phase 3.

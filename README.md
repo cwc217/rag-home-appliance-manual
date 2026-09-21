@@ -119,6 +119,7 @@ AzureOpenAI__ApiVersion
 AzureOpenAI__EmbeddingDimensions
 SeedAdmin__Email
 SeedAdmin__Password
+TypeSafe__ApiKey
 ```
 
 `POSTGRES_PASSWORD` is required by PostgreSQL. `POSTGRES_DB` and
@@ -181,11 +182,19 @@ AzureOpenAI__EmbeddingDeployment
 AzureOpenAI__ApiVersion
 SeedAdmin__Email
 SeedAdmin__Password
+TypeSafe__ApiKey
 ```
 
 The workflow creates a temporary deployment env file inside the current
 checkout from the `dev` Environment values. It is recreated on every run,
 passed with `docker compose --env-file`, and is not printed or committed.
+
+After Docling extracts the PDF text, the indexing worker uses TypeSafe Jev to
+classify the document before generating embeddings. Only a high-confidence
+household appliance manual reaches `Ready`; other documents become `Rejected`
+and do not consume active quota or participate in retrieval. A classifier
+outage remains a retryable processing failure. Configure the TypeSafe API key
+as the `TypeSafe__ApiKey` secret in each deployment Environment.
 
 For production deployment, create a GitHub Environment named `production` and
 configure the same variables and secrets there. Pushes to `main` use the

@@ -47,6 +47,7 @@ jobs:
           AZURE_OPENAI_EMBEDDING_DIMENSIONS: ${{ vars.AzureOpenAI__EmbeddingDimensions || '1536' }}
           SEED_ADMIN_EMAIL: ${{ secrets.SeedAdmin__Email }}
           SEED_ADMIN_PASSWORD: ${{ secrets.SeedAdmin__Password }}
+          TYPESAFE_API_KEY: ${{ secrets.TypeSafe__ApiKey }}
         run: |
           $required = @(
             "POSTGRES_PASSWORD",
@@ -59,7 +60,8 @@ jobs:
             "AZURE_OPENAI_API_VERSION",
             "AZURE_OPENAI_EMBEDDING_DIMENSIONS",
             "SEED_ADMIN_EMAIL",
-            "SEED_ADMIN_PASSWORD"
+            "SEED_ADMIN_PASSWORD",
+            "TYPESAFE_API_KEY"
           )
           foreach ($name in $required) {
             if ([string]::IsNullOrWhiteSpace((Get-Item "Env:$name").Value)) {
@@ -78,6 +80,7 @@ jobs:
           AzureOpenAI__EmbeddingDimensions=$env:AZURE_OPENAI_EMBEDDING_DIMENSIONS
           SeedAdmin__Email=$env:SEED_ADMIN_EMAIL
           SeedAdmin__Password=$env:SEED_ADMIN_PASSWORD
+          TypeSafe__ApiKey=$env:TYPESAFE_API_KEY
           "@ | Set-Content -LiteralPath $env:DEPLOY_ENV_FILE -Encoding utf8NoBOM
 
       - name: Verify deployment environment file

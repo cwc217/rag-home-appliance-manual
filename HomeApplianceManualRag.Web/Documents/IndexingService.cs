@@ -41,6 +41,8 @@ public sealed class IndexingPipeline(
     IDocumentParser parser,
     DocumentChunker chunker,
     IEmbeddingProvider embedding,
+    IManualClassifier classifier,
+    IOptions<TypeSafeOptions> typeSafeOptions,
     DocumentProgressNotifier progressNotifier,
     ILogger<IndexingPipeline> logger)
 {
@@ -62,6 +64,11 @@ public sealed class IndexingPipeline(
 
         await using var content = await storage.OpenReadAsync(document.StorageKey, cancellationToken);
         var parsed = await parser.ParseAsync(new DocumentParseRequest(document.Id, document.DisplayName, content, cancellationToken));
+        var classification = await classifier.ClassifyAsync(document.DisplayName, parsed, cancellationToken);
+        if (!classification.IsManual ||
+            classification.Confidence < typeSafeOptions.Value.MinimumConfidence)
+            throw new DocumentRejectedException(
+                "This file does not appear to be a household appliance manual.");
         var drafts = chunker.Chunk(parsed);
         if (drafts.Count == 0)
             throw new DocumentParseException("The document has no extractable text.");
@@ -109,6 +116,8 @@ public sealed class IndexingPipeline(
         logger.LogInformation("Indexed document {DocumentId} with {ChunkCount} chunks.", document.Id, vectors.Count);
     }
 }
+
+public sealed class DocumentRejectedException(string message) : Exception(message);
 
 public sealed class IndexingWorker(
     IServiceScopeFactory scopeFactory,
@@ -159,6 +168,14 @@ public sealed class IndexingWorker(
                 await pipeline.ProcessAsync(job.Id, ct);
             }
             catch (DocumentParseException ex)
+            {
+                await MarkFailureAsync(job.Id, ex, ex.Retryable, ct);
+            }
+            catch (DocumentRejectedException ex)
+            {
+                await MarkRejectedAsync(job.Id, ex, ct);
+            }
+            catch (ManualClassificationException ex)
             {
                 await MarkFailureAsync(job.Id, ex, ex.Retryable, ct);
             }
@@ -238,5 +255,31 @@ public sealed class IndexingWorker(
                 job.Document.LastError));
         }
         logger.LogWarning(exception, "Indexing job {JobId} failed on attempt {Attempt}.", jobId, job.Attempts);
+    }
+
+    private async Task MarkRejectedAsync(Guid jobId, Exception exception, CancellationToken ct)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var factory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<ApplicationDbContext>>();
+        await using var db = await factory.CreateDbContextAsync(ct);
+        var job = await db.IndexingJobs.Include(x => x.Document).SingleOrDefaultAsync(x => x.Id == jobId, ct);
+        if (job is null) return;
+        job.Status = IndexingJobStatus.Failed;
+        job.LastError = exception.Message;
+        job.NextAttemptAtUtc = null;
+        if (job.Document is not null && job.Document.DocumentVersion == job.DocumentVersion)
+        {
+            job.Document.Status = DocumentStatus.Rejected;
+            job.Document.LastError = exception.Message;
+            job.Document.UpdatedAtUtc = DateTime.UtcNow;
+        }
+        await db.SaveChangesAsync(ct);
+        if (job.Document is not null)
+            await progressNotifier.PublishAsync(new(
+                job.Document.Id,
+                job.Document.OwnerUserId,
+                job.Document.Status,
+                job.Document.LastError));
+        logger.LogInformation("Indexing job {JobId} rejected because the document is not a supported manual.", jobId);
     }
 }

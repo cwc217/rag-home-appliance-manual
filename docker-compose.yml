@@ -51,6 +51,9 @@ services:
       Docling__ServiceUrl: http://docling:5001
       Docling__TimeoutSeconds: 300
       Docling__MaxConcurrentJobs: 1
+      TypeSafe__Endpoint: ${TypeSafe__Endpoint:-https://api.typesafe.ai}
+      TypeSafe__ApiKey: ${TypeSafe__ApiKey:-development-placeholder}
+      TypeSafe__Model: ${TypeSafe__Model:-jev-latest}
       ConnectionStrings__Default: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-manuals};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
       AzureOpenAI__Endpoint: ${AzureOpenAI__Endpoint:-https://development.invalid/}
       AzureOpenAI__ApiKey: ${AzureOpenAI__ApiKey:-development-placeholder}

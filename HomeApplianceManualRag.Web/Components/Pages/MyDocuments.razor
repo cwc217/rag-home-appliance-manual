@@ -48,7 +48,7 @@
             </MudCardContent>
             <MudCardActions Class="mt-auto">
                 <MudButton Variant="Variant.Outlined" Size="Size.Small" Href="@($"/documents/{document.Id}/download")">Download</MudButton>
-                @if (IsFailed(document)) { <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="() => Retry(document.Id)" Disabled="@IsBusy(document.Id)">Retry</MudButton> }
+                @if (document.Status == DocumentStatus.Failed) { <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="() => Retry(document.Id)" Disabled="@IsBusy(document.Id)">Retry</MudButton> }
                 @if (isAdmin) { <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="() => Reindex(document.Id)" Disabled="@IsBusy(document.Id)">Re-index</MudButton> }
                 <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small" OnClick="() => Delete(document.Id)" Disabled="@IsBusy(document.Id)">Delete</MudButton>
             </MudCardActions>
@@ -241,13 +241,13 @@
     private static bool IsProcessing(ManualDocument document) =>
         !HasError(document) && (document.Status is DocumentStatus.Pending or DocumentStatus.Processing);
     private static bool IsFailed(ManualDocument document) =>
-        document.Status == DocumentStatus.Failed || HasError(document);
+        document.Status is DocumentStatus.Failed or DocumentStatus.Rejected || HasError(document);
     private static bool IsActive(ManualDocument document) =>
         !HasError(document) && (document.Status is DocumentStatus.Pending or DocumentStatus.Processing or DocumentStatus.Ready);
     private static string GetStage(ManualDocument document)
     {
         if (HasError(document))
-            return "Failed";
+            return document.Status == DocumentStatus.Rejected ? "Rejected" : "Failed";
         return document.Status switch
         {
             DocumentStatus.Pending => "Queued",

@@ -41,6 +41,16 @@ public sealed class DoclingOptions
     [Range(1, 4)] public int MaxConcurrentJobs { get; init; } = 1;
 }
 
+public sealed class TypeSafeOptions
+{
+    public const string SectionName = "TypeSafe";
+    [Required, Url] public string Endpoint { get; init; } = "https://api.typesafe.ai";
+    public string ApiKey { get; init; } = string.Empty;
+    [Required] public string Model { get; init; } = "jev-latest";
+    [Range(0, 1)] public double MinimumConfidence { get; init; } = 0.85;
+    [Range(1, 100000)] public int MaxStateCharacters { get; init; } = 20000;
+}
+
 public sealed class RateLimitingOptions
 {
     public const string SectionName = "RateLimiting";
@@ -78,6 +88,7 @@ public static class ConfigurationValidation
             "ConnectionStrings:Default", "AzureOpenAI:Endpoint", "AzureOpenAI:ApiKey",
             "AzureOpenAI:ChatDeployment", "AzureOpenAI:EmbeddingDeployment",
             "AzureOpenAI:ApiVersion", "AzureOpenAI:EmbeddingDimensions",
+            "TypeSafe:ApiKey",
             "SeedAdmin:Email", "SeedAdmin:Password"
         };
         var missing = required.Where(key => string.IsNullOrWhiteSpace(configuration[key])).ToArray();

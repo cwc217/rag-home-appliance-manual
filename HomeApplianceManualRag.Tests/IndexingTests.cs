@@ -124,6 +124,43 @@ public sealed class IndexingTests
     }
 
     [Fact]
+    public async Task TypeSafe_classifier_reads_choice_and_confidence()
+    {
+        using var client = new HttpClient(new TypeSafeStubHandler("""
+            {
+              "model": "jev-1.13.0",
+              "answers": {
+                "document_type": {
+                  "type": "choice",
+                  "choice": "appliance_manual",
+                  "confidence": 0.94,
+                  "probabilities": {
+                    "appliance_manual": 0.97,
+                    "other_document": 0.03
+                  }
+                }
+              },
+              "usage": { "input_tokens": 10, "output_tokens": 5 }
+            }
+            """))
+        {
+            BaseAddress = new Uri("https://api.typesafe.ai/")
+        };
+        var classifier = new TypeSafeManualClassifier(
+            client,
+            Options.Create(new TypeSafeOptions { ApiKey = "test-key" }));
+
+        var result = await classifier.ClassifyAsync(
+            "washer.pdf",
+            new ParsedDocument(
+                [new ParsedPage(1, [new ParsedBlock("Operating instructions", "text", 0)])],
+                "fixture"));
+
+        Assert.True(result.IsManual);
+        Assert.Equal(0.94, result.Confidence);
+    }
+
+    [Fact]
     public async Task Pipeline_persists_chunks_and_completes_job()
     {
         await using var db = CreateDb();
@@ -154,6 +191,26 @@ public sealed class IndexingTests
 
         Assert.Empty(db.ManualChunks);
         Assert.Equal(DocumentStatus.Processing, document.Status);
+    }
+
+    [Fact]
+    public async Task Pipeline_rejects_non_manual_before_generating_embeddings()
+    {
+        await using var db = CreateDb();
+        var document = NewDocument();
+        var job = NewJob(document);
+        db.AddRange(document, job);
+        await db.SaveChangesAsync();
+        var embedding = new RecordingEmbedding(1536);
+        var pipeline = Pipeline(db, new FixedParser(), embedding,
+            new FixedClassifier(isManual: false, confidence: 0.99));
+
+        await Assert.ThrowsAsync<DocumentRejectedException>(() =>
+            pipeline.ProcessAsync(job.Id, CancellationToken.None));
+
+        Assert.Equal(DocumentStatus.Processing, document.Status);
+        Assert.Empty(db.ManualChunks);
+        Assert.Equal(0, embedding.CallCount);
     }
 
     [Fact]
@@ -198,10 +255,13 @@ public sealed class IndexingTests
     private static IndexingPipeline Pipeline(
         ApplicationDbContext db,
         IDocumentParser parser,
-        IEmbeddingProvider embedding) =>
+        IEmbeddingProvider embedding,
+        IManualClassifier? classifier = null) =>
         new(db, new TestStorage(), parser,
             new DocumentChunker(Options.Create(new RetrievalOptions { ChunkSize = 100, ChunkOverlap = 10 })),
             embedding,
+            classifier ?? new FixedClassifier(isManual: true, confidence: 1),
+            Options.Create(new TypeSafeOptions()),
             new DocumentProgressNotifier(NullLogger<DocumentProgressNotifier>.Instance),
             NullLogger<IndexingPipeline>.Instance);
 
@@ -217,6 +277,26 @@ public sealed class IndexingTests
     {
         public Task<ReadOnlyMemory<float>> EmbedAsync(string text, CancellationToken cancellationToken = default) =>
             Task.FromResult<ReadOnlyMemory<float>>(Enumerable.Repeat(0.1f, dimensions).ToArray());
+    }
+
+    private sealed class RecordingEmbedding(int dimensions) : IEmbeddingProvider
+    {
+        public int CallCount { get; private set; }
+
+        public Task<ReadOnlyMemory<float>> EmbedAsync(string text, CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            return Task.FromResult<ReadOnlyMemory<float>>(Enumerable.Repeat(0.1f, dimensions).ToArray());
+        }
+    }
+
+    private sealed class FixedClassifier(bool isManual, double confidence) : IManualClassifier
+    {
+        public Task<ManualClassificationResult> ClassifyAsync(
+            string displayName,
+            ParsedDocument document,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ManualClassificationResult(isManual, confidence));
     }
 
     private sealed class TestStorage : IFileStorage
@@ -242,6 +322,24 @@ public sealed class IndexingTests
         {
             Assert.Equal(HttpMethod.Post, request.Method);
             Assert.EndsWith("/v1/convert/file", request.RequestUri!.AbsoluteUri, StringComparison.Ordinal);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(JsonDocument.Parse(response).RootElement)
+            });
+        }
+
+    }
+
+    private sealed class TypeSafeStubHandler(string response) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.EndsWith("/v1/systemone", request.RequestUri!.AbsoluteUri, StringComparison.Ordinal);
+            Assert.Equal("Bearer", request.Headers.Authorization?.Scheme);
+            Assert.Equal("test-key", request.Headers.Authorization?.Parameter);
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = JsonContent.Create(JsonDocument.Parse(response).RootElement)

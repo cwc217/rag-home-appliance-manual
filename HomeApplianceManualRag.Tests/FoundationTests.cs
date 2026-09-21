@@ -128,6 +128,7 @@ public sealed class ConfigurationValidationTests
                 ["AzureOpenAI:EmbeddingDeployment"] = "embedding",
                 ["AzureOpenAI:ApiVersion"] = "2024-10-21",
                 ["AzureOpenAI:EmbeddingDimensions"] = "1536",
+                ["TypeSafe:ApiKey"] = "test-typesafe-key",
                 ["SeedAdmin:Email"] = "admin@example.invalid",
                 ["SeedAdmin:Password"] = "strong-test-password"
             })
