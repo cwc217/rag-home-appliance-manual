@@ -202,21 +202,24 @@
             if (!result.Response.HasContext)
             {
                 noContext = ChatMessages.NoContext(CultureInfo.CurrentUICulture.Name);
-                messages.Add(new UiMessage(ChatMessageRole.Assistant, noContext, result.Response.Citations));
-                await History.PersistExchangeAsync(conversationId, question, noContext, result.Response.Citations,
+                var noContextCitations = CitationSelector.SelectReferenced(noContext, result.Response.Citations);
+                messages.Add(new UiMessage(ChatMessageRole.Assistant, noContext, noContextCitations));
+                await History.PersistExchangeAsync(conversationId, question, noContext, noContextCitations,
                     IsAuthenticated ? null : anonymousAccessKey);
                 ConversationState.NotifyChanged();
                 await SaveAnonymousCache(conversationId);
                 return;
             }
 
-            var assistant = new UiMessage(ChatMessageRole.Assistant, string.Empty, result.Response.Citations);
+            var assistant = new UiMessage(ChatMessageRole.Assistant, string.Empty, []);
             messages.Add(assistant);
             await foreach (var token in result.Stream!)
             {
                 assistant.Content += token;
                 await InvokeAsync(StateHasChanged);
             }
+            assistant.Citations = CitationSelector.SelectReferenced(
+                assistant.Content, result.Response.Citations);
             await History.PersistExchangeAsync(conversationId, question, assistant.Content, assistant.Citations,
                 IsAuthenticated ? null : anonymousAccessKey);
             ConversationState.NotifyChanged();
@@ -254,7 +257,7 @@
     {
         public ChatMessageRole Role { get; } = role;
         public string Content { get; set; } = content;
-        public IReadOnlyList<ChatCitation> Citations { get; } = citations;
+        public IReadOnlyList<ChatCitation> Citations { get; set; } = citations;
     }
 
     private async Task SaveAnonymousCache(Guid conversationId)
@@ -278,7 +281,10 @@
         try
         {
             var cache = JsonSerializer.Deserialize<CachedMessage[]>(json) ?? [];
-            return cache.Select(x => new UiMessage(x.Role, x.Content, x.Citations)).ToArray();
+            return cache.Select(x => new UiMessage(
+                x.Role,
+                x.Content,
+                CitationSelector.SelectReferenced(x.Content, x.Citations))).ToArray();
         }
         catch (JsonException)
         {

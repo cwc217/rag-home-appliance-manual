@@ -19,6 +19,17 @@ public sealed record ChatCitation(Guid DocumentId, string DocumentName, int Page
     public string Label => $"[{DocumentName}, p. {PageNumber}]";
 }
 
+public static class CitationSelector
+{
+    public static IReadOnlyList<ChatCitation> SelectReferenced(
+        string answer,
+        IReadOnlyList<ChatCitation> candidates) =>
+        candidates
+            .Where(citation => answer.Contains(citation.Label, StringComparison.OrdinalIgnoreCase))
+            .DistinctBy(citation => (citation.DocumentId, citation.PageNumber))
+            .ToArray();
+}
+
 public sealed record ChatResponse(
     IReadOnlyList<RetrievedChunk> Context,
     IReadOnlyList<ChatCitation> Citations,

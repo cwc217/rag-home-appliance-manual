@@ -9,7 +9,7 @@
 - 登入後的普通 user 只能查詢自己上載的 PDF 手冊。
 - Admin 可上載不限數量的 PDF；每份最多 10 MB，admin 可查看、刪除及重新索引。
 - User 最多有 3 份 active/processing 文件；failed 文件不佔額，刪除後可補位。
-- 回覆使用 streaming，顯示文件名稱及頁碼 citations；找不到答案時必須明確表示不知道。
+- 回覆使用 streaming；完成後只顯示回答實際引用且已由檢索內容驗證的文件名稱及頁碼 citations；找不到答案時必須明確表示不知道。
 - 登入使用者的問答會儲存於自己的 conversation/message history，並按時間順序重載；
   anonymous chat 也會在伺服器保存 30 天；瀏覽器 localStorage 只保存匿名存取金鑰及 UI cache，
   不是真實資料來源。匿名對話按金鑰隔離，清除網站資料後將無法取回。

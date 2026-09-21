@@ -135,5 +135,8 @@ public sealed class ChatHistoryService(IDbContextFactory<ApplicationDbContext> d
 
     internal static ChatHistoryMessage ToHistoryMessage(ChatMessage message) =>
         new(message.Role, message.Content, string.IsNullOrWhiteSpace(message.CitationsJson)
-            ? [] : JsonSerializer.Deserialize<IReadOnlyList<ChatCitation>>(message.CitationsJson) ?? [], message.CreatedAtUtc);
+            ? [] : CitationSelector.SelectReferenced(
+                message.Content,
+                JsonSerializer.Deserialize<IReadOnlyList<ChatCitation>>(message.CitationsJson) ?? []),
+            message.CreatedAtUtc);
 }

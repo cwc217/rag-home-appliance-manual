@@ -23,6 +23,37 @@ public sealed class ChatTests
     }
 
     [Fact]
+    public void Citation_selector_keeps_only_valid_citations_referenced_by_answer()
+    {
+        var documentId = Guid.NewGuid();
+        var candidates = new[]
+        {
+            new ChatCitation(documentId, "manual.pdf", 16),
+            new ChatCitation(documentId, "manual.pdf", 12),
+            new ChatCitation(Guid.NewGuid(), "other.pdf", 3)
+        };
+
+        var selected = CitationSelector.SelectReferenced(
+            "Reset the appliance as described [manual.pdf, p. 16]. [manual.pdf, p. 16].",
+            candidates);
+
+        var citation = Assert.Single(selected);
+        Assert.Equal("[manual.pdf, p. 16]", citation.Label);
+    }
+
+    [Fact]
+    public void Citation_selector_ignores_untrusted_or_missing_markers()
+    {
+        var candidates = new[]
+        {
+            new ChatCitation(Guid.NewGuid(), "manual.pdf", 16)
+        };
+
+        Assert.Empty(CitationSelector.SelectReferenced(
+            "See [other.pdf, p. 16] and page 16.", candidates));
+    }
+
+    [Fact]
     public void Rate_limiter_rejects_requests_over_configured_limit()
     {
         var limiter = new ChatRateLimiter(Options.Create(new RateLimitingOptions { RequestsPerMinute = 1 }));

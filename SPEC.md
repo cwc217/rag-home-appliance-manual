@@ -161,7 +161,7 @@ The application must not claim that an answer is grounded when no chunk was retr
 - Anonymous users see the public/admin scope.
 - Authenticated normal users see their own scope.
 - Responses stream to the UI.
-- Each answer displays citations with manual name and page number.
+- Each answer displays only manual/page citations explicitly present in the completed answer and validated against the retrieved context.
 - The browser UI state is scoped to the current page/session and is not persisted across
   devices. Authenticated conversation messages are persisted server-side for the owning
   user; anonymous conversation messages are persisted server-side for 30 days and remain
