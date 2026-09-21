@@ -194,6 +194,11 @@ Only the web service is exposed on host port `8501`; PostgreSQL, Docling, and
 Adminer have no host port mappings. The web container runs with
 `ASPNETCORE_ENVIRONMENT=Production`.
 
+The `Deploy Dev to Production` workflow is manual-only. Run it from the
+Actions tab to deploy the current `dev` branch to the production host without
+changing or pushing anything to `main`. It uses the same `production`
+Environment and `self-hosted`/`qnap` runner labels.
+
 To inspect the PostgreSQL database with Adminer, opt in to the `tools` profile:
 
 ```powershell
