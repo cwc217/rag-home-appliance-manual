@@ -72,6 +72,10 @@ Pending -> Processing -> Ready
 - `Rejected`: Classification determined that the file is not a supported household appliance manual. `LastError` stores the explanation and the document cannot be retried as a processing failure.
 - `Pending`, `Processing`, `Failed`, and `Rejected` documents must not participate in retrieval.
 - `Failed` and `Rejected` documents do not count toward the normal user's active document quota.
+- Accepted manuals extract minimum catalog metadata (`ProductName`,
+  `ApplianceCategory`, `Brand`, `ModelNumber`, and `Language`) before
+  chunking. Metadata extraction records confidence, timestamp, and status;
+  extraction failure must not prevent normal RAG indexing.
 - During Phase 2, upload writes the original PDF to local storage first, then saves
   the metadata record as `Pending`. Durable queueing and background indexing begin
   in Phase 3.

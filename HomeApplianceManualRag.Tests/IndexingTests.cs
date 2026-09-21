@@ -161,6 +161,32 @@ public sealed class IndexingTests
     }
 
     [Fact]
+    public async Task Metadata_extractor_parses_structured_response_and_prioritizes_first_pages()
+    {
+        var extractor = new AzureOpenAiManualMetadataExtractor(
+            new FixedChatProvider("""
+                Here is the result:
+                {"productName":"Smart Washer","applianceCategory":"Washing Machine","brand":"Acme","modelNumber":"AC-100","language":"en","confidence":0.93}
+                """),
+            Options.Create(new MetadataExtractionOptions { MinimumConfidence = 0.85 }),
+            NullLogger<AzureOpenAiManualMetadataExtractor>.Instance);
+
+        var result = await extractor.ExtractAsync(
+            "washer.pdf",
+            new ParsedDocument(
+                [
+                    new ParsedPage(1, [new ParsedBlock("Acme Smart Washer AC-100", "text", 0)]),
+                    new ParsedPage(20, [new ParsedBlock("Operating instructions", "text", 0)])
+                ],
+                "fixture"));
+
+        Assert.Equal("Acme", result.Brand);
+        Assert.Equal("AC-100", result.ModelNumber);
+        Assert.Equal(MetadataExtractionStatus.Completed, result.Status);
+        Assert.Equal(0.93, result.Confidence);
+    }
+
+    [Fact]
     public async Task Pipeline_persists_chunks_and_completes_job()
     {
         await using var db = CreateDb();
@@ -261,6 +287,7 @@ public sealed class IndexingTests
             new DocumentChunker(Options.Create(new RetrievalOptions { ChunkSize = 100, ChunkOverlap = 10 })),
             embedding,
             classifier ?? new FixedClassifier(isManual: true, confidence: 1),
+            new FixedMetadataExtractor(),
             Options.Create(new TypeSafeOptions()),
             new DocumentProgressNotifier(NullLogger<DocumentProgressNotifier>.Instance),
             NullLogger<IndexingPipeline>.Instance);
@@ -297,6 +324,34 @@ public sealed class IndexingTests
             ParsedDocument document,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(new ManualClassificationResult(isManual, confidence));
+    }
+
+    private sealed class FixedMetadataExtractor : IManualMetadataExtractor
+    {
+        public Task<ManualMetadataExtractionResult> ExtractAsync(
+            string displayName,
+            ParsedDocument document,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ManualMetadataExtractionResult(
+                "Test appliance",
+                "Other",
+                "Test brand",
+                "TEST-1",
+                "en",
+                1,
+                MetadataExtractionStatus.Completed));
+    }
+
+    private sealed class FixedChatProvider(string response) : IChatProvider
+    {
+        public async IAsyncEnumerable<string> StreamAsync(
+            string prompt,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await Task.Yield();
+            yield return response;
+        }
     }
 
     private sealed class TestStorage : IFileStorage

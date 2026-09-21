@@ -42,6 +42,7 @@ public sealed class IndexingPipeline(
     DocumentChunker chunker,
     IEmbeddingProvider embedding,
     IManualClassifier classifier,
+    IManualMetadataExtractor metadataExtractor,
     IOptions<TypeSafeOptions> typeSafeOptions,
     DocumentProgressNotifier progressNotifier,
     ILogger<IndexingPipeline> logger)
@@ -69,6 +70,16 @@ public sealed class IndexingPipeline(
             classification.Confidence < typeSafeOptions.Value.MinimumConfidence)
             throw new DocumentRejectedException(
                 "This file does not appear to be a household appliance manual.");
+        var metadata = await metadataExtractor.ExtractAsync(
+            document.DisplayName, parsed, cancellationToken);
+        document.ProductName = metadata.ProductName;
+        document.ApplianceCategory = metadata.ApplianceCategory;
+        document.Brand = metadata.Brand;
+        document.ModelNumber = metadata.ModelNumber;
+        document.Language = metadata.Language;
+        document.MetadataConfidence = metadata.Confidence;
+        document.MetadataStatus = metadata.Status;
+        document.MetadataExtractedAtUtc = DateTime.UtcNow;
         var drafts = chunker.Chunk(parsed);
         if (drafts.Count == 0)
             throw new DocumentParseException("The document has no extractable text.");

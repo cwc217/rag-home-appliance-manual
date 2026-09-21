@@ -34,6 +34,7 @@
 - [x] Implement status values `Pending`, `Processing`, `Ready`, `Failed`, `Rejected`.
 - [x] Create the role-aware `/my-documents` page with normal-user and admin actions.
 - [x] Classify extracted documents with TypeSafe Jev before chunking/embedding; reject non-manual documents.
+- [x] Extract minimum appliance metadata with structured Azure OpenAI output and persist extraction confidence/status.
 - [ ] Add unit and integration tests for file validation, quota concurrency, ownership, and admin permissions.
 - [x] Add storage cleanup/reconciliation for failures between file and database operations.
 

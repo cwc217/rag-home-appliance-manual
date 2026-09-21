@@ -73,6 +73,8 @@ public sealed class ChatMessage
 
 public enum DocumentStatus { Pending, Processing, Ready, Failed, Rejected }
 
+public enum MetadataExtractionStatus { Pending, Completed, NeedsReview, Failed }
+
 public enum IndexingJobStatus { Pending, Processing, Completed, Failed }
 
 public sealed class IndexingJob
@@ -120,6 +122,14 @@ public sealed class ManualDocument
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime? IndexedAtUtc { get; set; }
     public Guid DocumentVersion { get; set; } = Guid.NewGuid();
+    public string? ProductName { get; set; }
+    public string? ApplianceCategory { get; set; }
+    public string? Brand { get; set; }
+    public string? ModelNumber { get; set; }
+    public string? Language { get; set; }
+    public double? MetadataConfidence { get; set; }
+    public DateTime? MetadataExtractedAtUtc { get; set; }
+    public MetadataExtractionStatus MetadataStatus { get; set; } = MetadataExtractionStatus.Pending;
     public ICollection<ManualChunk> Chunks { get; set; } = [];
 }
 

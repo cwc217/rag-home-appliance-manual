@@ -200,6 +200,12 @@ and do not consume active quota or participate in retrieval. A classifier
 outage remains a retryable processing failure. Configure the TypeSafe API key
 as the `TypeSafe__ApiKey` secret in each deployment Environment.
 
+For accepted manuals, Azure OpenAI extracts the minimum appliance metadata
+(`ProductName`, `ApplianceCategory`, `Brand`, `ModelNumber`, and `Language`)
+from the first pages and metadata-related pages before chunking. The result
+stores its confidence, extraction timestamp, and `MetadataStatus`; a failed or
+low-confidence metadata extraction does not prevent normal document indexing.
+
 For production deployment, create a GitHub Environment named `production` and
 configure the same variables and secrets there. Pushes to `main` use the
 `self-hosted` runner with the `qnap` label and the production Compose override.

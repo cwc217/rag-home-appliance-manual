@@ -51,6 +51,13 @@ public sealed class TypeSafeOptions
     [Range(1, 100000)] public int MaxStateCharacters { get; init; } = 20000;
 }
 
+public sealed class MetadataExtractionOptions
+{
+    public const string SectionName = "MetadataExtraction";
+    [Range(1, 100000)] public int MaxSourceCharacters { get; init; } = 12000;
+    [Range(0, 1)] public double MinimumConfidence { get; init; } = 0.85;
+}
+
 public sealed class RateLimitingOptions
 {
     public const string SectionName = "RateLimiting";

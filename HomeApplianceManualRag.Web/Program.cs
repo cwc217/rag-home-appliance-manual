@@ -26,6 +26,10 @@ builder.Services.AddOptions<UploadOptions>().BindConfiguration(UploadOptions.Sec
 builder.Services.AddOptions<RetrievalOptions>().BindConfiguration(RetrievalOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<DoclingOptions>().BindConfiguration(DoclingOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<TypeSafeOptions>().BindConfiguration(TypeSafeOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
+builder.Services.AddOptions<MetadataExtractionOptions>()
+    .BindConfiguration(MetadataExtractionOptions.SectionName)
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
 builder.Services.AddHttpClient<DoclingHttpParser>((serviceProvider, client) =>
 {
     var options = serviceProvider.GetRequiredService<IOptions<DoclingOptions>>().Value;
@@ -67,6 +71,7 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy(ApplicationPolicies.RegisteredUser, policy => policy.RequireAuthenticatedUser());
 });
 builder.Services.AddScoped<IChatProvider, AzureOpenAiChatProvider>();
+builder.Services.AddScoped<IManualMetadataExtractor, AzureOpenAiManualMetadataExtractor>();
 builder.Services.AddScoped<IEmbeddingProvider, AzureOpenAiEmbeddingProvider>();
 builder.Services.AddScoped<ManualRetriever>();
 builder.Services.AddScoped<ChatService>();
