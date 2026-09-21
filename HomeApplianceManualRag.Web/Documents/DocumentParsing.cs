@@ -112,6 +112,8 @@ public sealed class DoclingHttpParser(
         AddItems(content, "texts", blocksByPage, "text");
         AddItems(content, "tables", blocksByPage, "table");
         AddItems(content, "pictures", blocksByPage, "picture");
+        foreach (var page in blocksByPage.Values)
+            RemoveDuplicateBlocks(page);
         return new ParsedDocument(
             blocksByPage.Select(page => new ParsedPage(page.Key, page.Value)).ToArray(),
             content.TryGetProperty("version", out var version) && version.ValueKind == JsonValueKind.String
@@ -157,10 +159,124 @@ public sealed class DoclingHttpParser(
     {
         foreach (var name in new[] { "text", "orig", "exported" })
             if (item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String &&
-                !string.IsNullOrWhiteSpace(value.GetString()))
+                !string.IsNullOrWhiteSpace(value.GetString()) &&
+                !string.Equals(value.GetString(), $"[{blockType}]", StringComparison.OrdinalIgnoreCase))
                 return value.GetString()!.Trim();
+        if (string.Equals(blockType, "table", StringComparison.OrdinalIgnoreCase))
+        {
+            var tableText = GetStructuredTableText(item);
+            if (!string.IsNullOrWhiteSpace(tableText))
+                return tableText;
+        }
         return $"[{blockType}]";
     }
+
+    private static string? GetStructuredTableText(JsonElement item)
+    {
+        if (!item.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object)
+            data = item;
+
+        foreach (var propertyName in new[] { "table_cells", "cells" })
+        {
+            if (data.TryGetProperty(propertyName, out var cells) && cells.ValueKind == JsonValueKind.Array)
+            {
+                var rows = ReadTableCells(cells);
+                if (rows.Count > 0)
+                    return FormatTable(rows);
+            }
+        }
+
+        if (data.TryGetProperty("grid", out var grid) && grid.ValueKind == JsonValueKind.Array)
+        {
+            var rows = new List<IReadOnlyList<string>>();
+            foreach (var row in grid.EnumerateArray())
+            {
+                if (row.ValueKind != JsonValueKind.Array)
+                    continue;
+                var values = row.EnumerateArray()
+                    .Select(cell => GetCellText(cell))
+                    .Where(text => !string.IsNullOrWhiteSpace(text))
+                    .Select(text => text!)
+                    .ToArray();
+                if (values.Length > 0)
+                    rows.Add(values);
+            }
+            if (rows.Count > 0)
+                return FormatTable(rows);
+        }
+
+        return null;
+    }
+
+    private static List<IReadOnlyList<string>> ReadTableCells(JsonElement cells)
+    {
+        var positioned = new List<(int Row, int Column, string Text)>();
+        var fallbackRow = 0;
+        foreach (var cell in cells.EnumerateArray())
+        {
+            var text = GetCellText(cell);
+            if (string.IsNullOrWhiteSpace(text))
+                continue;
+
+            var row = GetInteger(cell, "start_row_offset_idx")
+                ?? GetInteger(cell, "row_idx")
+                ?? GetInteger(cell, "row")
+                ?? fallbackRow;
+            var column = GetInteger(cell, "start_col_offset_idx")
+                ?? GetInteger(cell, "col_idx")
+                ?? GetInteger(cell, "column")
+                ?? 0;
+            positioned.Add((row, column, text));
+            fallbackRow = row;
+        }
+
+        return positioned
+            .GroupBy(cell => cell.Row)
+            .OrderBy(row => row.Key)
+            .Select(row => (IReadOnlyList<string>)row
+                .OrderBy(cell => cell.Column)
+                .Select(cell => cell.Text)
+                .ToArray())
+            .ToList();
+    }
+
+    private static string? GetCellText(JsonElement cell)
+    {
+        if (cell.ValueKind == JsonValueKind.String)
+            return NormalizeWhitespace(cell.GetString());
+        if (cell.ValueKind != JsonValueKind.Object)
+            return null;
+
+        foreach (var propertyName in new[] { "text", "orig", "exported", "value" })
+            if (cell.TryGetProperty(propertyName, out var value) &&
+                value.ValueKind == JsonValueKind.String &&
+                !string.IsNullOrWhiteSpace(value.GetString()))
+                return NormalizeWhitespace(value.GetString());
+        return null;
+    }
+
+    private static int? GetInteger(JsonElement element, string propertyName) =>
+        element.TryGetProperty(propertyName, out var value) && value.TryGetInt32(out var result)
+            ? result
+            : null;
+
+    private static string FormatTable(IEnumerable<IReadOnlyList<string>> rows) =>
+        "[Table]\n" + string.Join('\n', rows.Select(row => string.Join(" | ", row)));
+
+    private static void RemoveDuplicateBlocks(List<ParsedBlock> blocks)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        blocks.RemoveAll(block =>
+        {
+            var normalized = NormalizeWhitespace(block.Text);
+            var key = $"{block.BlockType}\n{normalized}";
+            return string.IsNullOrWhiteSpace(normalized) || !seen.Add(key);
+        });
+    }
+
+    private static string NormalizeWhitespace(string? value) =>
+        string.Join(' ', (value ?? string.Empty)
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
     private static string TrimError(JsonElement value)
     {

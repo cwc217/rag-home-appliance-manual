@@ -124,6 +124,55 @@ public sealed class IndexingTests
     }
 
     [Fact]
+    public async Task Docling_parser_maps_structured_table_cells_and_removes_duplicate_blocks()
+    {
+        using var client = new HttpClient(new StubHandler("""
+            {
+              "status": "success",
+              "document": {
+                "json_content": {
+                  "version": "1.8.0",
+                  "texts": [
+                    { "label": "section_header", "text": "故障檢修", "prov": [{ "page_no": 18 }] },
+                    { "label": "section_header", "text": "故障檢修", "prov": [{ "page_no": 18 }] }
+                  ],
+                  "tables": [
+                    {
+                      "label": "table",
+                      "data": {
+                        "table_cells": [
+                          { "text": "診斷顯示", "start_row_offset_idx": 0, "start_col_offset_idx": 0 },
+                          { "text": "異常/保護控制", "start_row_offset_idx": 0, "start_col_offset_idx": 1 },
+                          { "text": "H 11", "start_row_offset_idx": 1, "start_col_offset_idx": 0 },
+                          { "text": "室內/室外異常通訊", "start_row_offset_idx": 1, "start_col_offset_idx": 1 }
+                        ]
+                      },
+                      "prov": [{ "page_no": 18 }]
+                    }
+                  ]
+                }
+              },
+              "errors": []
+            }
+            """))
+        {
+            BaseAddress = new Uri("http://docling:5001/")
+        };
+        var parser = new DoclingHttpParser(
+            client,
+            Options.Create(new DoclingOptions { ServiceUrl = "http://docling:5001" }));
+
+        var result = await parser.ParseAsync(new(
+            Guid.NewGuid(), "manual.pdf", new MemoryStream([1, 2, 3])));
+        var blocks = result.Pages.Single().Blocks;
+
+        Assert.Equal(2, blocks.Count);
+        Assert.Single(blocks, block => block.Text == "故障檢修");
+        Assert.Contains("[Table]", blocks[1].Text, StringComparison.Ordinal);
+        Assert.Contains("H 11 | 室內/室外異常通訊", blocks[1].Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task TypeSafe_classifier_reads_choice_and_confidence()
     {
         using var client = new HttpClient(new TypeSafeStubHandler("""
