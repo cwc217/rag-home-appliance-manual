@@ -70,6 +70,7 @@ run the application in the `Development` environment:
 | Visual Studio `http` profile | `http://localhost:5170` | `Development` | Disabled |
 | Visual Studio `https` profile | `https://localhost:7151` | `Development` | Enabled |
 | Docker Compose `web` service | `http://localhost:8080` | `Development` | Disabled by Compose |
+| Production Docker Compose `web` service | `http://localhost:8501` | `Production` | Disabled by Compose |
 
 If no launch profile or environment variable is selected, ASP.NET Core defaults
 to the `Production` environment. The Compose file explicitly sets
@@ -185,6 +186,13 @@ SeedAdmin__Password
 The workflow creates a temporary deployment env file inside the current
 checkout from the `dev` Environment values. It is recreated on every run,
 passed with `docker compose --env-file`, and is not printed or committed.
+
+For production deployment, create a GitHub Environment named `production` and
+configure the same variables and secrets there. Pushes to `main` use the
+`self-hosted` runner with the `qnap` label and the production Compose override.
+Only the web service is exposed on host port `8501`; PostgreSQL, Docling, and
+Adminer have no host port mappings. The web container runs with
+`ASPNETCORE_ENVIRONMENT=Production`.
 
 To inspect the PostgreSQL database with Adminer, opt in to the `tools` profile:
 
