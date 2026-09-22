@@ -125,9 +125,11 @@ Pending -> Processing -> Ready
 10. Mark the document `Ready` only when all required chunks are embedded and
     persisted. A stale or deleted job must not reintroduce chunks.
 
-Phase 3 remains PDF-only. Docling's DOCX, image, and OCR capabilities are
-reserved for later parser adapters after resource limits and user-facing
-failure behavior are validated.
+Phase 3 remains PDF-only. The parser requests Docling embedded picture
+artifacts and keeps bounded image bytes in memory alongside page provenance;
+the bytes are not persisted and are not yet sent to OCR or Vision. Docling's
+DOCX, image, and OCR capabilities are reserved for later parser adapters after
+resource limits and user-facing failure behavior are validated.
 
 The exact chunk size and overlap may be tuned during implementation, but must be configuration values and covered by unit tests. A chunk must never lose its source page metadata.
 

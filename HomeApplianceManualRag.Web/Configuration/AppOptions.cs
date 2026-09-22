@@ -39,6 +39,9 @@ public sealed class DoclingOptions
     [Required, Url] public string ServiceUrl { get; init; } = "http://docling:5001";
     [Range(1, 3600)] public int TimeoutSeconds { get; init; } = 300;
     [Range(1, 4)] public int MaxConcurrentJobs { get; init; } = 1;
+    public bool IncludeImages { get; init; } = true;
+    [Range(1, 50 * 1024 * 1024)] public int MaxEmbeddedImageBytes { get; init; } = 5 * 1024 * 1024;
+    [Range(0.1, 10)] public double ImagesScale { get; init; } = 2;
 }
 
 public sealed class TypeSafeOptions

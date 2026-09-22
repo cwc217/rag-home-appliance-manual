@@ -15,12 +15,15 @@ public sealed record ParsedDocument(IReadOnlyList<ParsedPage> Pages, string Pars
 
 public sealed record ParsedPage(int PageNumber, IReadOnlyList<ParsedBlock> Blocks);
 
+public sealed record ParsedImage(byte[] Data, string MimeType);
+
 public sealed record ParsedBlock(
     string Text,
     string BlockType,
     int Order,
     string? HeadingPath = null,
-    string? SourceReference = null);
+    string? SourceReference = null,
+    ParsedImage? Image = null);
 
 public sealed class DocumentParseException(string message, bool retryable = false, Exception? inner = null)
     : InvalidOperationException(message, inner)
@@ -50,6 +53,9 @@ public sealed class DoclingHttpParser(
         form.Add(new StringContent("false"), "do_ocr");
         form.Add(new StringContent("true"), "do_table_structure");
         form.Add(new StringContent("true"), "do_pdf_heading_hierarchy");
+        form.Add(new StringContent("embedded"), "image_export_mode");
+        form.Add(new StringContent(options.Value.IncludeImages ? "true" : "false"), "include_images");
+        form.Add(new StringContent(options.Value.ImagesScale.ToString(System.Globalization.CultureInfo.InvariantCulture)), "images_scale");
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(request.CancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(options.Value.TimeoutSeconds));
@@ -81,7 +87,7 @@ public sealed class DoclingHttpParser(
                 throw new DocumentParseException(
                     $"Docling failed to parse the document: {TrimError(parsed.Errors)}");
 
-            var result = ToParsedDocument(parsed.Document);
+            var result = ToParsedDocument(parsed.Document, options.Value.MaxEmbeddedImageBytes);
             if (result.Pages.Count == 0 || result.Pages.All(x => x.Blocks.All(block => string.IsNullOrWhiteSpace(block.Text))))
                 throw new DocumentParseException("The document has no extractable text.");
             return result;
@@ -101,7 +107,7 @@ public sealed class DoclingHttpParser(
         }
     }
 
-    private static ParsedDocument ToParsedDocument(JsonElement document)
+    private static ParsedDocument ToParsedDocument(JsonElement document, int maxEmbeddedImageBytes)
     {
         if (document.ValueKind != JsonValueKind.Object ||
             !document.TryGetProperty("json_content", out var content) ||
@@ -111,7 +117,7 @@ public sealed class DoclingHttpParser(
         var blocksByPage = new SortedDictionary<int, List<ParsedBlock>>();
         AddItems(content, "texts", blocksByPage, "text");
         AddItems(content, "tables", blocksByPage, "table");
-        AddItems(content, "pictures", blocksByPage, "picture");
+        AddItems(content, "pictures", blocksByPage, "picture", maxEmbeddedImageBytes);
         foreach (var page in blocksByPage.Values)
             RemoveDuplicateBlocks(page);
         return new ParsedDocument(
@@ -125,7 +131,8 @@ public sealed class DoclingHttpParser(
         JsonElement content,
         string propertyName,
         SortedDictionary<int, List<ParsedBlock>> blocksByPage,
-        string defaultBlockType)
+        string defaultBlockType,
+        int maxEmbeddedImageBytes = 0)
     {
         if (!content.TryGetProperty(propertyName, out var items) || items.ValueKind != JsonValueKind.Array)
             return;
@@ -136,6 +143,9 @@ public sealed class DoclingHttpParser(
             if (!item.TryGetProperty("prov", out var provenance) || provenance.ValueKind != JsonValueKind.Array)
                 continue;
             var text = GetText(item, defaultBlockType);
+            var image = string.Equals(defaultBlockType, "picture", StringComparison.OrdinalIgnoreCase)
+                ? GetEmbeddedImage(item, maxEmbeddedImageBytes)
+                : null;
             foreach (var proof in provenance.EnumerateArray())
             {
                 if (!proof.TryGetProperty("page_no", out var page) || !page.TryGetInt32(out var pageNumber) || pageNumber < 1)
@@ -150,7 +160,7 @@ public sealed class DoclingHttpParser(
                                   blockType.Contains("title", StringComparison.OrdinalIgnoreCase)
                     ? text
                     : null;
-                blocks.Add(new ParsedBlock(text, blockType, order++, headingPath, $"page:{pageNumber}"));
+                blocks.Add(new ParsedBlock(text, blockType, order++, headingPath, $"page:{pageNumber}", image));
             }
         }
     }
@@ -206,6 +216,42 @@ public sealed class DoclingHttpParser(
         }
 
         return null;
+    }
+
+    private static ParsedImage? GetEmbeddedImage(JsonElement item, int maxBytes)
+    {
+        if (!item.TryGetProperty("image", out var image) ||
+            image.ValueKind != JsonValueKind.Object ||
+            !image.TryGetProperty("uri", out var uri) ||
+            uri.ValueKind != JsonValueKind.String)
+            return null;
+
+        var value = uri.GetString();
+        if (string.IsNullOrWhiteSpace(value) ||
+            !value.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var separator = value.IndexOf(";base64,", StringComparison.OrdinalIgnoreCase);
+        if (separator <= "data:".Length)
+            return null;
+
+        var mimeType = value["data:".Length..separator];
+        var encoded = value[(separator + ";base64,".Length)..];
+        if (string.IsNullOrWhiteSpace(mimeType) || string.IsNullOrWhiteSpace(encoded))
+            return null;
+
+        try
+        {
+            var estimatedBytes = encoded.Length * 3L / 4;
+            if (estimatedBytes > maxBytes)
+                return null;
+            var bytes = Convert.FromBase64String(encoded);
+            return bytes.Length <= maxBytes ? new ParsedImage(bytes, mimeType) : null;
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
     }
 
     private static List<IReadOnlyList<string>> ReadTableCells(JsonElement cells)

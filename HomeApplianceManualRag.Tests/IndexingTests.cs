@@ -173,6 +173,51 @@ public sealed class IndexingTests
     }
 
     [Fact]
+    public async Task Docling_parser_extracts_embedded_picture_data_without_persisting_it()
+    {
+        var imageData = Convert.ToBase64String([1, 2, 3, 4]);
+        using var client = new HttpClient(new StubHandler($$"""
+            {
+              "status": "success",
+              "document": {
+                "json_content": {
+                  "version": "1.10.0",
+                  "texts": [
+                    { "label": "text", "text": "Operating instructions", "prov": [{ "page_no": 1 }] }
+                  ],
+                  "pictures": [
+                    {
+                      "label": "picture",
+                      "image": {
+                        "uri": "data:image/png;base64,{{imageData}}",
+                        "mimetype": "image/png"
+                      },
+                      "prov": [{ "page_no": 1 }]
+                    }
+                  ]
+                }
+              },
+              "errors": []
+            }
+            """))
+        {
+            BaseAddress = new Uri("http://docling:5001/")
+        };
+        var parser = new DoclingHttpParser(
+            client,
+            Options.Create(new DoclingOptions { ServiceUrl = "http://docling:5001" }));
+
+        var result = await parser.ParseAsync(new(
+            Guid.NewGuid(), "manual.pdf", new MemoryStream([1, 2, 3])));
+
+        var picture = Assert.Single(result.Pages.Single().Blocks, block => block.BlockType == "picture");
+        Assert.Equal("[picture]", picture.Text);
+        Assert.NotNull(picture.Image);
+        Assert.Equal("image/png", picture.Image!.MimeType);
+        Assert.Equal([1, 2, 3, 4], picture.Image.Data);
+    }
+
+    [Fact]
     public async Task TypeSafe_classifier_reads_choice_and_confidence()
     {
         using var client = new HttpClient(new TypeSafeStubHandler("""

@@ -259,18 +259,25 @@ The web parser uses:
 Docling:ServiceUrl = http://docling:5001
 Docling:TimeoutSeconds = 300
 Docling:MaxConcurrentJobs = 1
+Docling:IncludeImages = true
+Docling:MaxEmbeddedImageBytes = 5242880
+Docling:ImagesScale = 2
 ```
 
 The service exposes `/v1/convert/file`; the web parser requests JSON output
-with PDF OCR disabled for the current PDF-only phase. If scanned-document OCR
-is required later, add it as an explicit parser configuration and validate its
-resource and failure behavior.
+with PDF OCR disabled and `image_export_mode=embedded`. Picture elements are
+decoded from their `data:` URI into bounded, in-memory `ParsedImage` values;
+image bytes are not persisted in PostgreSQL. Oversized or malformed image
+payloads are ignored while the page/block provenance remains available. If
+scanned-document OCR is required later, add it as an explicit parser
+configuration and validate its resource and failure behavior.
 
 The JSON contract is intentionally application-owned: each page contains
 ordered blocks with `text`, `blockType`, `headingPath`, and optional
 `sourceReference`. Markdown export can be used for diagnostics, but indexing
 must consume structured output so citations never have to be reconstructed from
-rendered Markdown. DOCX, image inputs, and OCR remain future parser adapters.
+rendered Markdown. Image analysis/OCR is not yet part of indexing; the retained
+in-memory image contract is the input boundary for the next analyzer adapter.
 
 ## Repository conventions
 
