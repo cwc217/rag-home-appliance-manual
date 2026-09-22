@@ -39,13 +39,13 @@
                 <MudTd DataLabel="Conversation">
                     <MudText Typo="Typo.body2" Class="text-break">@context.Title</MudText>
                     <MudText Typo="Typo.caption" Color="Color.Secondary">
-                        Created @context.CreatedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+                        Created @DateTimeDisplay.FormatUtcPlusEight(context.CreatedAtUtc)
                     </MudText>
                 </MudTd>
                 <MudTd DataLabel="Owner">@context.Owner</MudTd>
                 <MudTd DataLabel="Messages">@context.MessageCount</MudTd>
                 <MudTd DataLabel="Updated">
-                    @context.UpdatedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+                    @DateTimeDisplay.FormatUtcPlusEight(context.UpdatedAtUtc)
                 </MudTd>
                 <MudTd DataLabel="Actions">
                     <MudButton Size="Size.Small" Variant="Variant.Text"

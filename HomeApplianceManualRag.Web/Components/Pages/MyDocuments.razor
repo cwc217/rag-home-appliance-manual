@@ -323,7 +323,7 @@
             _ => Color.Warning
         };
     private static string FormatDate(DateTime value) =>
-        value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+        DateTimeDisplay.FormatUtcPlusEight(value);
     public async ValueTask DisposeAsync()
     {
         progressSubscription?.Dispose();

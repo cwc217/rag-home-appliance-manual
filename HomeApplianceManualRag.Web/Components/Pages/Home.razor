@@ -29,7 +29,7 @@
                 <MudText Class="sr-only">@(message.Role == ChatMessageRole.User ? "You" : "Assistant")</MudText>
                 <MudPaper Class="chat-bubble pa-3" Elevation="1">@message.Content</MudPaper>
                 <MudText Class="chat-message-time" Typo="Typo.caption">
-                    @message.CreatedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+                    @DateTimeDisplay.FormatUtcPlusEight(message.CreatedAtUtc)
                 </MudText>
                 @if (message.Citations.Count > 0)
                 {

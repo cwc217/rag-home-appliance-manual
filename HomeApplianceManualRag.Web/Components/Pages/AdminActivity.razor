@@ -48,7 +48,7 @@
                     <MudTh>Details</MudTh>
                 </HeaderContent>
                 <RowTemplate>
-                    <MudTd DataLabel="When">@context.CreatedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</MudTd>
+                    <MudTd DataLabel="When">@DateTimeDisplay.FormatUtcPlusEight(context.CreatedAtUtc, includeSeconds: true)</MudTd>
                     <MudTd DataLabel="Activity">@context.ActivityType</MudTd>
                     <MudTd DataLabel="User">
                         @(context.UserEmail ?? (context.UserId is null

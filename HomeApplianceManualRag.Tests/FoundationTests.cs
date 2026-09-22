@@ -1,3 +1,4 @@
+using HomeApplianceManualRag.Web;
 using HomeApplianceManualRag.Web.Configuration;
 using HomeApplianceManualRag.Web.Data;
 using HomeApplianceManualRag.Web.Providers;
@@ -13,6 +14,23 @@ namespace HomeApplianceManualRag.Tests;
 
 public sealed class ConfigurationValidationTests
 {
+    [Fact]
+    public void Date_time_display_uses_fixed_utc_plus_eight_offset()
+    {
+        var value = new DateTime(2026, 9, 22, 9, 38, 59, DateTimeKind.Utc);
+
+        Assert.Equal("2026-09-22 17:38 UTC+8", DateTimeDisplay.FormatUtcPlusEight(value));
+        Assert.Equal("2026-09-22 17:38:59 UTC+8", DateTimeDisplay.FormatUtcPlusEight(value, includeSeconds: true));
+    }
+
+    [Fact]
+    public void Date_time_display_treats_unspecified_values_as_utc()
+    {
+        var value = new DateTime(2026, 9, 22, 23, 30, 0, DateTimeKind.Unspecified);
+
+        Assert.Equal("2026-09-23 07:30 UTC+8", DateTimeDisplay.FormatUtcPlusEight(value));
+    }
+
     [Fact]
     public void Identity_roles_and_policies_are_fixed()
     {

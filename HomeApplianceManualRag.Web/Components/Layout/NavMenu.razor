@@ -180,9 +180,7 @@
             if (timestamp == DateTime.MinValue)
                 return "unknown";
 
-            var localTime = new DateTimeOffset(timestamp, TimeSpan.Zero)
-                .ToOffset(TimeSpan.FromHours(8));
-            return localTime.ToString("yyyy-MM-dd HH:mm 'UTC+8'");
+            return DateTimeDisplay.FormatUtcPlusEight(timestamp);
         }
     }
 }

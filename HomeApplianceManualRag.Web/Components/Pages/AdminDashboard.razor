@@ -102,7 +102,7 @@
                                 </MudTd>
                                 <MudTd DataLabel="Owner">@context.Owner</MudTd>
                                 <MudTd DataLabel="Updated">
-                                    @context.UpdatedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+                                    @DateTimeDisplay.FormatUtcPlusEight(context.UpdatedAtUtc)
                                 </MudTd>
                                 <MudTd DataLabel="Actions">
                                     <MudButton Size="Size.Small" Variant="Variant.Text"

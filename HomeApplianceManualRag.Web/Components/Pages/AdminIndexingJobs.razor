@@ -151,7 +151,7 @@
         : Math.Min(indexingPage.PageNumber * PageSize, indexingPage.TotalCount);
 
     private static string FormatDate(DateTime value) =>
-        value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+        DateTimeDisplay.FormatUtcPlusEight(value);
 
     private static Color GetStatusColor(IndexingJobStatus status) => status switch
     {

@@ -9,7 +9,7 @@
                 <MudChip T="string" Size="Size.Small">@Detail.Summary.Owner</MudChip>
             </MudStack>
             <MudText Typo="Typo.caption" Color="Color.Secondary">
-                Updated @Detail.Summary.UpdatedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+                Updated @DateTimeDisplay.FormatUtcPlusEight(Detail.Summary.UpdatedAtUtc)
             </MudText>
             <MudDivider />
             <div class="admin-conversation-messages">
@@ -19,7 +19,7 @@
                         <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
                             <MudText Typo="Typo.caption" Color="Color.Secondary">@message.Role</MudText>
                             <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                @message.CreatedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+                                @DateTimeDisplay.FormatUtcPlusEight(message.CreatedAtUtc)
                             </MudText>
                         </MudStack>
                         <MudText Typo="Typo.body2" Class="text-break">@message.Content</MudText>
