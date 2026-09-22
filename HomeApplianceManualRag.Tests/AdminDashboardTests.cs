@@ -1,7 +1,10 @@
 using HomeApplianceManualRag.Web.Admin;
+using HomeApplianceManualRag.Web.Activity;
 using HomeApplianceManualRag.Web.Configuration;
 using HomeApplianceManualRag.Web.Data;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using System.Net;
 
 namespace HomeApplianceManualRag.Tests;
 
@@ -197,6 +200,60 @@ public sealed class AdminDashboardTests
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(
             () => service.GetPageAsync(1, 20));
+    }
+
+    [Fact]
+    public async Task Activity_log_records_safe_request_context_details()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        var httpContext = new DefaultHttpContext();
+        httpContext.Connection.RemoteIpAddress = IPAddress.Parse("192.0.2.10");
+        httpContext.Request.Headers.UserAgent = new string('a', 600);
+        var service = new ActivityLogService(
+            new TestDbFactory(options),
+            new FakeCurrentUser(isAdmin: false),
+            new HttpContextAccessor { HttpContext = httpContext });
+
+        await service.RecordAsync(
+            ActivityTypes.LoginFailed,
+            metadata: new { Reason = "invalid_credentials" });
+
+        await using var db = new ApplicationDbContext(options);
+        var activity = Assert.Single(db.UserActivities);
+        Assert.Equal(ActivityTypes.LoginFailed, activity.ActivityType);
+        Assert.Equal("192.0.2.10", activity.IpAddress);
+        Assert.Equal("Connection", activity.IpAddressSource);
+        Assert.Equal(512, activity.UserAgent!.Length);
+        Assert.Contains("invalid_credentials", activity.MetadataJson);
+    }
+
+    [Fact]
+    public async Task Activity_page_returns_newest_events_for_admin()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        await using (var db = new ApplicationDbContext(options))
+        {
+            db.UserActivities.Add(new UserActivity
+            {
+                ActivityType = ActivityTypes.LoginSucceeded,
+                UserId = "user-1",
+                CreatedAtUtc = DateTime.UtcNow
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new AdminActivityService(
+            new TestDbFactory(options),
+            new FakeCurrentUser(isAdmin: true));
+
+        var page = await service.GetPageAsync(1, 20);
+
+        Assert.Equal(1, page.TotalCount);
+        Assert.Equal(ActivityTypes.LoginSucceeded, Assert.Single(page.Items).ActivityType);
     }
 
     private sealed class FakeCurrentUser(bool isAdmin) : ICurrentUser

@@ -10,6 +10,7 @@ using HomeApplianceManualRag.Web.Resources;
 using HomeApplianceManualRag.Web.Documents;
 using HomeApplianceManualRag.Web.Chat;
 using HomeApplianceManualRag.Web.Admin;
+using HomeApplianceManualRag.Web.Activity;
 using MudBlazor.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -84,6 +85,8 @@ builder.Services.AddScoped<ChatService>();
 builder.Services.AddScoped<ChatHistoryService>();
 builder.Services.AddScoped<AdminDashboardService>();
 builder.Services.AddScoped<AdminUserService>();
+builder.Services.AddScoped<ActivityLogService>();
+builder.Services.AddScoped<AdminActivityService>();
 builder.Services.AddScoped<AdminIndexingJobService>();
 builder.Services.AddScoped<AdminConversationService>();
 builder.Services.AddScoped<ChatConversationState>();
@@ -142,6 +145,8 @@ app.UseAntiforgery();
 app.MapPost("/account/login", async (
     HttpContext context,
     SignInManager<ApplicationUser> signInManager,
+    UserManager<ApplicationUser> userManager,
+    ActivityLogService activityLog,
     [FromForm] string? email,
     [FromForm] string? password,
     [FromForm] string? returnUrl,
@@ -152,7 +157,14 @@ app.MapPost("/account/login", async (
         return Results.Redirect($"/login?error={Uri.EscapeDataString(IdentityMessages.Required("Email and password", culture))}");
     var result = await signInManager.PasswordSignInAsync(email, password, isPersistent: false, lockoutOnFailure: false);
     if (result.Succeeded)
+    {
+        var user = await userManager.FindByEmailAsync(email);
+        await activityLog.RecordAsync(ActivityTypes.LoginSucceeded, userId: user?.Id);
         return Results.LocalRedirect(IsSafeLocalReturnUrl(returnUrl) ? returnUrl! : "/");
+    }
+    await activityLog.RecordAsync(
+        ActivityTypes.LoginFailed,
+        metadata: new { Succeeded = result.Succeeded, LockedOut = result.IsLockedOut });
     return Results.Redirect($"/login?error={Uri.EscapeDataString(IdentityMessages.InvalidCredentials(culture))}");
 }).AllowAnonymous();
 
@@ -160,6 +172,7 @@ app.MapPost("/account/register", async (
     HttpContext context,
     UserManager<ApplicationUser> userManager,
     SignInManager<ApplicationUser> signInManager,
+    ActivityLogService activityLog,
     [FromForm] string? email,
     [FromForm] string? password,
     [FromForm] string? confirmPassword,
@@ -184,12 +197,18 @@ app.MapPost("/account/register", async (
         return Results.Redirect($"/register?error={Uri.EscapeDataString(IdentityMessages.RegistrationFailed(culture))}");
     }
     await signInManager.SignInAsync(user, isPersistent: false);
+    await activityLog.RecordAsync(ActivityTypes.UserRegistered, userId: user.Id);
     return Results.Redirect("/");
 }).AllowAnonymous();
 
-app.MapPost("/account/logout", async (SignInManager<ApplicationUser> signInManager) =>
+app.MapPost("/account/logout", async (
+    SignInManager<ApplicationUser> signInManager,
+    ICurrentUser currentUser,
+    ActivityLogService activityLog) =>
 {
+    var userId = currentUser.UserId;
     await signInManager.SignOutAsync();
+    await activityLog.RecordAsync(ActivityTypes.Logout, userId: userId);
     return Results.Redirect("/");
 }).RequireAuthorization(ApplicationPolicies.RegisteredUser);
 

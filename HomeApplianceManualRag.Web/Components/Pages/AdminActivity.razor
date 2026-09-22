@@ -1,0 +1,135 @@
+@page "/admin/activity"
+@attribute [Authorize(Policy = ApplicationPolicies.AdminOnly)]
+@using HomeApplianceManualRag.Web.Admin
+@inject AdminActivityService Activities
+
+<PageTitle>User activity</PageTitle>
+
+<MudStack Spacing="3">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <div>
+            <MudText Typo="Typo.h4">User activity</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Review sign-in and account activity. Sensitive values are not stored.
+            </MudText>
+        </div>
+        <MudButton Href="/admin" Variant="Variant.Outlined"
+                   StartIcon="@Icons.Material.Filled.ArrowBack">Dashboard</MudButton>
+    </MudStack>
+
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+        <MudTextField @bind-Value="activityType" Label="Activity type"
+                      Variant="Variant.Outlined" Margin="Margin.Dense" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.FilterAlt"
+                   OnClick="FilterAsync">Filter</MudButton>
+    </MudStack>
+
+    @if (activityPage is null && errorMessage is null)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+    else if (errorMessage is not null)
+    {
+        <MudAlert Severity="Severity.Error">@errorMessage</MudAlert>
+    }
+    else if (activityPage is not null)
+    {
+        <MudPaper Class="pa-0" Elevation="1">
+            <MudTable T="AdminActivityRow" Items="@activityPage.Items" Dense="true" Hover="true"
+                      Breakpoint="Breakpoint.Sm" Loading="@loading">
+                <HeaderContent>
+                    <MudTh>When</MudTh>
+                    <MudTh>Activity</MudTh>
+                    <MudTh>User</MudTh>
+                    <MudTh>Target</MudTh>
+                    <MudTh>IP address</MudTh>
+                    <MudTh>Details</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="When">@context.CreatedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</MudTd>
+                    <MudTd DataLabel="Activity">@context.ActivityType</MudTd>
+                    <MudTd DataLabel="User">
+                        @(context.UserEmail ?? (context.UserId is null ? "Anonymous" : context.UserId))
+                    </MudTd>
+                    <MudTd DataLabel="Target">
+                        @(context.TargetType is null ? "—" : $"{context.TargetType}/{context.TargetId}")
+                    </MudTd>
+                    <MudTd DataLabel="IP address">@(context.IpAddress ?? "Unavailable")</MudTd>
+                    <MudTd DataLabel="Details">
+                        @if (!string.IsNullOrWhiteSpace(context.MetadataJson))
+                        {
+                            <MudText Typo="Typo.caption" Class="text-break">@context.MetadataJson</MudText>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">—</MudText>
+                        }
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText Class="pa-4" Color="Color.Secondary">No activity found.</MudText>
+                </NoRecordsContent>
+            </MudTable>
+        </MudPaper>
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                Showing @GetFirstItem()–@GetLastItem() of @activityPage.TotalCount events
+            </MudText>
+            <MudPagination Count="@PageCount" Selected="@pageNumber"
+                           SelectedChanged="LoadPageAsync" Color="Color.Primary"
+                           BoundaryCount="1" />
+        </MudStack>
+    }
+</MudStack>
+
+@code {
+    private const int PageSize = 25;
+    private AdminActivityPage? activityPage;
+    private string? activityType;
+    private string? errorMessage;
+    private bool loading;
+    private int pageNumber = 1;
+
+    protected override async Task OnInitializedAsync() => await LoadPageAsync(1);
+
+    private async Task FilterAsync() => await LoadPageAsync(1);
+
+    private async Task LoadPageAsync(int selectedPage)
+    {
+        if (selectedPage < 1)
+            return;
+
+        loading = true;
+        errorMessage = null;
+        try
+        {
+            activityPage = await Activities.GetPageAsync(selectedPage, PageSize, activityType);
+            pageNumber = activityPage.PageNumber;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            errorMessage = "Administrator access is required.";
+        }
+        catch (Exception)
+        {
+            errorMessage = "Activity data is temporarily unavailable.";
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private int PageCount => activityPage is null || activityPage.TotalCount == 0
+        ? 1
+        : (int)Math.Ceiling(activityPage.TotalCount / (double)PageSize);
+
+    private int GetFirstItem() => activityPage is null || activityPage.TotalCount == 0
+        ? 0
+        : ((activityPage.PageNumber - 1) * PageSize) + 1;
+
+    private int GetLastItem() => activityPage is null
+        ? 0
+        : Math.Min(activityPage.PageNumber * PageSize, activityPage.TotalCount);
+}

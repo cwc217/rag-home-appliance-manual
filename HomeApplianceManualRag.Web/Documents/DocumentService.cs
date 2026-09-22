@@ -1,5 +1,6 @@
 using HomeApplianceManualRag.Web.Configuration;
 using HomeApplianceManualRag.Web.Data;
+using HomeApplianceManualRag.Web.Activity;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -15,7 +16,8 @@ public sealed class DocumentService(
     ApplicationDbContext db,
     ICurrentUser currentUser,
     PdfValidator validator,
-    IFileStorage storage)
+    IFileStorage storage,
+    ActivityLogService? activityLog = null)
 {
     private static readonly DocumentStatus[] ActiveStatuses = [DocumentStatus.Pending, DocumentStatus.Processing, DocumentStatus.Ready];
 
@@ -54,6 +56,12 @@ public sealed class DocumentService(
             await db.SaveChangesAsync(cancellationToken);
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);
+            if (activityLog is not null)
+                await activityLog.RecordAsync(
+                    ActivityTypes.DocumentUploaded,
+                    "ManualDocument",
+                    document.Id.ToString(),
+                    new { document.DisplayName, document.SizeBytes });
             return document;
         }
         catch (Exception databaseException) when (storageWriteStarted)
@@ -146,6 +154,12 @@ public sealed class DocumentService(
         document.DeletionReason = "Deleted by user";
         document.UpdatedAtUtc = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+        if (activityLog is not null)
+            await activityLog.RecordAsync(
+                ActivityTypes.DocumentSoftDeleted,
+                "ManualDocument",
+                document.Id.ToString(),
+                new { document.DeletionReason });
     }
 
     public async Task RestoreAsync(Guid id, CancellationToken ct = default)
@@ -161,6 +175,11 @@ public sealed class DocumentService(
         document.DeletionReason = null;
         document.UpdatedAtUtc = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+        if (activityLog is not null)
+            await activityLog.RecordAsync(
+                ActivityTypes.DocumentRestored,
+                "ManualDocument",
+                document.Id.ToString());
     }
 
     public async Task HardDeleteAsync(Guid id, CancellationToken ct = default)
@@ -192,6 +211,12 @@ public sealed class DocumentService(
         cleanup.Status = StorageCleanupStatus.Completed;
         cleanup.CompletedAtUtc = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+        if (activityLog is not null)
+            await activityLog.RecordAsync(
+                ActivityTypes.DocumentHardDeleted,
+                "ManualDocument",
+                document.Id.ToString(),
+                new { document.DisplayName });
     }
 
     public async Task<(ManualDocument Document, Stream Content)> OpenReadAsync(Guid id, CancellationToken ct = default)
@@ -214,6 +239,11 @@ public sealed class DocumentService(
         await CancelOutstandingJobsAsync(document.Id, ct);
         db.IndexingJobs.Add(CreateIndexingJob(document));
         await db.SaveChangesAsync(ct);
+        if (activityLog is not null)
+            await activityLog.RecordAsync(
+                ActivityTypes.DocumentRetried,
+                "ManualDocument",
+                document.Id.ToString());
     }
 
     public async Task ReindexAsync(Guid id, CancellationToken ct = default)
@@ -229,6 +259,11 @@ public sealed class DocumentService(
         await CancelOutstandingJobsAsync(document.Id, ct);
         db.IndexingJobs.Add(CreateIndexingJob(document));
         await db.SaveChangesAsync(ct);
+        if (activityLog is not null)
+            await activityLog.RecordAsync(
+                ActivityTypes.DocumentReindexed,
+                "ManualDocument",
+                document.Id.ToString());
     }
 
     private static IndexingJob CreateIndexingJob(ManualDocument document) => new()

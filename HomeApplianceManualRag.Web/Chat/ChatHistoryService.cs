@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using HomeApplianceManualRag.Web.Data;
 using HomeApplianceManualRag.Web.Configuration;
+using HomeApplianceManualRag.Web.Activity;
 using Microsoft.EntityFrameworkCore;
 
 namespace HomeApplianceManualRag.Web.Chat;
@@ -15,7 +16,10 @@ public sealed record ChatHistoryMessage(
 
 public sealed record ChatConversation(Guid Id, string Title, DateTime CreatedAtUtc, DateTime UpdatedAtUtc);
 
-public sealed class ChatHistoryService(IDbContextFactory<ApplicationDbContext> dbFactory, ICurrentUser currentUser)
+public sealed class ChatHistoryService(
+    IDbContextFactory<ApplicationDbContext> dbFactory,
+    ICurrentUser currentUser,
+    ActivityLogService? activityLog = null)
 {
     public async Task<IReadOnlyList<ChatConversation>> GetConversationsAsync(
         string? anonymousAccessKey = null, CancellationToken ct = default)
@@ -56,6 +60,11 @@ public sealed class ChatHistoryService(IDbContextFactory<ApplicationDbContext> d
         };
         db.Conversations.Add(conversation);
         await db.SaveChangesAsync(ct);
+        if (activityLog is not null)
+            await activityLog.RecordAsync(
+                ActivityTypes.ConversationCreated,
+                "Conversation",
+                conversation.Id.ToString());
         return new ChatConversation(conversation.Id, conversation.Title, conversation.CreatedAtUtc, conversation.UpdatedAtUtc);
     }
 
@@ -67,6 +76,11 @@ public sealed class ChatHistoryService(IDbContextFactory<ApplicationDbContext> d
             ?? throw new UnauthorizedAccessException("Conversation access denied.");
         conversation.DeletedAtUtc = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+        if (activityLog is not null)
+            await activityLog.RecordAsync(
+                ActivityTypes.ConversationDeleted,
+                "Conversation",
+                conversation.Id.ToString());
     }
 
     public async Task PersistExchangeAsync(
@@ -92,6 +106,12 @@ public sealed class ChatHistoryService(IDbContextFactory<ApplicationDbContext> d
                 CitationsJson = JsonSerializer.Serialize(citations), Sequence = nextSequence + 1,
                 CreatedAtUtc = now.AddMilliseconds(1) });
         await db.SaveChangesAsync(ct);
+        if (activityLog is not null)
+            await activityLog.RecordAsync(
+                ActivityTypes.ChatExchangePersisted,
+                "Conversation",
+                conversation.Id.ToString(),
+                new { QuestionLength = question.Length, AnswerLength = answer.Length });
     }
 
     public async Task PersistExchangeAsync(string question, string answer, IReadOnlyList<ChatCitation> citations,

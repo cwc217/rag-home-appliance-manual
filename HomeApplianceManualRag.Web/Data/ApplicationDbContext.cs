@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Pgvector;
 using System.ComponentModel.DataAnnotations.Schema;
+using HomeApplianceManualRag.Web.Activity;
 
 namespace HomeApplianceManualRag.Web.Data;
 
@@ -16,6 +17,7 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<StorageCleanup> StorageCleanups => Set<StorageCleanup>();
     public DbSet<Conversation> Conversations => Set<Conversation>();
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
+    public DbSet<UserActivity> UserActivities => Set<UserActivity>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -32,6 +34,8 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
         builder.Entity<Conversation>().HasIndex(x => x.UserId);
         builder.Entity<Conversation>().HasIndex(x => x.AnonymousAccessKeyHash);
         builder.Entity<ChatMessage>().HasIndex(x => new { x.ConversationId, x.CreatedAtUtc });
+        builder.Entity<UserActivity>().HasIndex(x => new { x.CreatedAtUtc, x.ActivityType });
+        builder.Entity<UserActivity>().HasIndex(x => x.UserId);
         builder.Entity<Conversation>()
             .HasMany(x => x.Messages)
             .WithOne(x => x.Conversation)
