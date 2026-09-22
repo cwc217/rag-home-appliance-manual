@@ -22,6 +22,7 @@
                 <MudNavLink Href="/my-documents" Icon="@Icons.Material.Filled.Description">My documents</MudNavLink>
                 <AuthorizeView Roles="@ApplicationRoles.Admin" Context="adminContext">
                     <MudNavLink Href="/admin/chat-review" Icon="@Icons.Material.Filled.Visibility">Chat review</MudNavLink>
+                    <MudNavLink Href="/admin/indexing-jobs" Icon="@Icons.Material.Filled.Work">Indexing jobs</MudNavLink>
                 </AuthorizeView>
                 <form method="post" action="/account/logout">
                     <AntiforgeryToken />

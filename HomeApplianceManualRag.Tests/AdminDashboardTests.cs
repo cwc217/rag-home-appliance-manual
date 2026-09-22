@@ -99,6 +99,47 @@ public sealed class AdminDashboardTests
         Assert.Equal(["Question", "Answer"], detail.Messages.Select(message => message.Content));
     }
 
+    [Fact]
+    public async Task Indexing_job_page_returns_newest_jobs_and_total_count()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        var firstDocument = new ManualDocument { DisplayName = "first.pdf" };
+        var secondDocument = new ManualDocument { DisplayName = "second.pdf" };
+        await using (var db = new ApplicationDbContext(options))
+        {
+            db.ManualDocuments.AddRange(firstDocument, secondDocument);
+            db.IndexingJobs.AddRange(
+                new IndexingJob
+                {
+                    Document = firstDocument,
+                    Status = IndexingJobStatus.Completed,
+                    CreatedAtUtc = DateTime.UtcNow.AddMinutes(-2)
+                },
+                new IndexingJob
+                {
+                    Document = secondDocument,
+                    Status = IndexingJobStatus.Failed,
+                    CreatedAtUtc = DateTime.UtcNow.AddMinutes(-1),
+                    LastError = "parse failed"
+                });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new AdminIndexingJobService(
+            new TestDbFactory(options),
+            new FakeCurrentUser(isAdmin: true));
+
+        var page = await service.GetPageAsync(1, 1);
+
+        Assert.Equal(2, page.TotalCount);
+        Assert.Single(page.Items);
+        Assert.Equal("second.pdf", page.Items[0].DocumentName);
+        Assert.Equal(IndexingJobStatus.Failed, page.Items[0].Status);
+        Assert.Equal("parse failed", page.Items[0].LastError);
+    }
+
     private sealed class FakeCurrentUser(bool isAdmin) : ICurrentUser
     {
         public string? UserId => isAdmin ? "admin-1" : "user-1";

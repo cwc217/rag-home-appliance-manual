@@ -1,0 +1,149 @@
+@page "/admin/indexing-jobs"
+@attribute [Authorize(Policy = ApplicationPolicies.AdminOnly)]
+@using HomeApplianceManualRag.Web.Admin
+@inject AdminIndexingJobService Jobs
+
+<PageTitle>Indexing jobs</PageTitle>
+
+<MudStack Spacing="3">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <div>
+            <MudText Typo="Typo.h4">Indexing jobs</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Review document indexing history, retries, and failures.
+            </MudText>
+        </div>
+        <MudButton Href="/admin" Variant="Variant.Outlined"
+                   StartIcon="@Icons.Material.Filled.ArrowBack">Dashboard</MudButton>
+    </MudStack>
+
+    @if (indexingPage is null && errorMessage is null)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+    else if (errorMessage is not null)
+    {
+        <MudAlert Severity="Severity.Error">@errorMessage</MudAlert>
+    }
+    else if (indexingPage is not null)
+    {
+        <MudPaper Class="pa-0" Elevation="1">
+            <MudTable T="AdminIndexingJobRow" Items="@indexingPage.Items" Dense="true" Hover="true"
+                      Breakpoint="Breakpoint.Sm" Loading="@loading">
+                <HeaderContent>
+                    <MudTh>Document</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh>Attempts</MudTh>
+                    <MudTh>Created</MudTh>
+                    <MudTh>Completed</MudTh>
+                    <MudTh>Last error</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Document">
+                        <MudText Typo="Typo.body2" Class="text-break">@context.DocumentName</MudText>
+                        @if (!string.IsNullOrWhiteSpace(context.OwnerUserId))
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                Owner: @context.OwnerUserId
+                            </MudText>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Status">
+                        <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                            @context.Status
+                        </MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Attempts">@context.Attempts</MudTd>
+                    <MudTd DataLabel="Created">@FormatDate(context.CreatedAtUtc)</MudTd>
+                    <MudTd DataLabel="Completed">
+                        @(context.CompletedAtUtc is null ? "—" : FormatDate(context.CompletedAtUtc.Value))
+                    </MudTd>
+                    <MudTd DataLabel="Last error">
+                        @if (string.IsNullOrWhiteSpace(context.LastError))
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">—</MudText>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.body2" Class="text-break" Color="Color.Error">
+                                @context.LastError
+                            </MudText>
+                        }
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText Class="pa-4" Color="Color.Secondary">No indexing jobs found.</MudText>
+                </NoRecordsContent>
+            </MudTable>
+        </MudPaper>
+
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                Showing @GetFirstItem()–@GetLastItem() of @indexingPage.TotalCount jobs
+            </MudText>
+            <MudPagination Count="@PageCount" Selected="@pageNumber"
+                           SelectedChanged="LoadPageAsync" Color="Color.Primary"
+                           BoundaryCount="1" />
+        </MudStack>
+    }
+</MudStack>
+
+@code {
+    private const int PageSize = 20;
+    private AdminIndexingJobPage? indexingPage;
+    private string? errorMessage;
+    private bool loading;
+    private int pageNumber = 1;
+
+    protected override async Task OnInitializedAsync() => await LoadPageAsync(1);
+
+    private async Task LoadPageAsync(int selectedPage)
+    {
+        if (selectedPage < 1)
+            return;
+
+        loading = true;
+        errorMessage = null;
+        try
+        {
+            indexingPage = await Jobs.GetPageAsync(selectedPage, PageSize);
+            pageNumber = indexingPage.PageNumber;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            errorMessage = "Administrator access is required.";
+        }
+        catch (Exception)
+        {
+            errorMessage = "Indexing job data is temporarily unavailable.";
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private int PageCount =>
+        indexingPage is null || indexingPage.TotalCount == 0
+            ? 1
+            : (int)Math.Ceiling(indexingPage.TotalCount / (double)PageSize);
+
+    private int GetFirstItem() =>     indexingPage is null || indexingPage.TotalCount == 0
+        ? 0
+        : ((indexingPage.PageNumber - 1) * PageSize) + 1;
+
+    private int GetLastItem() =>     indexingPage is null
+        ? 0
+        : Math.Min(indexingPage.PageNumber * PageSize, indexingPage.TotalCount);
+
+    private static string FormatDate(DateTime value) =>
+        value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+
+    private static Color GetStatusColor(IndexingJobStatus status) => status switch
+    {
+        IndexingJobStatus.Completed => Color.Success,
+        IndexingJobStatus.Failed => Color.Error,
+        IndexingJobStatus.Processing => Color.Info,
+        _ => Color.Warning
+    };
+}

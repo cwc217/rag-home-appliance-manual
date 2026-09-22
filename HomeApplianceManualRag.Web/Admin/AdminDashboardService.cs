@@ -14,6 +14,25 @@ public sealed record AdminDashboardSnapshot(
     int FailedIndexingJobs,
     IReadOnlyList<AdminConversationSummary> RecentConversations);
 
+public sealed record AdminIndexingJobRow(
+    Guid Id,
+    Guid DocumentId,
+    string DocumentName,
+    string? OwnerUserId,
+    IndexingJobStatus Status,
+    int Attempts,
+    DateTime CreatedAtUtc,
+    DateTime? StartedAtUtc,
+    DateTime? CompletedAtUtc,
+    DateTime? NextAttemptAtUtc,
+    string? LastError);
+
+public sealed record AdminIndexingJobPage(
+    IReadOnlyList<AdminIndexingJobRow> Items,
+    int TotalCount,
+    int PageNumber,
+    int PageSize);
+
 public sealed class AdminDashboardService(
     IDbContextFactory<ApplicationDbContext> dbFactory,
     ICurrentUser currentUser,
@@ -61,5 +80,52 @@ public sealed class AdminDashboardService(
         if (!currentUser.IsAuthenticated || !currentUser.IsInRole(ApplicationRoles.Admin))
             throw new UnauthorizedAccessException("Administrator access is required.");
     }
+}
 
+public sealed class AdminIndexingJobService(
+    IDbContextFactory<ApplicationDbContext> dbFactory,
+    ICurrentUser currentUser)
+{
+    public async Task<AdminIndexingJobPage> GetPageAsync(
+        int pageNumber,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureAdmin();
+
+        pageNumber = Math.Max(1, pageNumber);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        var query = db.IndexingJobs
+            .AsNoTracking()
+            .Include(job => job.Document)
+            .OrderByDescending(job => job.CreatedAtUtc)
+            .ThenByDescending(job => job.Id);
+
+        var totalCount = await query.CountAsync(cancellationToken);
+        var items = await query
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .Select(job => new AdminIndexingJobRow(
+                job.Id,
+                job.DocumentId,
+                job.Document == null ? "(deleted document)" : job.Document.DisplayName,
+                job.Document == null ? null : job.Document.OwnerUserId,
+                job.Status,
+                job.Attempts,
+                job.CreatedAtUtc,
+                job.StartedAtUtc,
+                job.CompletedAtUtc,
+                job.NextAttemptAtUtc,
+                job.LastError))
+            .ToListAsync(cancellationToken);
+
+        return new AdminIndexingJobPage(items, totalCount, pageNumber, pageSize);
+    }
+
+    private void EnsureAdmin()
+    {
+        if (!currentUser.IsAuthenticated || !currentUser.IsInRole(ApplicationRoles.Admin))
+            throw new UnauthorizedAccessException("Administrator access is required.");
+    }
 }
