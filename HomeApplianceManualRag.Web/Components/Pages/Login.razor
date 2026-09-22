@@ -29,4 +29,12 @@
 @code {
     [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
     [SupplyParameterFromQuery] public string? Error { get; set; }
+    [CascadingParameter] private Task<AuthenticationState> AuthenticationStateTask { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authenticationState = await AuthenticationStateTask;
+        if (authenticationState.User.Identity?.IsAuthenticated == true)
+            Navigation.NavigateTo("/", replace: true);
+    }
 }
