@@ -191,23 +191,30 @@ public sealed class ChatService(
     IChatProvider provider,
     ChatRateLimiter rateLimiter,
     ICurrentUser currentUser,
-    IHttpContextAccessor httpContextAccessor)
+    IHttpContextAccessor httpContextAccessor,
+    IOptions<ChatOptions> chatOptions)
 {
     public async Task<(ChatResponse Response, IAsyncEnumerable<string>? Stream)> StartAsync(
         string question, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(question))
             throw new ArgumentException("Ask a question first.", nameof(question));
+        var normalizedQuestion = question.Trim();
+        if (normalizedQuestion.Length > chatOptions.Value.MaxQuestionLength)
+            throw new ArgumentException(
+                $"Question cannot exceed {chatOptions.Value.MaxQuestionLength} characters.",
+                nameof(question));
+
         var key = currentUser.UserId ?? httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
         rateLimiter.EnsureAllowed(key);
         var scope = currentUser.IsInRole(ApplicationRoles.Admin)
             ? RetrievalScope.AdminAll
             : currentUser.IsAuthenticated ? RetrievalScope.UserOwn : RetrievalScope.AnonymousAdminPublic;
-        var chunks = await retriever.RetrieveAsync(question.Trim(), scope, currentUser.UserId, ct);
+        var chunks = await retriever.RetrieveAsync(normalizedQuestion, scope, currentUser.UserId, ct);
         var citations = chunks.Select(x => new ChatCitation(x.DocumentId, x.DocumentName, x.PageNumber)).DistinctBy(x => (x.DocumentId, x.PageNumber)).ToArray();
         var response = new ChatResponse(chunks, citations,
             chunks.Count == 0 ? "I can't find an answer in the available manuals." : null);
-        return chunks.Count == 0 ? (response, null) : (response, StreamProviderAsync(GroundedPrompt.Build(question.Trim(), chunks), ct));
+        return chunks.Count == 0 ? (response, null) : (response, StreamProviderAsync(GroundedPrompt.Build(normalizedQuestion, chunks), ct));
     }
 
     private async IAsyncEnumerable<string> StreamProviderAsync(

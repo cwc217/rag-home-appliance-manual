@@ -75,6 +75,12 @@ public sealed class RateLimitingOptions
     [Range(1, 10000)] public int RequestsPerMinute { get; init; } = 30;
 }
 
+public sealed class ChatOptions
+{
+    public const string SectionName = "Chat";
+    [Range(1, 10000)] public int MaxQuestionLength { get; init; } = 2000;
+}
+
 public sealed class SeedAdminOptions
 {
     public const string SectionName = "SeedAdmin";

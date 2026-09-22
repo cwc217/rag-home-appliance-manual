@@ -47,6 +47,7 @@ builder.Services.AddHttpClient<TypeSafeManualClassifier>((serviceProvider, clien
     client.Timeout = TimeSpan.FromSeconds(60);
 });
 builder.Services.AddOptions<RateLimitingOptions>().BindConfiguration(RateLimitingOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
+builder.Services.AddOptions<ChatOptions>().BindConfiguration(ChatOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<SeedAdminOptions>().BindConfiguration(SeedAdminOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<LocalStorageOptions>().BindConfiguration(LocalStorageOptions.SectionName);
 builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
