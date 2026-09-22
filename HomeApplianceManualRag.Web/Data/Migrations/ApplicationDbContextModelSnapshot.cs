@@ -36,6 +36,9 @@ namespace HomeApplianceManualRag.Web.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("AnonymousVisitorId")
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -47,6 +50,9 @@ namespace HomeApplianceManualRag.Web.Data.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("MetadataJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Path")
                         .HasColumnType("text");
 
                     b.Property<string>("TargetId")
@@ -66,6 +72,8 @@ namespace HomeApplianceManualRag.Web.Data.Migrations
                     b.HasIndex("UserId");
 
                     b.HasIndex("CreatedAtUtc", "ActivityType");
+
+                    b.HasIndex("Path", "CreatedAtUtc");
 
                     b.ToTable("UserActivities");
                 });

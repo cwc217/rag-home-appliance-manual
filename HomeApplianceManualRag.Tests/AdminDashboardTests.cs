@@ -213,7 +213,7 @@ public sealed class AdminDashboardTests
         httpContext.Request.Headers.UserAgent = new string('a', 600);
         var service = new ActivityLogService(
             new TestDbFactory(options),
-            new FakeCurrentUser(isAdmin: false),
+            new FakeAnonymousCurrentUser(),
             new HttpContextAccessor { HttpContext = httpContext });
 
         await service.RecordAsync(
@@ -256,12 +256,45 @@ public sealed class AdminDashboardTests
         Assert.Equal(ActivityTypes.LoginSucceeded, Assert.Single(page.Items).ActivityType);
     }
 
+    [Fact]
+    public async Task Anonymous_page_view_records_route_and_visitor_id()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        var httpContext = new DefaultHttpContext();
+        httpContext.Connection.RemoteIpAddress = IPAddress.Parse("198.51.100.4");
+        var service = new ActivityLogService(
+            new TestDbFactory(options),
+            new FakeAnonymousCurrentUser(),
+            new HttpContextAccessor { HttpContext = httpContext });
+
+        await service.RecordPageViewAsync("/", "visitor-abc");
+
+        await using var db = new ApplicationDbContext(options);
+        var activity = Assert.Single(db.UserActivities);
+        Assert.Equal(ActivityTypes.PageViewed, activity.ActivityType);
+        Assert.Null(activity.UserId);
+        Assert.Equal("visitor-abc", activity.AnonymousVisitorId);
+        Assert.Equal("/", activity.Path);
+        Assert.Equal("/", activity.TargetId);
+        Assert.Equal("198.51.100.4", activity.IpAddress);
+    }
+
     private sealed class FakeCurrentUser(bool isAdmin) : ICurrentUser
     {
         public string? UserId => isAdmin ? "admin-1" : "user-1";
         public string? Email => "admin@example.invalid";
         public bool IsAuthenticated => true;
         public bool IsInRole(string role) => isAdmin && role == ApplicationRoles.Admin;
+    }
+
+    private sealed class FakeAnonymousCurrentUser : ICurrentUser
+    {
+        public string? UserId => null;
+        public string? Email => null;
+        public bool IsAuthenticated => false;
+        public bool IsInRole(string role) => false;
     }
 
     private sealed class TestDbFactory(DbContextOptions<ApplicationDbContext> options)

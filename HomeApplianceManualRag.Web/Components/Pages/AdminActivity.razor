@@ -42,6 +42,7 @@
                     <MudTh>When</MudTh>
                     <MudTh>Activity</MudTh>
                     <MudTh>User</MudTh>
+                    <MudTh>Path</MudTh>
                     <MudTh>Target</MudTh>
                     <MudTh>IP address</MudTh>
                     <MudTh>Details</MudTh>
@@ -50,8 +51,11 @@
                     <MudTd DataLabel="When">@context.CreatedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</MudTd>
                     <MudTd DataLabel="Activity">@context.ActivityType</MudTd>
                     <MudTd DataLabel="User">
-                        @(context.UserEmail ?? (context.UserId is null ? "Anonymous" : context.UserId))
+                        @(context.UserEmail ?? (context.UserId is null
+                            ? $"Anonymous ({context.AnonymousVisitorId ?? "unknown"})"
+                            : context.UserId))
                     </MudTd>
+                    <MudTd DataLabel="Path">@(context.Path ?? "—")</MudTd>
                     <MudTd DataLabel="Target">
                         @(context.TargetType is null ? "—" : $"{context.TargetType}/{context.TargetId}")
                     </MudTd>

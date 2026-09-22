@@ -139,6 +139,7 @@ app.UseWebSockets(new WebSocketOptions
     KeepAliveInterval = TimeSpan.FromSeconds(30)
 });
 app.UseAuthentication();
+app.UseMiddleware<PageViewLoggingMiddleware>();
 app.UseAuthorization();
 app.UseAntiforgery();
 
