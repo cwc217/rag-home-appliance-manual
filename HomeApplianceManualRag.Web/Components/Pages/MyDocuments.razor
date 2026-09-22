@@ -19,7 +19,7 @@
 <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="document-upload">
     <InputFile OnChange="SelectFile" accept=".pdf,application/pdf" />
     <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Upload"
-               OnClick="Upload" Disabled="@(selectedFile is null || busy)">Upload</MudButton>
+               OnClick="Upload" Disabled="@(selectedFile is null || IsUploadDisabled)">Upload</MudButton>
     @if (busy) { <MudText Typo="Typo.body2" Color="Color.Secondary">Uploading...</MudText> }
 </MudStack>
 </MudPaper>
@@ -161,6 +161,7 @@
         }
     }
     private bool IsBusy(Guid id) => busy || busyDocuments.Contains(id);
+    private bool IsUploadDisabled => busy || documents.Any(IsProcessing);
     private bool IsDocumentActionDisabled(ManualDocument document) =>
         IsBusy(document.Id) || IsProcessing(document);
     private void StartFallbackRefresh()
