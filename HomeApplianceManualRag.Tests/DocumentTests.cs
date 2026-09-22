@@ -128,6 +128,7 @@ public sealed class DocumentValidationTests
         {
             await using var db = CreateDb();
             var document = Document("to-delete", "user-1");
+            document.Status = DocumentStatus.Ready;
             db.ManualDocuments.Add(document);
             await db.SaveChangesAsync();
             var storage = new RecordingStorage();
@@ -141,6 +142,38 @@ public sealed class DocumentValidationTests
             Assert.Equal(document.StorageKey, cleanup.StorageKey);
             Assert.Equal(StorageCleanupStatus.Completed, cleanup.Status);
             Assert.Contains(document.StorageKey, storage.DeletedKeys);
+        }
+
+        [Fact]
+        public async Task Delete_rejects_a_document_while_it_is_processing()
+        {
+            await using var db = CreateDb();
+            var document = Document("processing", "user-1");
+            document.Status = DocumentStatus.Processing;
+            db.ManualDocuments.Add(document);
+            await db.SaveChangesAsync();
+            var service = Service(db, new TestCurrentUser("user-1", false));
+
+            await Assert.ThrowsAsync<DocumentProcessingInProgressException>(() =>
+                service.DeleteAsync(document.Id));
+
+            Assert.NotNull(await db.ManualDocuments.FindAsync(document.Id));
+        }
+
+        [Fact]
+        public async Task Admin_reindex_rejects_a_pending_document()
+        {
+            await using var db = CreateDb();
+            var document = Document("pending", "user-1");
+            document.Status = DocumentStatus.Pending;
+            db.ManualDocuments.Add(document);
+            await db.SaveChangesAsync();
+            var service = Service(db, new TestCurrentUser("admin", true));
+
+            await Assert.ThrowsAsync<DocumentProcessingInProgressException>(() =>
+                service.ReindexAsync(document.Id));
+
+            Assert.Equal(DocumentStatus.Pending, (await db.ManualDocuments.FindAsync(document.Id))!.Status);
         }
 
         [Fact]

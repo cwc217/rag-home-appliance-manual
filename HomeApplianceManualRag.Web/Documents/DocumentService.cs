@@ -132,6 +132,7 @@ public sealed class DocumentService(
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
     {
         var document = await GetAuthorizedAsync(id, ct);
+        EnsureNotProcessing(document);
         var cleanup = new StorageCleanup
         {
             Id = Guid.NewGuid(),
@@ -180,6 +181,7 @@ public sealed class DocumentService(
     {
         if (!currentUser.IsInRole(ApplicationRoles.Admin)) throw new DocumentForbiddenException();
         var document = await GetAuthorizedAsync(id, ct);
+        EnsureNotProcessing(document);
         document.Status = DocumentStatus.Pending;
         document.LastError = null;
         document.IndexedAtUtc = null;
@@ -228,5 +230,11 @@ public sealed class DocumentService(
             !(currentUser.IsAuthenticated && document.OwnerUserId == currentUser.UserId))
             throw new DocumentForbiddenException();
         return document;
+    }
+
+    private static void EnsureNotProcessing(ManualDocument document)
+    {
+        if (document.Status is DocumentStatus.Pending or DocumentStatus.Processing)
+            throw new DocumentProcessingInProgressException();
     }
 }

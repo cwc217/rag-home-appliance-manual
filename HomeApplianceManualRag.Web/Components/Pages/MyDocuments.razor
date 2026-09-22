@@ -55,8 +55,8 @@
             <MudCardActions Class="mt-auto">
                 <MudButton Variant="Variant.Outlined" Size="Size.Small" Href="@($"/documents/{document.Id}/download")">Download</MudButton>
                 @if (document.Status == DocumentStatus.Failed) { <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="() => Retry(document.Id)" Disabled="@IsBusy(document.Id)">Retry</MudButton> }
-                @if (isAdmin) { <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="() => Reindex(document.Id)" Disabled="@IsBusy(document.Id)">Re-index</MudButton> }
-                <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small" OnClick="() => ConfirmDelete(document)" Disabled="@IsBusy(document.Id)">Delete</MudButton>
+                @if (isAdmin) { <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="() => Reindex(document.Id)" Disabled="@IsDocumentActionDisabled(document)">Re-index</MudButton> }
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small" OnClick="() => ConfirmDelete(document)" Disabled="@IsDocumentActionDisabled(document)">Delete</MudButton>
             </MudCardActions>
         </MudCard>
     </MudItem>
@@ -161,6 +161,8 @@
         }
     }
     private bool IsBusy(Guid id) => busy || busyDocuments.Contains(id);
+    private bool IsDocumentActionDisabled(ManualDocument document) =>
+        IsBusy(document.Id) || IsProcessing(document);
     private void StartFallbackRefresh()
     {
         if (documents.Any(IsProcessing) &&
