@@ -73,6 +73,8 @@ namespace HomeApplianceManualRag.Web.Data.Migrations
 
                     b.HasIndex("CreatedAtUtc", "ActivityType");
 
+                    b.HasIndex("IpAddress");
+
                     b.HasIndex("Path", "CreatedAtUtc");
 
                     b.ToTable("UserActivities");

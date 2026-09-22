@@ -301,6 +301,61 @@ public sealed class AdminDashboardTests
     }
 
     [Fact]
+    public async Task Activity_page_filters_by_type_email_ip_and_path()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        await using (var db = new ApplicationDbContext(options))
+        {
+            db.Users.Add(new ApplicationUser
+            {
+                Id = "user-1",
+                UserName = "alice@example.invalid",
+                Email = "Alice@example.invalid"
+            });
+            db.UserActivities.AddRange(
+                new UserActivity
+                {
+                    ActivityType = ActivityTypes.PageViewed,
+                    UserId = "user-1",
+                    IpAddress = "203.0.113.10",
+                    Path = "/admin/users"
+                },
+                new UserActivity
+                {
+                    ActivityType = ActivityTypes.LoginSucceeded,
+                    UserId = "user-1",
+                    IpAddress = "203.0.113.11",
+                    Path = "/login"
+                },
+                new UserActivity
+                {
+                    ActivityType = ActivityTypes.PageViewed,
+                    IpAddress = "203.0.113.10",
+                    Path = "/my-documents"
+                });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new AdminActivityService(
+            new TestDbFactory(options),
+            new FakeCurrentUser(isAdmin: true));
+
+        var page = await service.GetPageAsync(
+            1,
+            20,
+            ActivityTypes.PageViewed,
+            "alice@EXAMPLE",
+            "203.0.113.10",
+            "/admin");
+
+        var activity = Assert.Single(page.Items);
+        Assert.Equal("/admin/users", activity.Path);
+        Assert.Equal("Alice@example.invalid", activity.UserEmail);
+    }
+
+    [Fact]
     public async Task Anonymous_page_view_records_route_and_visitor_id()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()

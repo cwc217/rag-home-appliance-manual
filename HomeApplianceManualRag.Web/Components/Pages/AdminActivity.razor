@@ -1,6 +1,7 @@
 @page "/admin/activity"
 @attribute [Authorize(Policy = ApplicationPolicies.AdminOnly)]
 @using HomeApplianceManualRag.Web.Admin
+@using HomeApplianceManualRag.Web.Activity
 @inject AdminActivityService Activities
 
 <PageTitle>User activity</PageTitle>
@@ -17,13 +18,40 @@
                    StartIcon="@Icons.Material.Filled.ArrowBack">Dashboard</MudButton>
     </MudStack>
 
-    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-        <MudTextField @bind-Value="activityType" Label="Activity type"
-                      Variant="Variant.Outlined" Margin="Margin.Dense" />
-        <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                   StartIcon="@Icons.Material.Filled.FilterAlt"
-                   OnClick="FilterAsync">Filter</MudButton>
-    </MudStack>
+    <MudGrid Spacing="2">
+        <MudItem xs="12" sm="6" md="3">
+            <MudSelect T="string" @bind-Value="activityType" Label="Activity type"
+                       Variant="Variant.Outlined" Margin="Margin.Dense">
+                <MudSelectItem T="string" Value="@string.Empty">All activity types</MudSelectItem>
+                @foreach (var type in ActivityTypes.All)
+                {
+                    <MudSelectItem T="string" Value="@type">@type</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudTextField @bind-Value="email" Label="Email starts with"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudTextField @bind-Value="ipAddress" Label="IP address"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudTextField @bind-Value="path" Label="Path starts with"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12">
+            <MudStack Row="true" Spacing="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.FilterAlt"
+                           OnClick="FilterAsync">Filter</MudButton>
+                <MudButton Variant="Variant.Outlined"
+                           StartIcon="@Icons.Material.Filled.Clear"
+                           OnClick="ClearFiltersAsync">Clear</MudButton>
+            </MudStack>
+        </MudItem>
+    </MudGrid>
 
     @if (activityPage is null && errorMessage is null)
     {
@@ -90,7 +118,10 @@
 @code {
     private const int PageSize = 25;
     private AdminActivityPage? activityPage;
-    private string? activityType;
+    private string activityType = string.Empty;
+    private string? email;
+    private string? ipAddress;
+    private string? path;
     private string? errorMessage;
     private bool loading;
     private int pageNumber = 1;
@@ -98,6 +129,15 @@
     protected override async Task OnInitializedAsync() => await LoadPageAsync(1);
 
     private async Task FilterAsync() => await LoadPageAsync(1);
+
+    private async Task ClearFiltersAsync()
+    {
+        activityType = string.Empty;
+        email = null;
+        ipAddress = null;
+        path = null;
+        await LoadPageAsync(1);
+    }
 
     private async Task LoadPageAsync(int selectedPage)
     {
@@ -108,7 +148,13 @@
         errorMessage = null;
         try
         {
-            activityPage = await Activities.GetPageAsync(selectedPage, PageSize, activityType);
+            activityPage = await Activities.GetPageAsync(
+                selectedPage,
+                PageSize,
+                activityType,
+                email,
+                ipAddress,
+                path);
             pageNumber = activityPage.PageNumber;
         }
         catch (UnauthorizedAccessException)

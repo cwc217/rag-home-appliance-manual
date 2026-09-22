@@ -21,6 +21,24 @@ public static class ActivityTypes
     public const string ConversationCreated = "ConversationCreated";
     public const string ConversationDeleted = "ConversationDeleted";
     public const string ChatExchangePersisted = "ChatExchangePersisted";
+
+    public static IReadOnlyList<string> All { get; } =
+    [
+        PageViewed,
+        LoginSucceeded,
+        LoginFailed,
+        Logout,
+        UserRegistered,
+        DocumentUploaded,
+        DocumentSoftDeleted,
+        DocumentRestored,
+        DocumentHardDeleted,
+        DocumentRetried,
+        DocumentReindexed,
+        ConversationCreated,
+        ConversationDeleted,
+        ChatExchangePersisted
+    ];
 }
 
 public sealed class UserActivity

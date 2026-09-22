@@ -32,12 +32,18 @@ public sealed class AdminActivityService(
         int pageNumber,
         int pageSize,
         string? activityType = null,
+        string? email = null,
+        string? ipAddress = null,
+        string? path = null,
         CancellationToken cancellationToken = default)
     {
         EnsureAdmin();
         pageNumber = Math.Max(1, pageNumber);
         pageSize = Math.Clamp(pageSize, 1, 100);
         activityType = activityType?.Trim();
+        email = email?.Trim();
+        ipAddress = ipAddress?.Trim();
+        path = path?.Trim();
 
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var query =
@@ -47,6 +53,19 @@ public sealed class AdminActivityService(
             select new { activity, UserEmail = user == null ? null : user.Email };
         if (!string.IsNullOrWhiteSpace(activityType))
             query = query.Where(item => item.activity.ActivityType == activityType);
+        if (!string.IsNullOrWhiteSpace(email))
+        {
+            var normalizedEmail = email.ToLower();
+            query = query.Where(item =>
+                item.UserEmail != null &&
+                item.UserEmail.ToLower().StartsWith(normalizedEmail));
+        }
+        if (!string.IsNullOrWhiteSpace(ipAddress))
+            query = query.Where(item => item.activity.IpAddress == ipAddress);
+        if (!string.IsNullOrWhiteSpace(path))
+            query = query.Where(item =>
+                item.activity.Path != null &&
+                item.activity.Path.StartsWith(path));
 
         var totalCount = await query.CountAsync(cancellationToken);
         var items = await query

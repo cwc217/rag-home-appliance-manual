@@ -36,6 +36,7 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
         builder.Entity<ChatMessage>().HasIndex(x => new { x.ConversationId, x.CreatedAtUtc });
         builder.Entity<UserActivity>().HasIndex(x => new { x.CreatedAtUtc, x.ActivityType });
         builder.Entity<UserActivity>().HasIndex(x => x.UserId);
+        builder.Entity<UserActivity>().HasIndex(x => x.IpAddress);
         builder.Entity<UserActivity>().HasIndex(x => new { x.Path, x.CreatedAtUtc });
         builder.Entity<Conversation>()
             .HasMany(x => x.Messages)
