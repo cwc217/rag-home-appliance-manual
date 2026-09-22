@@ -230,6 +230,50 @@ public sealed class AdminDashboardTests
     }
 
     [Fact]
+    public async Task Activity_log_prefers_valid_cloudflare_client_ip()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        var httpContext = new DefaultHttpContext();
+        httpContext.Connection.RemoteIpAddress = IPAddress.Parse("172.29.8.1");
+        httpContext.Request.Headers["CF-Connecting-IP"] = "203.0.113.25";
+        var service = new ActivityLogService(
+            new TestDbFactory(options),
+            new FakeAnonymousCurrentUser(),
+            new HttpContextAccessor { HttpContext = httpContext });
+
+        await service.RecordAsync(ActivityTypes.PageViewed);
+
+        await using var db = new ApplicationDbContext(options);
+        var activity = Assert.Single(db.UserActivities);
+        Assert.Equal("203.0.113.25", activity.IpAddress);
+        Assert.Equal("CF-Connecting-IP", activity.IpAddressSource);
+    }
+
+    [Fact]
+    public async Task Activity_log_falls_back_when_cloudflare_client_ip_is_invalid()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        var httpContext = new DefaultHttpContext();
+        httpContext.Connection.RemoteIpAddress = IPAddress.Parse("172.29.8.1");
+        httpContext.Request.Headers["CF-Connecting-IP"] = "not-an-ip";
+        var service = new ActivityLogService(
+            new TestDbFactory(options),
+            new FakeAnonymousCurrentUser(),
+            new HttpContextAccessor { HttpContext = httpContext });
+
+        await service.RecordAsync(ActivityTypes.PageViewed);
+
+        await using var db = new ApplicationDbContext(options);
+        var activity = Assert.Single(db.UserActivities);
+        Assert.Equal("172.29.8.1", activity.IpAddress);
+        Assert.Equal("Connection", activity.IpAddressSource);
+    }
+
+    [Fact]
     public async Task Activity_page_returns_newest_events_for_admin()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()

@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json;
 using HomeApplianceManualRag.Web.Data;
 using Microsoft.EntityFrameworkCore;
@@ -86,6 +87,7 @@ public sealed class ActivityLogService(
             throw new ArgumentException("Activity type is required.", nameof(activityType));
 
         var httpContext = httpContextAccessor.HttpContext;
+        var (ipAddress, ipAddressSource) = GetClientIpAddress(httpContext);
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         db.UserActivities.Add(new UserActivity
         {
@@ -95,12 +97,21 @@ public sealed class ActivityLogService(
             Path = path,
             TargetType = targetType,
             TargetId = targetId,
-            IpAddress = httpContext?.Connection.RemoteIpAddress?.ToString(),
-            IpAddressSource = "Connection",
+            IpAddress = ipAddress,
+            IpAddressSource = ipAddressSource,
             UserAgent = Truncate(httpContext?.Request.Headers.UserAgent.ToString(), 512),
             MetadataJson = metadata is null ? null : JsonSerializer.Serialize(metadata, JsonOptions)
         });
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static (string? Address, string Source) GetClientIpAddress(HttpContext? httpContext)
+    {
+        var forwardedAddress = httpContext?.Request.Headers["CF-Connecting-IP"].ToString();
+        if (IPAddress.TryParse(forwardedAddress, out var parsedForwardedAddress))
+            return (parsedForwardedAddress.ToString(), "CF-Connecting-IP");
+
+        return (httpContext?.Connection.RemoteIpAddress?.ToString(), "Connection");
     }
 
     private static string? Truncate(string? value, int maxLength) =>
