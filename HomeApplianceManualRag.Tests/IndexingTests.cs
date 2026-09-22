@@ -298,6 +298,28 @@ public sealed class IndexingTests
     }
 
     [Fact]
+    public async Task Pipeline_analyzes_picture_and_indexes_ocr_and_description()
+    {
+        await using var db = CreateDb();
+        var document = NewDocument();
+        var job = NewJob(document);
+        db.AddRange(document, job);
+        await db.SaveChangesAsync();
+        var analyzer = new FixedImageAnalyzer(new("Error code H11", "Indoor and outdoor units are not communicating."));
+        var pipeline = Pipeline(
+            db,
+            new PictureParser(),
+            new FixedEmbedding(1536),
+            imageAnalyzer: analyzer);
+
+        await pipeline.ProcessAsync(job.Id, CancellationToken.None);
+
+        Assert.Contains("Error code H11", db.ManualChunks.Single().Text, StringComparison.Ordinal);
+        Assert.Contains("Indoor and outdoor units", db.ManualChunks.Single().Text, StringComparison.Ordinal);
+        Assert.Equal(1, analyzer.CallCount);
+    }
+
+    [Fact]
     public async Task Pipeline_rejects_embedding_dimension_mismatch()
     {
         await using var db = CreateDb();
@@ -376,12 +398,15 @@ public sealed class IndexingTests
         ApplicationDbContext db,
         IDocumentParser parser,
         IEmbeddingProvider embedding,
-        IManualClassifier? classifier = null) =>
+        IManualClassifier? classifier = null,
+        IImageAnalyzer? imageAnalyzer = null) =>
         new(db, new TestStorage(), parser,
             new DocumentChunker(Options.Create(new RetrievalOptions { ChunkSize = 100, ChunkOverlap = 10 })),
             embedding,
             classifier ?? new FixedClassifier(isManual: true, confidence: 1),
             new FixedMetadataExtractor(),
+            imageAnalyzer ?? new NoOpImageAnalyzer(),
+            Options.Create(new ImageAnalysisOptions { Enabled = true }),
             Options.Create(new TypeSafeOptions()),
             new DocumentProgressNotifier(NullLogger<DocumentProgressNotifier>.Instance),
             NullLogger<IndexingPipeline>.Instance);
@@ -392,6 +417,35 @@ public sealed class IndexingTests
             Task.FromResult(new ParsedDocument(
                 [new ParsedPage(2, [new ParsedBlock("Keep this text.", "paragraph", 0, "Instructions")])],
                 "test-parser"));
+    }
+
+    private sealed class PictureParser : IDocumentParser
+    {
+        public Task<ParsedDocument> ParseAsync(DocumentParseRequest request) =>
+            Task.FromResult(new ParsedDocument(
+                [new ParsedPage(2, [
+                    new ParsedBlock(
+                        "[picture]",
+                        "picture",
+                        0,
+                        Image: new ParsedImage([1, 2, 3], "image/png"))
+                ])],
+                "test-parser"));
+    }
+
+    private sealed class FixedImageAnalyzer(ImageAnalysisResult result) : IImageAnalyzer
+    {
+        public int CallCount { get; private set; }
+
+        public Task<ImageAnalysisResult> AnalyzeAsync(
+            ParsedImage image,
+            int pageNumber,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            CallCount++;
+            return Task.FromResult(result);
+        }
     }
 
     private sealed class FixedEmbedding(int dimensions) : IEmbeddingProvider

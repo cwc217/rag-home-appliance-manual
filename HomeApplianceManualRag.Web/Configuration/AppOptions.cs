@@ -44,6 +44,14 @@ public sealed class DoclingOptions
     [Range(0.1, 10)] public double ImagesScale { get; init; } = 2;
 }
 
+public sealed class ImageAnalysisOptions
+{
+    public const string SectionName = "ImageAnalysis";
+    public bool Enabled { get; init; } = true;
+    [Range(0, 100)] public int MaxImagesPerDocument { get; init; } = 32;
+    [Range(1, 600)] public int TimeoutSeconds { get; init; } = 60;
+}
+
 public sealed class TypeSafeOptions
 {
     public const string SectionName = "TypeSafe";

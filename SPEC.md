@@ -127,9 +127,12 @@ Pending -> Processing -> Ready
 
 Phase 3 remains PDF-only. The parser requests Docling embedded picture
 artifacts and keeps bounded image bytes in memory alongside page provenance;
-the bytes are not persisted and are not yet sent to OCR or Vision. Docling's
-DOCX, image, and OCR capabilities are reserved for later parser adapters after
-resource limits and user-facing failure behavior are validated.
+the bytes are not persisted. When explicitly enabled, each bounded picture is
+sent to Azure OpenAI multimodal chat for exact visible text and a semantic
+description; the two results are merged into the page-aware chunk before
+embedding. The analyzer has a per-document image cap and timeout, and a
+failed analysis preserves the normal indexing failure/retry behavior. Docling's
+DOCX and other image input adapters remain reserved for later work.
 
 The exact chunk size and overlap may be tuned during implementation, but must be configuration values and covered by unit tests. A chunk must never lose its source page metadata.
 

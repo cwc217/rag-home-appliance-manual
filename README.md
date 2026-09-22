@@ -272,6 +272,13 @@ payloads are ignored while the page/block provenance remains available. If
 scanned-document OCR is required later, add it as an explicit parser
 configuration and validate its resource and failure behavior.
 
+When enabled, `ImageAnalysis` sends up to the configured number of picture
+bytes to the configured Azure OpenAI chat deployment as multimodal input. The
+response is constrained to JSON containing exact visible text (`ocrText`) and
+a semantic visual description (`description`); both are merged into the
+page-aware picture chunk before embedding. Development defaults keep this
+optional network call disabled.
+
 The JSON contract is intentionally application-owned: each page contains
 ordered blocks with `text`, `blockType`, `headingPath`, and optional
 `sourceReference`. Markdown export can be used for diagnostics, but indexing

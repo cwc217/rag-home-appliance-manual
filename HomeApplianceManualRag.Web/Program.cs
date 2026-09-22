@@ -30,6 +30,10 @@ builder.Services.AddOptions<MetadataExtractionOptions>()
     .BindConfiguration(MetadataExtractionOptions.SectionName)
     .ValidateDataAnnotations()
     .ValidateOnStart();
+builder.Services.AddOptions<ImageAnalysisOptions>()
+    .BindConfiguration(ImageAnalysisOptions.SectionName)
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
 builder.Services.AddHttpClient<DoclingHttpParser>((serviceProvider, client) =>
 {
     var options = serviceProvider.GetRequiredService<IOptions<DoclingOptions>>().Value;
@@ -72,6 +76,7 @@ builder.Services.AddAuthorization(options =>
 });
 builder.Services.AddScoped<IChatProvider, AzureOpenAiChatProvider>();
 builder.Services.AddScoped<IManualMetadataExtractor, AzureOpenAiManualMetadataExtractor>();
+builder.Services.AddScoped<IImageAnalyzer, AzureOpenAiImageAnalyzer>();
 builder.Services.AddScoped<IEmbeddingProvider, AzureOpenAiEmbeddingProvider>();
 builder.Services.AddScoped<ManualRetriever>();
 builder.Services.AddScoped<ChatService>();

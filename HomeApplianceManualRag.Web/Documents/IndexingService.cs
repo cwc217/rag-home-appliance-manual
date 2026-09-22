@@ -43,6 +43,8 @@ public sealed class IndexingPipeline(
     IEmbeddingProvider embedding,
     IManualClassifier classifier,
     IManualMetadataExtractor metadataExtractor,
+    IImageAnalyzer imageAnalyzer,
+    IOptions<ImageAnalysisOptions> imageAnalysisOptions,
     IOptions<TypeSafeOptions> typeSafeOptions,
     DocumentProgressNotifier progressNotifier,
     ILogger<IndexingPipeline> logger)
@@ -70,6 +72,7 @@ public sealed class IndexingPipeline(
             classification.Confidence < typeSafeOptions.Value.MinimumConfidence)
             throw new DocumentRejectedException(
                 "This file does not appear to be a household appliance manual.");
+        parsed = await AnalyzeImagesAsync(parsed, cancellationToken);
         var metadata = await metadataExtractor.ExtractAsync(
             document.DisplayName, parsed, cancellationToken);
         document.ProductName = metadata.ProductName;
@@ -125,6 +128,46 @@ public sealed class IndexingPipeline(
         await progressNotifier.PublishAsync(new(
             document.Id, document.OwnerUserId, document.Status, document.LastError));
         logger.LogInformation("Indexed document {DocumentId} with {ChunkCount} chunks.", document.Id, vectors.Count);
+    }
+
+    private async Task<ParsedDocument> AnalyzeImagesAsync(
+        ParsedDocument document,
+        CancellationToken cancellationToken)
+    {
+        if (!imageAnalysisOptions.Value.Enabled ||
+            imageAnalysisOptions.Value.MaxImagesPerDocument == 0)
+            return document;
+
+        var analyzed = 0;
+        var pages = new List<ParsedPage>(document.Pages.Count);
+        foreach (var page in document.Pages)
+        {
+            var blocks = new List<ParsedBlock>(page.Blocks.Count);
+            foreach (var block in page.Blocks)
+            {
+                if (block.Image is null || analyzed >= imageAnalysisOptions.Value.MaxImagesPerDocument)
+                {
+                    blocks.Add(block);
+                    continue;
+                }
+
+                var result = await imageAnalyzer.AnalyzeAsync(
+                    block.Image, page.PageNumber, cancellationToken);
+                analyzed++;
+                var parts = new[] { result.OcrText, result.Description }
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .ToArray();
+                blocks.Add(parts.Length == 0
+                    ? block with { Image = null }
+                    : block with
+                    {
+                        Text = "[Picture]\n" + string.Join("\n", parts),
+                        Image = null
+                    });
+            }
+            pages.Add(new ParsedPage(page.PageNumber, blocks));
+        }
+        return new ParsedDocument(pages, document.ParserVersion);
     }
 }
 
@@ -187,6 +230,10 @@ public sealed class IndexingWorker(
                 await MarkRejectedAsync(job.Id, ex, ct);
             }
             catch (ManualClassificationException ex)
+            {
+                await MarkFailureAsync(job.Id, ex, ex.Retryable, ct);
+            }
+            catch (ImageAnalysisException ex)
             {
                 await MarkFailureAsync(job.Id, ex, ex.Retryable, ct);
             }
