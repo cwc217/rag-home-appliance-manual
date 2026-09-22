@@ -32,7 +32,11 @@ public sealed class AzureOpenAiChatProvider : IChatProvider
     {
         var messages = new ChatMessage[]
         {
-            new SystemChatMessage("You are a careful appliance manual assistant."),
+            new SystemChatMessage(
+                "You are a careful appliance manual assistant. " +
+                "Always answer in the same language as the user's question. " +
+                "If the question mixes languages, use the dominant language. " +
+                "Do not translate model names, error codes, button labels, or technical identifiers unless necessary."),
             new UserChatMessage(prompt)
         };
         await foreach (var update in client.CompleteChatStreamingAsync(messages, options: null, cancellationToken))
