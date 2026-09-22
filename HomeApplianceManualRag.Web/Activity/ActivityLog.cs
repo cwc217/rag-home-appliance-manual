@@ -10,6 +10,8 @@ public static class ActivityTypes
     public const string PageViewed = "PageViewed";
     public const string LoginSucceeded = "LoginSucceeded";
     public const string LoginFailed = "LoginFailed";
+    public const string AccountDisabled = "AccountDisabled";
+    public const string AccountEnabled = "AccountEnabled";
     public const string Logout = "Logout";
     public const string UserRegistered = "UserRegistered";
     public const string DocumentUploaded = "DocumentUploaded";
@@ -27,6 +29,8 @@ public static class ActivityTypes
         PageViewed,
         LoginSucceeded,
         LoginFailed,
+        AccountDisabled,
+        AccountEnabled,
         Logout,
         UserRegistered,
         DocumentUploaded,

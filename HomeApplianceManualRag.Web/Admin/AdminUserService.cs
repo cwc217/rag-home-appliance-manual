@@ -1,5 +1,6 @@
 using HomeApplianceManualRag.Web.Configuration;
 using HomeApplianceManualRag.Web.Data;
+using HomeApplianceManualRag.Web.Activity;
 using Microsoft.EntityFrameworkCore;
 
 namespace HomeApplianceManualRag.Web.Admin;
@@ -10,7 +11,8 @@ public sealed record AdminUserRow(
     IReadOnlyList<string> Roles,
     DateTime CreatedAtUtc,
     DateTimeOffset? LockoutEnd,
-    int AccessFailedCount);
+    int AccessFailedCount,
+    bool AccountDisabled);
 
 public sealed record AdminUserPage(
     IReadOnlyList<AdminUserRow> Items,
@@ -20,7 +22,8 @@ public sealed record AdminUserPage(
 
 public sealed class AdminUserService(
     IDbContextFactory<ApplicationDbContext> dbFactory,
-    ICurrentUser currentUser)
+    ICurrentUser currentUser,
+    ActivityLogService activityLog)
 {
     public async Task<AdminUserPage> GetPageAsync(
         int pageNumber,
@@ -54,7 +57,8 @@ public sealed class AdminUserService(
                 user.Email,
                 user.CreatedAtUtc,
                 user.LockoutEnd,
-                user.AccessFailedCount
+                user.AccessFailedCount,
+                user.AccountDisabled
             })
             .ToListAsync(cancellationToken);
 
@@ -79,11 +83,75 @@ public sealed class AdminUserService(
                 rolesByUser.GetValueOrDefault(user.Id, []),
                 user.CreatedAtUtc,
                 user.LockoutEnd,
-                user.AccessFailedCount)).ToArray(),
+                user.AccessFailedCount,
+                user.AccountDisabled)).ToArray(),
             totalCount,
             pageNumber,
             pageSize);
     }
+
+    public Task DisableAsync(string userId, CancellationToken cancellationToken = default) =>
+        SetAccountDisabledAsync(userId, disabled: true, cancellationToken);
+
+    public Task EnableAsync(string userId, CancellationToken cancellationToken = default) =>
+        SetAccountDisabledAsync(userId, disabled: false, cancellationToken);
+
+    private async Task SetAccountDisabledAsync(
+        string userId,
+        bool disabled,
+        CancellationToken cancellationToken)
+    {
+        EnsureAdmin();
+        if (string.IsNullOrWhiteSpace(userId))
+            throw new ArgumentException("A user ID is required.", nameof(userId));
+        if (string.Equals(currentUser.UserId, userId, StringComparison.Ordinal))
+            throw new InvalidOperationException("You cannot change your own account status.");
+
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        var user = await db.Users.SingleOrDefaultAsync(item => item.Id == userId, cancellationToken)
+            ?? throw new KeyNotFoundException("User was not found.");
+
+        if (disabled && user.AccountDisabled)
+            return;
+        if (!disabled && !user.AccountDisabled)
+            return;
+
+        if (disabled)
+        {
+            var adminCount = await (
+                from userRole in db.UserRoles
+                join role in db.Roles on userRole.RoleId equals role.Id
+                where role.Name == ApplicationRoles.Admin
+                select userRole.UserId).CountAsync(cancellationToken);
+            if (await IsAdminAsync(db, userId, cancellationToken) && adminCount <= 1)
+                throw new InvalidOperationException("The last administrator cannot be disabled.");
+        }
+
+        user.AccountDisabled = disabled;
+        user.DisabledAtUtc = disabled ? DateTime.UtcNow : null;
+        user.DisabledByUserId = disabled ? currentUser.UserId : null;
+        if (!disabled)
+        {
+            user.AccessFailedCount = 0;
+            user.LockoutEnd = null;
+        }
+        await db.SaveChangesAsync(cancellationToken);
+
+        await activityLog.RecordAsync(
+            disabled ? ActivityTypes.AccountDisabled : ActivityTypes.AccountEnabled,
+            targetType: "User",
+            targetId: user.Id,
+            metadata: new { Email = user.Email });
+    }
+
+    private static Task<bool> IsAdminAsync(
+        ApplicationDbContext db,
+        string userId,
+        CancellationToken cancellationToken) =>
+        (from userRole in db.UserRoles
+         join role in db.Roles on userRole.RoleId equals role.Id
+         where userRole.UserId == userId && role.Name == ApplicationRoles.Admin
+         select userRole.UserId).AnyAsync(cancellationToken);
 
     private void EnsureAdmin()
     {

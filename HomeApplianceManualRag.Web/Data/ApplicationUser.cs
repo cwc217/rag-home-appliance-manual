@@ -5,6 +5,9 @@ namespace HomeApplianceManualRag.Web.Data;
 public sealed class ApplicationUser : IdentityUser
 {
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+    public bool AccountDisabled { get; set; }
+    public DateTime? DisabledAtUtc { get; set; }
+    public string? DisabledByUserId { get; set; }
 }
 
 public interface ICurrentUser

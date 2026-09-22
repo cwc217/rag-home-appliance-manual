@@ -2,6 +2,7 @@
 @attribute [Authorize(Policy = ApplicationPolicies.AdminOnly)]
 @using HomeApplianceManualRag.Web.Admin
 @inject AdminUserService Users
+@inject IDialogService DialogService
 
 <PageTitle>Users</PageTitle>
 
@@ -67,7 +68,11 @@
                     </MudTd>
                     <MudTd DataLabel="Created">@FormatDate(context.CreatedAtUtc)</MudTd>
                     <MudTd DataLabel="Sign-in status">
-                        @if (context.LockoutEnd is not null && context.LockoutEnd > DateTimeOffset.UtcNow)
+                        @if (context.AccountDisabled)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Error">Disabled</MudChip>
+                        }
+                        else if (context.LockoutEnd is not null && context.LockoutEnd > DateTimeOffset.UtcNow)
                         {
                             <MudChip T="string" Size="Size.Small" Color="Color.Error">Locked</MudChip>
                         }
@@ -81,6 +86,11 @@
                                 @context.AccessFailedCount failed attempts
                             </MudText>
                         }
+                        <MudButton Variant="Variant.Text" Size="Size.Small"
+                                   Color="@(context.AccountDisabled ? Color.Success : Color.Error)"
+                                   OnClick="() => ConfirmAccountStatusChange(context)">
+                            @(context.AccountDisabled ? "Enable" : "Disable")
+                        </MudButton>
                     </MudTd>
                 </RowTemplate>
                 <NoRecordsContent>
@@ -153,4 +163,40 @@
 
     private static string FormatDate(DateTime value) =>
         DateTimeDisplay.FormatUtcPlusEight(value);
+
+    private async Task ConfirmAccountStatusChange(AdminUserRow user)
+    {
+        var action = user.AccountDisabled ? "enable" : "disable";
+        var confirmed = await DialogService.ShowMessageBox(
+            $"{char.ToUpperInvariant(action[0])}{action[1..]} account?",
+            $"Are you sure you want to {action} {user.Email}?",
+            yesText: char.ToUpperInvariant(action[0]) + action[1..],
+            cancelText: "Cancel",
+            options: new DialogOptions { CloseOnEscapeKey = true });
+        if (confirmed != true)
+            return;
+
+        loading = true;
+        errorMessage = null;
+        try
+        {
+            if (user.AccountDisabled)
+                await Users.EnableAsync(user.Id);
+            else
+                await Users.DisableAsync(user.Id);
+            await LoadPageAsync(pageNumber);
+        }
+        catch (InvalidOperationException ex)
+        {
+            errorMessage = ex.Message;
+        }
+        catch (KeyNotFoundException)
+        {
+            errorMessage = "User was not found.";
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
 }

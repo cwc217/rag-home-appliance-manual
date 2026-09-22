@@ -177,7 +177,11 @@ public sealed class AdminDashboardTests
 
         var service = new AdminUserService(
             new TestDbFactory(options),
-            new FakeCurrentUser(isAdmin: true));
+            new FakeCurrentUser(isAdmin: true),
+            new ActivityLogService(
+                new TestDbFactory(options),
+                new FakeCurrentUser(isAdmin: true),
+                new HttpContextAccessor()));
 
         var page = await service.GetPageAsync(1, 20);
 
@@ -196,10 +200,93 @@ public sealed class AdminDashboardTests
             .Options;
         var service = new AdminUserService(
             new TestDbFactory(options),
-            new FakeCurrentUser(isAdmin: false));
+            new FakeCurrentUser(isAdmin: false),
+            new ActivityLogService(
+                new TestDbFactory(options),
+                new FakeCurrentUser(isAdmin: false),
+                new HttpContextAccessor()));
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(
             () => service.GetPageAsync(1, 20));
+    }
+
+    [Fact]
+    public async Task Admin_can_disable_and_enable_user_account()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        await using (var db = new ApplicationDbContext(options))
+        {
+            db.Users.Add(new ApplicationUser
+            {
+                Id = "user-2",
+                UserName = "user@example.invalid",
+                Email = "user@example.invalid"
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var currentUser = new FakeCurrentUser(isAdmin: true);
+        var service = new AdminUserService(
+            new TestDbFactory(options),
+            currentUser,
+            new ActivityLogService(new TestDbFactory(options), currentUser, new HttpContextAccessor()));
+
+        await service.DisableAsync("user-2");
+        await using (var db = new ApplicationDbContext(options))
+        {
+            var user = await db.Users.SingleAsync(item => item.Id == "user-2");
+            Assert.True(user.AccountDisabled);
+            Assert.Equal("admin-1", user.DisabledByUserId);
+            Assert.NotNull(user.DisabledAtUtc);
+        }
+
+        await service.EnableAsync("user-2");
+        await using (var db = new ApplicationDbContext(options))
+        {
+            var user = await db.Users.SingleAsync(item => item.Id == "user-2");
+            Assert.False(user.AccountDisabled);
+            Assert.Null(user.DisabledByUserId);
+            Assert.Null(user.DisabledAtUtc);
+        }
+
+        await using var activityDb = new ApplicationDbContext(options);
+        Assert.Contains(activityDb.UserActivities, activity => activity.ActivityType == ActivityTypes.AccountDisabled);
+        Assert.Contains(activityDb.UserActivities, activity => activity.ActivityType == ActivityTypes.AccountEnabled);
+    }
+
+    [Fact]
+    public async Task Admin_cannot_disable_last_admin_or_own_account()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        await using (var db = new ApplicationDbContext(options))
+        {
+            db.Users.Add(new ApplicationUser { Id = "admin-1", UserName = "admin@example.invalid" });
+            db.Roles.Add(new Microsoft.AspNetCore.Identity.IdentityRole
+            {
+                Id = "role-1",
+                Name = ApplicationRoles.Admin,
+                NormalizedName = ApplicationRoles.Admin.ToUpperInvariant()
+            });
+            db.UserRoles.Add(new Microsoft.AspNetCore.Identity.IdentityUserRole<string>
+            {
+                UserId = "admin-1",
+                RoleId = "role-1"
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var currentUser = new FakeCurrentUser(isAdmin: true, userId: "admin-2");
+        var service = new AdminUserService(
+            new TestDbFactory(options),
+            currentUser,
+            new ActivityLogService(new TestDbFactory(options), currentUser, new HttpContextAccessor()));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.DisableAsync("admin-1"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.DisableAsync("admin-2"));
     }
 
     [Fact]
@@ -404,9 +491,9 @@ public sealed class AdminDashboardTests
         Assert.Equal("198.51.100.4", activity.IpAddress);
     }
 
-    private sealed class FakeCurrentUser(bool isAdmin) : ICurrentUser
+    private sealed class FakeCurrentUser(bool isAdmin, string userId = "admin-1") : ICurrentUser
     {
-        public string? UserId => isAdmin ? "admin-1" : "user-1";
+        public string? UserId => isAdmin ? userId : "user-1";
         public string? Email => "admin@example.invalid";
         public bool IsAuthenticated => true;
         public bool IsInRole(string role) => isAdmin && role == ApplicationRoles.Admin;

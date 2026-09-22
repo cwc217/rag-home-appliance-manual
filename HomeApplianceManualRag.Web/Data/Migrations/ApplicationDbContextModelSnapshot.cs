@@ -69,11 +69,11 @@ namespace HomeApplianceManualRag.Web.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("IpAddress");
+
                     b.HasIndex("UserId");
 
                     b.HasIndex("CreatedAtUtc", "ActivityType");
-
-                    b.HasIndex("IpAddress");
 
                     b.HasIndex("Path", "CreatedAtUtc");
 
@@ -88,12 +88,21 @@ namespace HomeApplianceManualRag.Web.Data.Migrations
                     b.Property<int>("AccessFailedCount")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("AccountDisabled")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("ConcurrencyStamp")
                         .IsConcurrencyToken()
                         .HasColumnType("text");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DisabledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DisabledByUserId")
+                        .HasColumnType("text");
 
                     b.Property<string>("Email")
                         .HasMaxLength(256)

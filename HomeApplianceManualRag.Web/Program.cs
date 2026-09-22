@@ -61,6 +61,9 @@ builder.Services.AddIdentity<ApplicationUser, Microsoft.AspNetCore.Identity.Iden
         options.Password.RequireLowercase = false;
         options.Password.RequireNonAlphanumeric = false;
         options.Password.RequireUppercase = false;
+        options.Lockout.AllowedForNewUsers = true;
+        options.Lockout.MaxFailedAccessAttempts = 5;
+        options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
     })
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddDefaultTokenProviders();
@@ -156,10 +159,19 @@ app.MapPost("/account/login", async (
     culture ??= context.Request.Headers.AcceptLanguage.ToString();
     if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
         return Results.Redirect($"/login?error={Uri.EscapeDataString(IdentityMessages.Required("Email and password", culture))}");
-    var result = await signInManager.PasswordSignInAsync(email, password, isPersistent: false, lockoutOnFailure: false);
+    var user = await userManager.FindByEmailAsync(email);
+    if (user?.AccountDisabled == true)
+    {
+        await activityLog.RecordAsync(
+            ActivityTypes.LoginFailed,
+            userId: user.Id,
+            metadata: new { Succeeded = false, LockedOut = false, AccountDisabled = true });
+        return Results.Redirect($"/login?error={Uri.EscapeDataString(IdentityMessages.InvalidCredentials(culture))}");
+    }
+
+    var result = await signInManager.PasswordSignInAsync(email, password, isPersistent: false, lockoutOnFailure: true);
     if (result.Succeeded)
     {
-        var user = await userManager.FindByEmailAsync(email);
         await activityLog.RecordAsync(ActivityTypes.LoginSucceeded, userId: user?.Id);
         return Results.LocalRedirect(IsSafeLocalReturnUrl(returnUrl) ? returnUrl! : "/");
     }
