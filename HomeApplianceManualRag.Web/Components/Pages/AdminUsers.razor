@@ -1,0 +1,156 @@
+@page "/admin/users"
+@attribute [Authorize(Policy = ApplicationPolicies.AdminOnly)]
+@using HomeApplianceManualRag.Web.Admin
+@inject AdminUserService Users
+
+<PageTitle>Users</PageTitle>
+
+<MudStack Spacing="3">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <div>
+            <MudText Typo="Typo.h4">Users</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                View account details and sign-in status.
+            </MudText>
+        </div>
+        <MudButton Href="/admin" Variant="Variant.Outlined"
+                   StartIcon="@Icons.Material.Filled.ArrowBack">Dashboard</MudButton>
+    </MudStack>
+
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+        <MudTextField @bind-Value="search" Label="Search email or user ID"
+                      Variant="Variant.Outlined" Margin="Margin.Dense"
+                      Immediate="false" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Search"
+                   OnClick="SearchAsync">Search</MudButton>
+    </MudStack>
+
+    @if (usersPage is null && errorMessage is null)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+    else if (errorMessage is not null)
+    {
+        <MudAlert Severity="Severity.Error">@errorMessage</MudAlert>
+    }
+    else if (usersPage is not null)
+    {
+        <MudPaper Class="pa-0" Elevation="1">
+            <MudTable T="AdminUserRow" Items="@usersPage.Items" Dense="true" Hover="true"
+                      Breakpoint="Breakpoint.Sm" Loading="@loading">
+                <HeaderContent>
+                    <MudTh>User</MudTh>
+                    <MudTh>Roles</MudTh>
+                    <MudTh>Created</MudTh>
+                    <MudTh>Sign-in status</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="User">
+                        <MudText Typo="Typo.body2" Class="text-break">@context.Email</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="text-break">
+                            @context.Id
+                        </MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Roles">
+                        @if (context.Roles.Count == 0)
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">User</MudText>
+                        }
+                        else
+                        {
+                            @foreach (var role in context.Roles)
+                            {
+                                <MudChip T="string" Size="Size.Small">@role</MudChip>
+                            }
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Created">@FormatDate(context.CreatedAtUtc)</MudTd>
+                    <MudTd DataLabel="Sign-in status">
+                        @if (context.LockoutEnd is not null && context.LockoutEnd > DateTimeOffset.UtcNow)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Error">Locked</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Success">Available</MudChip>
+                        }
+                        @if (context.AccessFailedCount > 0)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @context.AccessFailedCount failed attempts
+                            </MudText>
+                        }
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText Class="pa-4" Color="Color.Secondary">No users found.</MudText>
+                </NoRecordsContent>
+            </MudTable>
+        </MudPaper>
+
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                Showing @GetFirstItem()–@GetLastItem() of @usersPage.TotalCount users
+            </MudText>
+            <MudPagination Count="@PageCount" Selected="@pageNumber"
+                           SelectedChanged="LoadPageAsync" Color="Color.Primary"
+                           BoundaryCount="1" />
+        </MudStack>
+    }
+</MudStack>
+
+@code {
+    private const int PageSize = 20;
+    private AdminUserPage? usersPage;
+    private string? errorMessage;
+    private string? search;
+    private bool loading;
+    private int pageNumber = 1;
+
+    protected override async Task OnInitializedAsync() => await LoadPageAsync(1);
+
+    private async Task SearchAsync() => await LoadPageAsync(1);
+
+    private async Task LoadPageAsync(int selectedPage)
+    {
+        if (selectedPage < 1)
+            return;
+
+        loading = true;
+        errorMessage = null;
+        try
+        {
+            usersPage = await Users.GetPageAsync(selectedPage, PageSize, search);
+            pageNumber = usersPage.PageNumber;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            errorMessage = "Administrator access is required.";
+        }
+        catch (Exception)
+        {
+            errorMessage = "User data is temporarily unavailable.";
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private int PageCount =>
+        usersPage is null || usersPage.TotalCount == 0
+            ? 1
+            : (int)Math.Ceiling(usersPage.TotalCount / (double)PageSize);
+
+    private int GetFirstItem() => usersPage is null || usersPage.TotalCount == 0
+        ? 0
+        : ((usersPage.PageNumber - 1) * PageSize) + 1;
+
+    private int GetLastItem() => usersPage is null
+        ? 0
+        : Math.Min(usersPage.PageNumber * PageSize, usersPage.TotalCount);
+
+    private static string FormatDate(DateTime value) =>
+        value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+}

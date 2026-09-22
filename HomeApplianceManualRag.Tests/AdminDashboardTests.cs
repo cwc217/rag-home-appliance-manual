@@ -140,6 +140,65 @@ public sealed class AdminDashboardTests
         Assert.Equal("parse failed", page.Items[0].LastError);
     }
 
+    [Fact]
+    public async Task User_page_returns_newest_users_with_roles_and_status()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        await using (var db = new ApplicationDbContext(options))
+        {
+            var user = new ApplicationUser
+            {
+                Id = "user-1",
+                UserName = "admin@example.invalid",
+                Email = "admin@example.invalid",
+                CreatedAtUtc = DateTime.UtcNow,
+                AccessFailedCount = 2,
+                LockoutEnd = DateTimeOffset.UtcNow.AddMinutes(10)
+            };
+            db.Users.Add(user);
+            db.Roles.Add(new Microsoft.AspNetCore.Identity.IdentityRole
+            {
+                Id = "role-1",
+                Name = ApplicationRoles.Admin,
+                NormalizedName = ApplicationRoles.Admin.ToUpperInvariant()
+            });
+            db.UserRoles.Add(new Microsoft.AspNetCore.Identity.IdentityUserRole<string>
+            {
+                UserId = user.Id,
+                RoleId = "role-1"
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new AdminUserService(
+            new TestDbFactory(options),
+            new FakeCurrentUser(isAdmin: true));
+
+        var page = await service.GetPageAsync(1, 20);
+
+        var row = Assert.Single(page.Items);
+        Assert.Equal("admin@example.invalid", row.Email);
+        Assert.Equal([ApplicationRoles.Admin], row.Roles);
+        Assert.Equal(2, row.AccessFailedCount);
+        Assert.NotNull(row.LockoutEnd);
+    }
+
+    [Fact]
+    public async Task User_page_requires_admin_role()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        var service = new AdminUserService(
+            new TestDbFactory(options),
+            new FakeCurrentUser(isAdmin: false));
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(
+            () => service.GetPageAsync(1, 20));
+    }
+
     private sealed class FakeCurrentUser(bool isAdmin) : ICurrentUser
     {
         public string? UserId => isAdmin ? "admin-1" : "user-1";
