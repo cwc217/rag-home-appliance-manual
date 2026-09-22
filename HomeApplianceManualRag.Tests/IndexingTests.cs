@@ -173,6 +173,39 @@ public sealed class IndexingTests
     }
 
     [Fact]
+    public async Task Docling_parser_removes_consecutive_duplicate_lines_inside_a_block()
+    {
+        using var client = new HttpClient(new StubHandler("""
+            {
+              "status": "success",
+              "document": {
+                "json_content": {
+                  "texts": [
+                    {
+                      "text": "清洗空調器\n清洗空調器\n\n室內機\n室內機\n\n清洗空調器",
+                      "prov": [{ "page_no": 15 }]
+                    }
+                  ]
+                }
+              },
+              "errors": []
+            }
+            """))
+        {
+            BaseAddress = new Uri("http://docling:5001/")
+        };
+        var parser = new DoclingHttpParser(
+            client,
+            Options.Create(new DoclingOptions { ServiceUrl = "http://docling:5001" }));
+
+        var result = await parser.ParseAsync(new(
+            Guid.NewGuid(), "manual.pdf", new MemoryStream([1, 2, 3])));
+
+        var text = Assert.Single(result.Pages.Single().Blocks).Text;
+        Assert.Equal("清洗空調器\n\n室內機\n\n清洗空調器", text);
+    }
+
+    [Fact]
     public async Task Docling_parser_extracts_embedded_picture_data_without_persisting_it()
     {
         var imageData = Convert.ToBase64String([1, 2, 3, 4]);

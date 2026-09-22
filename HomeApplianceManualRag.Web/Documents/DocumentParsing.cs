@@ -171,7 +171,7 @@ public sealed class DoclingHttpParser(
             if (item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String &&
                 !string.IsNullOrWhiteSpace(value.GetString()) &&
                 !string.Equals(value.GetString(), $"[{blockType}]", StringComparison.OrdinalIgnoreCase))
-                return value.GetString()!.Trim();
+                return RemoveConsecutiveDuplicateLines(value.GetString());
         if (string.Equals(blockType, "table", StringComparison.OrdinalIgnoreCase))
         {
             var tableText = GetStructuredTableText(item);
@@ -323,6 +323,29 @@ public sealed class DoclingHttpParser(
     private static string NormalizeWhitespace(string? value) =>
         string.Join(' ', (value ?? string.Empty)
             .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+    private static string RemoveConsecutiveDuplicateLines(string? value)
+    {
+        var lines = (value ?? string.Empty)
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n')
+            .Split('\n');
+        var result = new List<string>(lines.Length);
+        string? previousLine = null;
+
+        foreach (var line in lines)
+        {
+            var normalizedLine = line.Trim();
+            if (normalizedLine.Length > 0 &&
+                string.Equals(normalizedLine, previousLine, StringComparison.Ordinal))
+                continue;
+
+            result.Add(normalizedLine);
+            previousLine = normalizedLine.Length == 0 ? null : normalizedLine;
+        }
+
+        return string.Join('\n', result).Trim();
+    }
 
     private static string TrimError(JsonElement value)
     {
