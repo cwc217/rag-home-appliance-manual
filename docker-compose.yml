@@ -76,7 +76,7 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "127.0.0.1:8081:8080"
+      - "127.0.0.1:8581:8080"
 
 volumes:
   postgres-data:

@@ -226,7 +226,7 @@ To inspect the PostgreSQL database with Adminer, opt in to the `tools` profile:
 docker compose --profile tools up --build
 ```
 
-Open `http://localhost:8081` and use `PostgreSQL` as the system, `postgres` as the server, `postgres` as the username, the `POSTGRES_PASSWORD` value from `.env` as the password, and `manuals` as the database. Adminer is bound to localhost and is not started by the default Compose command.
+Open `http://localhost:8581` and use `PostgreSQL` as the system, `postgres` as the server, `postgres` as the username, the `POSTGRES_PASSWORD` value from `.env` as the password, and `manuals` as the database. Adminer is bound to localhost and is not started by the default Compose command.
 
 For running the website directly on the host:
 
