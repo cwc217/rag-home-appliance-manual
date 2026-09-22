@@ -5,7 +5,7 @@
 <MudPaper Class="auth-card pa-6" Elevation="2">
 <MudText Typo="Typo.h4" GutterBottom="true">Login</MudText>
 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-6">Sign in to manage manuals and keep your chat history.</MudText>
-<form method="post" action="/account/login">
+<form method="post" action="/account/login" data-enhance="false">
     <AntiforgeryToken />
     <input type="hidden" name="returnUrl" value="@ReturnUrl" />
     <MudStack Spacing="3">

@@ -166,7 +166,7 @@ app.MapPost("/account/login", async (
         ActivityTypes.LoginFailed,
         metadata: new { Succeeded = result.Succeeded, LockedOut = result.IsLockedOut });
     return Results.Redirect($"/login?error={Uri.EscapeDataString(IdentityMessages.InvalidCredentials(culture))}");
-}).AllowAnonymous();
+}).AllowAnonymous().AddEndpointFilter(ValidateAntiforgery);
 
 app.MapPost("/account/register", async (
     HttpContext context,
@@ -199,7 +199,7 @@ app.MapPost("/account/register", async (
     await signInManager.SignInAsync(user, isPersistent: false);
     await activityLog.RecordAsync(ActivityTypes.UserRegistered, userId: user.Id);
     return Results.Redirect("/");
-}).AllowAnonymous();
+}).AllowAnonymous().AddEndpointFilter(ValidateAntiforgery);
 
 app.MapPost("/account/logout", async (
     SignInManager<ApplicationUser> signInManager,
@@ -210,7 +210,7 @@ app.MapPost("/account/logout", async (
     await signInManager.SignOutAsync();
     await activityLog.RecordAsync(ActivityTypes.Logout, userId: userId);
     return Results.Redirect("/");
-}).RequireAuthorization(ApplicationPolicies.RegisteredUser);
+}).RequireAuthorization(ApplicationPolicies.RegisteredUser).AddEndpointFilter(ValidateAntiforgery);
 
 app.MapGet("/documents/{id:guid}/download", async (Guid id, DocumentService documents, HttpContext context) =>
 {
@@ -247,3 +247,13 @@ static bool IsSafeLocalReturnUrl(string? returnUrl) =>
     && returnUrl.StartsWith("/", StringComparison.Ordinal)
     && !returnUrl.StartsWith("//", StringComparison.Ordinal)
     && !returnUrl.Contains('\\', StringComparison.Ordinal);
+
+static async ValueTask<object?> ValidateAntiforgery(
+    EndpointFilterInvocationContext context,
+    EndpointFilterDelegate next)
+{
+    var antiforgery = context.HttpContext.RequestServices
+        .GetRequiredService<Microsoft.AspNetCore.Antiforgery.IAntiforgery>();
+    await antiforgery.ValidateRequestAsync(context.HttpContext);
+    return await next(context);
+}

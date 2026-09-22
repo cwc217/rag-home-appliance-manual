@@ -67,7 +67,7 @@
                     <MudNavLink Href="/admin/users" Icon="@Icons.Material.Filled.People">Users</MudNavLink>
                     <MudNavLink Href="/admin/activity" Icon="@Icons.Material.Filled.History">User activity</MudNavLink>
                 </AuthorizeView>
-                <form method="post" action="/account/logout">
+                <form method="post" action="/account/logout" data-enhance="false">
                     <AntiforgeryToken />
                     <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Text"
                                StartIcon="@Icons.Material.Filled.Logout" Class="nav-logout">
