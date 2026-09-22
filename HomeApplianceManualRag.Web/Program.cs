@@ -234,6 +234,23 @@ app.MapGet("/documents/{id:guid}/download", async (Guid id, DocumentService docu
     }
 }).RequireAuthorization(ApplicationPolicies.RegisteredUser);
 
+app.MapGet("/activity/page-view", async (
+    HttpContext context,
+    ActivityLogService activityLog,
+    string? path,
+    CancellationToken cancellationToken) =>
+{
+    if (string.IsNullOrWhiteSpace(path)
+        || !path.StartsWith("/", StringComparison.Ordinal)
+        || path.Contains('?', StringComparison.Ordinal)
+        || path.Contains('#', StringComparison.Ordinal))
+        return Results.BadRequest();
+
+    var visitorId = PageViewLoggingMiddleware.GetOrCreateVisitorId(context);
+    await activityLog.RecordPageViewAsync(path, visitorId, cancellationToken);
+    return Results.NoContent();
+}).AllowAnonymous();
+
 app.MapGet("/account/me", (ICurrentUser currentUser) => Results.Ok(new { currentUser.UserId, currentUser.Email }))
     .RequireAuthorization(ApplicationPolicies.RegisteredUser);
 

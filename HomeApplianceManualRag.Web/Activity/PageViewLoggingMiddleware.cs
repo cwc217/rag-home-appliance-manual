@@ -6,7 +6,7 @@ public sealed class PageViewLoggingMiddleware(
     RequestDelegate next,
     ILogger<PageViewLoggingMiddleware> logger)
 {
-    private const string VisitorCookie = "AnonymousVisitorId";
+    public const string VisitorCookie = "AnonymousVisitorId";
 
     public async Task InvokeAsync(HttpContext context, ActivityLogService activityLog)
     {
@@ -35,7 +35,7 @@ public sealed class PageViewLoggingMiddleware(
         && context.Request.Headers.Accept.ToString()
             .Contains("text/html", StringComparison.OrdinalIgnoreCase);
 
-    private static string GetOrCreateVisitorId(HttpContext context)
+    public static string GetOrCreateVisitorId(HttpContext context)
     {
         if (context.Request.Cookies.TryGetValue(VisitorCookie, out var existing)
             && Guid.TryParse(existing, out _))

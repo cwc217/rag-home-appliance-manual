@@ -24,6 +24,10 @@
             const transcript = document.querySelector('.chat-transcript');
             if (transcript) transcript.scrollTop = transcript.scrollHeight;
         };
+        window.logPageView = path => {
+            const url = `/activity/page-view?path=${encodeURIComponent(path)}`;
+            fetch(url, { credentials: 'same-origin', keepalive: true }).catch(() => {});
+        };
     </script>
 </body>
 
