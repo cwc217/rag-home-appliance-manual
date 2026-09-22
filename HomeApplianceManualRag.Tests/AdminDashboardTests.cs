@@ -356,6 +356,30 @@ public sealed class AdminDashboardTests
     }
 
     [Fact]
+    public async Task Activity_page_ip_filter_matches_partial_address()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        await using (var db = new ApplicationDbContext(options))
+        {
+            db.UserActivities.AddRange(
+                new UserActivity { ActivityType = ActivityTypes.PageViewed, IpAddress = "172.29.8.1" },
+                new UserActivity { ActivityType = ActivityTypes.PageViewed, IpAddress = "203.0.113.10" });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new AdminActivityService(
+            new TestDbFactory(options),
+            new FakeCurrentUser(isAdmin: true));
+
+        var page = await service.GetPageAsync(1, 20, ipAddress: "172");
+
+        var activity = Assert.Single(page.Items);
+        Assert.Equal("172.29.8.1", activity.IpAddress);
+    }
+
+    [Fact]
     public async Task Anonymous_page_view_records_route_and_visitor_id()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()

@@ -61,7 +61,12 @@ public sealed class AdminActivityService(
                 item.UserEmail.ToLower().StartsWith(normalizedEmail));
         }
         if (!string.IsNullOrWhiteSpace(ipAddress))
-            query = query.Where(item => item.activity.IpAddress == ipAddress);
+        {
+            var normalizedIpAddress = ipAddress.ToLower();
+            query = query.Where(item =>
+                item.activity.IpAddress != null &&
+                item.activity.IpAddress.ToLower().Contains(normalizedIpAddress));
+        }
         if (!string.IsNullOrWhiteSpace(path))
             query = query.Where(item =>
                 item.activity.Path != null &&
