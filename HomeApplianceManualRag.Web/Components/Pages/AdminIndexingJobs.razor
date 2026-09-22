@@ -32,21 +32,20 @@
                       Breakpoint="Breakpoint.Sm" Loading="@loading">
                 <HeaderContent>
                     <MudTh>Document</MudTh>
+                    <MudTh>Owner</MudTh>
                     <MudTh>Status</MudTh>
                     <MudTh>Attempts</MudTh>
                     <MudTh>Created</MudTh>
                     <MudTh>Completed</MudTh>
                     <MudTh>Last error</MudTh>
+                    <MudTh>Actions</MudTh>
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd DataLabel="Document">
                         <MudText Typo="Typo.body2" Class="text-break">@context.DocumentName</MudText>
-                        @if (!string.IsNullOrWhiteSpace(context.OwnerUserId))
-                        {
-                            <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                Owner: @context.OwnerUserId
-                            </MudText>
-                        }
+                    </MudTd>
+                    <MudTd DataLabel="Owner">
+                        @(string.IsNullOrWhiteSpace(context.OwnerUserId) ? "Admin/public" : context.OwnerUserId)
                     </MudTd>
                     <MudTd DataLabel="Status">
                         <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
@@ -68,6 +67,17 @@
                             <MudText Typo="Typo.body2" Class="text-break" Color="Color.Error">
                                 @context.LastError
                             </MudText>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Actions">
+                        @if (!string.Equals(context.DocumentName, "(deleted document)", StringComparison.Ordinal))
+                        {
+                            <MudButton Href="@($"/documents/{context.DocumentId}/download")"
+                                       Variant="Variant.Text"
+                                       Size="Size.Small"
+                                       StartIcon="@Icons.Material.Filled.Download">
+                                Download PDF
+                            </MudButton>
                         }
                     </MudTd>
                 </RowTemplate>
