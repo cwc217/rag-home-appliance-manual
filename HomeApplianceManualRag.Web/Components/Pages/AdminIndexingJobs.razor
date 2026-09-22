@@ -51,6 +51,10 @@
                         <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
                             @context.Status
                         </MudChip>
+                        @if (context.DeletedAtUtc is not null)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Dark">Deleted</MudChip>
+                        }
                     </MudTd>
                     <MudTd DataLabel="Attempts">@context.Attempts</MudTd>
                     <MudTd DataLabel="Created">@FormatDate(context.CreatedAtUtc)</MudTd>

@@ -36,7 +36,10 @@ public sealed class DocumentService(
             : null;
         if (!isAdmin && await HasInProgressDocumentAsync(owner!, cancellationToken))
             throw new DocumentProcessingInProgressException();
-        if (!isAdmin && await db.ManualDocuments.CountAsync(x => x.OwnerUserId == owner && ActiveStatuses.Contains(x.Status), cancellationToken) >= 3)
+        if (!isAdmin && await db.ManualDocuments.CountAsync(x =>
+                x.OwnerUserId == owner &&
+                x.DeletedAtUtc == null &&
+                ActiveStatuses.Contains(x.Status), cancellationToken) >= 3)
             throw new DocumentQuotaExceededException();
         var key = $"{Guid.NewGuid():N}.pdf";
         var document = new ManualDocument { Id = Guid.NewGuid(), OwnerUserId = owner, DisplayName = Path.GetFileName(file.FileName), StorageKey = key, ContentType = "application/pdf", SizeBytes = validation.SizeBytes, Status = DocumentStatus.Pending, CreatedAtUtc = DateTime.UtcNow, UpdatedAtUtc = DateTime.UtcNow };
@@ -90,7 +93,7 @@ public sealed class DocumentService(
         var owner = currentUser.UserId;
         var query = db.ManualDocuments
             .AsNoTracking()
-            .Where(x => documentIds.Contains(x.Id));
+            .Where(x => documentIds.Contains(x.Id) && x.DeletedAtUtc == null);
         if (!isAdmin)
             query = query.Where(x => x.OwnerUserId == owner);
 
@@ -103,7 +106,9 @@ public sealed class DocumentService(
 
     private async Task<List<ManualDocument>> ListCoreAsync(bool isAdmin, string? owner, CancellationToken ct)
     {
-        var documents = await (isAdmin ? db.ManualDocuments : db.ManualDocuments.Where(x => x.OwnerUserId == owner))
+        var documents = await (isAdmin
+                ? db.ManualDocuments
+                : db.ManualDocuments.Where(x => x.OwnerUserId == owner && x.DeletedAtUtc == null))
             .AsNoTracking()
             .OrderByDescending(x => x.CreatedAtUtc)
             .ToListAsync(ct);
@@ -133,6 +138,40 @@ public sealed class DocumentService(
     {
         var document = await GetAuthorizedAsync(id, ct);
         EnsureNotProcessing(document);
+        if (document.DeletedAtUtc is not null)
+            return;
+
+        document.DeletedAtUtc = DateTime.UtcNow;
+        document.DeletedByUserId = currentUser.UserId;
+        document.DeletionReason = "Deleted by user";
+        document.UpdatedAtUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task RestoreAsync(Guid id, CancellationToken ct = default)
+    {
+        EnsureAdmin();
+        var document = await db.ManualDocuments.SingleOrDefaultAsync(x => x.Id == id, ct)
+            ?? throw new KeyNotFoundException("Document was not found.");
+        if (document.DeletedAtUtc is null)
+            return;
+
+        document.DeletedAtUtc = null;
+        document.DeletedByUserId = null;
+        document.DeletionReason = null;
+        document.UpdatedAtUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task HardDeleteAsync(Guid id, CancellationToken ct = default)
+    {
+        EnsureAdmin();
+        var document = await db.ManualDocuments.SingleOrDefaultAsync(x => x.Id == id, ct)
+            ?? throw new KeyNotFoundException("Document was not found.");
+        if (document.DeletedAtUtc is null)
+            throw new InvalidOperationException("Only deleted documents can be permanently deleted.");
+        EnsureNotProcessing(document);
+
         var cleanup = new StorageCleanup
         {
             Id = Guid.NewGuid(),
@@ -219,6 +258,7 @@ public sealed class DocumentService(
     private Task<bool> HasInProgressDocumentAsync(string owner, CancellationToken ct) =>
         db.ManualDocuments.AnyAsync(
             x => x.OwnerUserId == owner &&
+                 x.DeletedAtUtc == null &&
                  (x.Status == DocumentStatus.Pending || x.Status == DocumentStatus.Processing),
             ct);
 
@@ -227,9 +267,16 @@ public sealed class DocumentService(
         if (!currentUser.IsAuthenticated) throw new DocumentForbiddenException();
         var document = await db.ManualDocuments.SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw new KeyNotFoundException("Document was not found.");
         if (!currentUser.IsInRole(ApplicationRoles.Admin) &&
-            !(currentUser.IsAuthenticated && document.OwnerUserId == currentUser.UserId))
+            (document.DeletedAtUtc is not null ||
+             !(currentUser.IsAuthenticated && document.OwnerUserId == currentUser.UserId)))
             throw new DocumentForbiddenException();
         return document;
+    }
+
+    private void EnsureAdmin()
+    {
+        if (!currentUser.IsAuthenticated || !currentUser.IsInRole(ApplicationRoles.Admin))
+            throw new DocumentForbiddenException();
     }
 
     private static void EnsureNotProcessing(ManualDocument document)

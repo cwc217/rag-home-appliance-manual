@@ -111,6 +111,25 @@ public sealed class DocumentValidationTests
         }
 
         [Fact]
+        public async Task Deleted_documents_are_hidden_from_users_but_visible_to_admins()
+        {
+            await using var db = CreateDb();
+            var active = Document("active", "user-1");
+            var deleted = Document("deleted", "user-1");
+            deleted.DeletedAtUtc = DateTime.UtcNow;
+            db.ManualDocuments.AddRange(active, deleted);
+            await db.SaveChangesAsync();
+
+            var userDocuments = await Service(db, new TestCurrentUser("user-1", false)).ListAsync();
+            var adminDocuments = await Service(db, new TestCurrentUser("admin", true)).ListAsync();
+
+            Assert.Single(userDocuments);
+            Assert.Equal(active.Id, userDocuments[0].Id);
+            Assert.Equal(2, adminDocuments.Count);
+            Assert.Contains(adminDocuments, document => document.Id == deleted.Id);
+        }
+
+        [Fact]
         public async Task Normal_users_cannot_retry_another_owners_document()
         {
             await using var db = CreateDb();
@@ -124,7 +143,7 @@ public sealed class DocumentValidationTests
         }
 
         [Fact]
-        public async Task Delete_records_cleanup_and_marks_it_complete_after_file_removal()
+        public async Task Delete_soft_deletes_document_without_removing_pdf()
         {
             await using var db = CreateDb();
             var document = Document("to-delete", "user-1");
@@ -137,11 +156,65 @@ public sealed class DocumentValidationTests
 
             await service.DeleteAsync(document.Id);
 
+            var deleted = await db.ManualDocuments.FindAsync(document.Id);
+            Assert.NotNull(deleted);
+            Assert.NotNull(deleted.DeletedAtUtc);
+            Assert.Equal("user-1", deleted.DeletedByUserId);
+            Assert.Empty(db.StorageCleanups);
+            Assert.Empty(storage.DeletedKeys);
+        }
+
+        [Fact]
+        public async Task Admin_can_restore_and_hard_delete_soft_deleted_document()
+        {
+            await using var db = CreateDb();
+            var document = Document("to-delete", "user-1");
+            document.Status = DocumentStatus.Ready;
+            document.DeletedAtUtc = DateTime.UtcNow;
+            db.ManualDocuments.Add(document);
+            await db.SaveChangesAsync();
+            var storage = new RecordingStorage();
+            var service = new DocumentService(db, new TestCurrentUser("admin", true),
+                new PdfValidator(Options.Create(new UploadOptions())), storage);
+
+            await service.RestoreAsync(document.Id);
+            Assert.Null((await db.ManualDocuments.FindAsync(document.Id))!.DeletedAtUtc);
+
+            await service.DeleteAsync(document.Id);
+            await service.HardDeleteAsync(document.Id);
+
             Assert.Null(await db.ManualDocuments.FindAsync(document.Id));
-            var cleanup = Assert.Single(db.StorageCleanups);
-            Assert.Equal(document.StorageKey, cleanup.StorageKey);
-            Assert.Equal(StorageCleanupStatus.Completed, cleanup.Status);
-            Assert.Contains(document.StorageKey, storage.DeletedKeys);
+            Assert.Equal(document.StorageKey, Assert.Single(storage.DeletedKeys));
+            Assert.Equal(StorageCleanupStatus.Completed, Assert.Single(db.StorageCleanups).Status);
+        }
+
+        [Fact]
+        public async Task Non_admin_cannot_restore_or_hard_delete_document()
+        {
+            await using var db = CreateDb();
+            var document = Document("deleted", "user-1");
+            document.DeletedAtUtc = DateTime.UtcNow;
+            db.ManualDocuments.Add(document);
+            await db.SaveChangesAsync();
+            var service = new DocumentService(db, new TestCurrentUser("user-1", false),
+                new PdfValidator(Options.Create(new UploadOptions())), new RecordingStorage());
+
+            await Assert.ThrowsAsync<DocumentForbiddenException>(() => service.RestoreAsync(document.Id));
+            await Assert.ThrowsAsync<DocumentForbiddenException>(() => service.HardDeleteAsync(document.Id));
+        }
+
+        [Fact]
+        public async Task Admin_hard_delete_requires_soft_deleted_document()
+        {
+            await using var db = CreateDb();
+            var document = Document("active", "user-1");
+            document.Status = DocumentStatus.Ready;
+            db.ManualDocuments.Add(document);
+            await db.SaveChangesAsync();
+            var service = Service(db, new TestCurrentUser("admin", true));
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.HardDeleteAsync(document.Id));
         }
 
         [Fact]

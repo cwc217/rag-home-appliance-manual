@@ -26,6 +26,7 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
             builder.Entity<ManualChunk>().Property(x => x.Embedding).HasColumnType($"vector({EmbeddingDimensions})");
         }
         builder.Entity<ManualDocument>().HasIndex(x => new { x.Status, x.OwnerUserId });
+        builder.Entity<ManualDocument>().HasIndex(x => x.DeletedAtUtc);
         builder.Entity<ManualChunk>().HasIndex(x => x.DocumentId);
         builder.Entity<IndexingJob>().HasIndex(x => new { x.Status, x.NextAttemptAtUtc });
         builder.Entity<Conversation>().HasIndex(x => x.UserId);
@@ -123,6 +124,9 @@ public sealed class ManualDocument
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime? IndexedAtUtc { get; set; }
+    public DateTime? DeletedAtUtc { get; set; }
+    public string? DeletedByUserId { get; set; }
+    public string? DeletionReason { get; set; }
     public Guid DocumentVersion { get; set; } = Guid.NewGuid();
     public string? ProductName { get; set; }
     public string? ApplianceCategory { get; set; }

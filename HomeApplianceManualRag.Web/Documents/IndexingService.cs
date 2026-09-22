@@ -55,6 +55,8 @@ public sealed class IndexingPipeline(
             ?? throw new DocumentParseException("Indexing job was deleted.");
         var document = await db.ManualDocuments.SingleOrDefaultAsync(x => x.Id == job.DocumentId, cancellationToken)
             ?? throw new DocumentParseException("Document was deleted before indexing.");
+        if (document.DeletedAtUtc is not null)
+            throw new DocumentParseException("Indexing job belongs to a deleted document.");
         if (document.DocumentVersion != job.DocumentVersion)
             throw new DocumentParseException("Indexing job is stale and was superseded.");
 
@@ -108,7 +110,9 @@ public sealed class IndexingPipeline(
 
         await using var transaction = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(cancellationToken) : null;
         if (!await db.ManualDocuments.AnyAsync(
-                x => x.Id == job.DocumentId && x.DocumentVersion == job.DocumentVersion,
+                x => x.Id == job.DocumentId &&
+                     x.DeletedAtUtc == null &&
+                     x.DocumentVersion == job.DocumentVersion,
                 cancellationToken))
             throw new DocumentParseException("Indexing job is stale and was superseded.");
         var existingChunks = await db.ManualChunks
@@ -205,6 +209,8 @@ public sealed class IndexingWorker(
         var staleBefore = now - LeaseTimeout;
         var jobs = await db.IndexingJobs
             .Where(x =>
+                x.Document != null &&
+                x.Document.DeletedAtUtc == null &&
                 (x.Status == IndexingJobStatus.Pending &&
                  (x.NextAttemptAtUtc == null || x.NextAttemptAtUtc <= now)) ||
                 (x.Status == IndexingJobStatus.Processing &&
@@ -297,7 +303,9 @@ public sealed class IndexingWorker(
         job.Status = retryable && job.Attempts < 3 ? IndexingJobStatus.Pending : IndexingJobStatus.Failed;
         job.LastError = exception.Message;
         job.NextAttemptAtUtc = job.Status == IndexingJobStatus.Pending ? DateTime.UtcNow.AddMinutes(Math.Pow(2, job.Attempts)) : null;
-        if (job.Document is not null && job.Document.DocumentVersion == job.DocumentVersion)
+        if (job.Document is not null &&
+            job.Document.DeletedAtUtc is null &&
+            job.Document.DocumentVersion == job.DocumentVersion)
         {
             job.Document.Status = DocumentStatus.Failed;
             job.Document.LastError = exception.Message;
@@ -325,7 +333,9 @@ public sealed class IndexingWorker(
         job.Status = IndexingJobStatus.Failed;
         job.LastError = exception.Message;
         job.NextAttemptAtUtc = null;
-        if (job.Document is not null && job.Document.DocumentVersion == job.DocumentVersion)
+        if (job.Document is not null &&
+            job.Document.DeletedAtUtc is null &&
+            job.Document.DocumentVersion == job.DocumentVersion)
         {
             job.Document.Status = DocumentStatus.Rejected;
             job.Document.LastError = exception.Message;

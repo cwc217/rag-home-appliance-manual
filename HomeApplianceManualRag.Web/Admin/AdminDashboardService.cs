@@ -25,7 +25,8 @@ public sealed record AdminIndexingJobRow(
     DateTime? StartedAtUtc,
     DateTime? CompletedAtUtc,
     DateTime? NextAttemptAtUtc,
-    string? LastError);
+    string? LastError,
+    DateTime? DeletedAtUtc);
 
 public sealed record AdminIndexingJobPage(
     IReadOnlyList<AdminIndexingJobRow> Items,
@@ -117,7 +118,8 @@ public sealed class AdminIndexingJobService(
                 job.StartedAtUtc,
                 job.CompletedAtUtc,
                 job.NextAttemptAtUtc,
-                job.LastError))
+                job.LastError,
+                job.Document == null ? null : job.Document.DeletedAtUtc))
             .ToListAsync(cancellationToken);
 
         return new AdminIndexingJobPage(items, totalCount, pageNumber, pageSize);

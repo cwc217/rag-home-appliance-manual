@@ -34,7 +34,18 @@
         <MudCard Class="h-100 document-card">
             <MudCardContent>
                 <MudText Typo="Typo.h6" Class="text-break">@document.DisplayName</MudText>
-                <MudText Typo="Typo.body2" Class="mb-2">Status: <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(document)">@GetStage(document)</MudChip></MudText>
+                <MudText Typo="Typo.body2" Class="mb-2">
+                    Status:
+                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(document)">
+                        @(document.DeletedAtUtc is null ? GetStage(document) : "Deleted")
+                    </MudChip>
+                </MudText>
+                @if (document.DeletedAtUtc is not null)
+                {
+                    <MudAlert Severity="Severity.Warning" Dense="true">
+                        Deleted @FormatDate(document.DeletedAtUtc.Value)
+                    </MudAlert>
+                }
                 @if (!refreshStopped && IsProcessing(document))
                 {
                     <MudProgressLinear Value="@GetProgressWidth(document.Status)" Color="Color.Primary"
@@ -53,10 +64,18 @@
                 }
             </MudCardContent>
             <MudCardActions Class="mt-auto">
-                <MudButton Variant="Variant.Outlined" Size="Size.Small" Href="@($"/documents/{document.Id}/download")">Download</MudButton>
-                @if (document.Status == DocumentStatus.Failed) { <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="() => Retry(document.Id)" Disabled="@IsBusy(document.Id)">Retry</MudButton> }
-                @if (isAdmin) { <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="() => Reindex(document.Id)" Disabled="@IsDocumentActionDisabled(document)">Re-index</MudButton> }
-                <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small" OnClick="() => ConfirmDelete(document)" Disabled="@IsDocumentActionDisabled(document)">Delete</MudButton>
+                @if (document.DeletedAtUtc is null)
+                {
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" Href="@($"/documents/{document.Id}/download")">Download</MudButton>
+                    @if (document.Status == DocumentStatus.Failed) { <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="() => Retry(document.Id)" Disabled="@IsBusy(document.Id)">Retry</MudButton> }
+                    @if (isAdmin) { <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="() => Reindex(document.Id)" Disabled="@IsDocumentActionDisabled(document)">Re-index</MudButton> }
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small" OnClick="() => ConfirmDelete(document)" Disabled="@IsDocumentActionDisabled(document)">Delete</MudButton>
+                }
+                else if (isAdmin)
+                {
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="() => Restore(document.Id)" Disabled="@IsBusy(document.Id)">Restore</MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small" OnClick="() => ConfirmHardDelete(document)" Disabled="@(IsBusy(document.Id) || IsProcessingStatus(document))">Permanently delete</MudButton>
+                }
             </MudCardActions>
         </MudCard>
     </MudItem>
@@ -124,6 +143,10 @@
     {
         await RunDocumentAction(id, () => Documents.ReindexAsync(id));
     }
+    private async Task Restore(Guid id)
+    {
+        await RunDocumentAction(id, () => Documents.RestoreAsync(id));
+    }
     private async Task ConfirmDelete(ManualDocument document)
     {
         var confirmed = await DialogService.ShowMessageBox(
@@ -135,6 +158,18 @@
 
         if (confirmed == true)
             await RunDocumentAction(document.Id, () => Documents.DeleteAsync(document.Id));
+    }
+    private async Task ConfirmHardDelete(ManualDocument document)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Permanently delete document?",
+            $"Permanently delete \"{document.DisplayName}\" and its stored PDF? This cannot be undone.",
+            yesText: "Permanently delete",
+            cancelText: "Cancel",
+            options: new DialogOptions { CloseOnEscapeKey = true });
+
+        if (confirmed == true)
+            await RunDocumentAction(document.Id, () => Documents.HardDeleteAsync(document.Id));
     }
     private async Task RunDocumentAction(Guid id, Func<Task> action)
     {
@@ -256,10 +291,14 @@
         }
     private static bool HasError(ManualDocument document) => !string.IsNullOrWhiteSpace(document.LastError);
     private static bool IsProcessing(ManualDocument document) =>
+        document.DeletedAtUtc is null &&
         !HasError(document) && (document.Status is DocumentStatus.Pending or DocumentStatus.Processing);
+    private static bool IsProcessingStatus(ManualDocument document) =>
+        document.Status is DocumentStatus.Pending or DocumentStatus.Processing;
     private static bool IsFailed(ManualDocument document) =>
         document.Status is DocumentStatus.Failed or DocumentStatus.Rejected || HasError(document);
     private static bool IsActive(ManualDocument document) =>
+        document.DeletedAtUtc is null &&
         !HasError(document) && (document.Status is DocumentStatus.Pending or DocumentStatus.Processing or DocumentStatus.Ready);
     private static string GetStage(ManualDocument document)
     {
@@ -276,12 +315,15 @@
     }
     private static int GetProgressWidth(DocumentStatus status) => status == DocumentStatus.Processing ? 66 : 33;
     private static Color GetStatusColor(ManualDocument document) =>
+        document.DeletedAtUtc is not null ? Color.Dark :
         IsFailed(document) ? Color.Error : document.Status switch
         {
             DocumentStatus.Ready => Color.Success,
             DocumentStatus.Processing => Color.Info,
             _ => Color.Warning
         };
+    private static string FormatDate(DateTime value) =>
+        value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
     public async ValueTask DisposeAsync()
     {
         progressSubscription?.Dispose();

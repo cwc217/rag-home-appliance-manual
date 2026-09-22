@@ -87,7 +87,9 @@ public sealed class ManualRetriever(
         string question, RetrievalScope scope, string? userId, CancellationToken ct = default)
     {
         var query = db.ManualChunks.AsNoTracking()
-            .Where(x => x.Document != null && x.Document.Status == DocumentStatus.Ready);
+            .Where(x => x.Document != null &&
+                        x.Document.DeletedAtUtc == null &&
+                        x.Document.Status == DocumentStatus.Ready);
         query = scope switch
         {
             RetrievalScope.AnonymousAdminPublic => query.Where(x => x.Document!.OwnerUserId == null),
@@ -110,20 +112,20 @@ public sealed class ManualRetriever(
                 ? await db.ManualChunks.FromSqlInterpolated($"""
                     SELECT c.* FROM "ManualChunks" c
                     INNER JOIN "ManualDocuments" d ON d."Id" = c."DocumentId"
-                    WHERE d."Status" = {(int)DocumentStatus.Ready} AND d."OwnerUserId" = {userId}
+                    WHERE d."Status" = {(int)DocumentStatus.Ready} AND d."DeletedAtUtc" IS NULL AND d."OwnerUserId" = {userId}
                     ORDER BY c."Embedding" <=> {vector} LIMIT {options.Value.TopK}
                     """).Include(x => x.Document).ToListAsync(ct)
                 : scope == RetrievalScope.AnonymousAdminPublic
                 ? await db.ManualChunks.FromSqlInterpolated($"""
                     SELECT c.* FROM "ManualChunks" c
                     INNER JOIN "ManualDocuments" d ON d."Id" = c."DocumentId"
-                    WHERE d."Status" = {(int)DocumentStatus.Ready} AND d."OwnerUserId" IS NULL
+                    WHERE d."Status" = {(int)DocumentStatus.Ready} AND d."DeletedAtUtc" IS NULL AND d."OwnerUserId" IS NULL
                     ORDER BY c."Embedding" <=> {vector} LIMIT {options.Value.TopK}
                     """).Include(x => x.Document).ToListAsync(ct)
                 : await db.ManualChunks.FromSqlInterpolated($"""
                     SELECT c.* FROM "ManualChunks" c
                     INNER JOIN "ManualDocuments" d ON d."Id" = c."DocumentId"
-                    WHERE d."Status" = {(int)DocumentStatus.Ready}
+                    WHERE d."Status" = {(int)DocumentStatus.Ready} AND d."DeletedAtUtc" IS NULL
                     ORDER BY c."Embedding" <=> {vector} LIMIT {options.Value.TopK}
                     """).Include(x => x.Document).ToListAsync(ct);
             return chunks.Select(x => new RetrievedChunk(
