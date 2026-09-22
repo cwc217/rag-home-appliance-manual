@@ -276,8 +276,9 @@ When enabled, `ImageAnalysis` sends up to the configured number of picture
 bytes to the configured Azure OpenAI chat deployment as multimodal input. The
 response is constrained to JSON containing exact visible text (`ocrText`) and
 a semantic visual description (`description`); both are merged into the
-page-aware picture chunk before embedding. Development defaults keep this
-optional network call disabled.
+page-aware picture chunk before embedding. Development defaults enable this
+optional network call; configure a vision-capable Azure OpenAI deployment and
+valid credentials before indexing documents with pictures.
 
 The JSON contract is intentionally application-owned: each page contains
 ordered blocks with `text`, `blockType`, `headingPath`, and optional
