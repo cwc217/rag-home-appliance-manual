@@ -81,6 +81,39 @@ body {
     overflow-y: auto;
 }
 
+.nav-conversations-collapse {
+    margin-top: .25rem;
+}
+
+.nav-conversations-collapse summary {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    min-height: 2.5rem;
+    padding: .5rem .75rem;
+    border-radius: .25rem;
+    color: #475569;
+    cursor: pointer;
+    list-style: none;
+}
+
+.nav-conversations-collapse summary::-webkit-details-marker {
+    display: none;
+}
+
+.nav-conversations-collapse summary::after {
+    margin-left: auto;
+    content: "▸";
+}
+
+.nav-conversations-collapse[open] summary::after {
+    content: "▾";
+}
+
+.nav-conversations-collapse summary:hover {
+    background: rgb(226 232 240 / 60%);
+}
+
 .nav-new-conversation {
     justify-content: flex-start;
     text-transform: none;

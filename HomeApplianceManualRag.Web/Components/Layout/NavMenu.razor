@@ -10,6 +10,47 @@
                 Class="nav-new-conversation" OnClick="NewConversation">
         New chat
     </MudNavLink>
+    @if (isAuthenticated)
+    {
+        <details class="nav-conversations-collapse">
+            <summary>
+                <MudIcon Icon="@Icons.Material.Filled.Chat" Size="Size.Small" />
+                <span>Conversations</span>
+            </summary>
+            <div class="nav-conversations" aria-label="Conversation rooms">
+                @if (!conversationsLoaded)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-3">Loading chats…</MudText>
+                }
+                else if (!string.IsNullOrWhiteSpace(conversationsError))
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Error" Class="px-3">@conversationsError</MudText>
+                }
+                else if (conversations.Where(x => x.Title != "New chat").Take(8).Count() == 0)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-3">No conversations yet</MudText>
+                }
+                else
+                {
+                    @foreach (var conversation in conversations.Where(x => x.Title != "New chat").Take(8))
+                    {
+                        <div class="nav-conversation-row">
+                            <MudNavLink Href="@($"/?conversationId={conversation.Id}")"
+                                        Icon="@Icons.Material.Filled.Forum"
+                                        Class="nav-conversation-link">
+                                @GetConversationTitle(conversation)
+                            </MudNavLink>
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                           Color="Color.Error"
+                                           Size="Size.Small"
+                                           title="@($"Delete conversation {GetConversationTitle(conversation)}")"
+                                           OnClick="@(() => ConfirmDelete(conversation))" />
+                        </div>
+                    }
+                }
+            </div>
+        </details>
+    }
     <AuthorizeView>
             <NotAuthorized>
                 <MudNavLink Href="/login" Icon="@Icons.Material.Filled.Login">Login</MudNavLink>
@@ -33,43 +74,6 @@
                 </form>
             </Authorized>
         </AuthorizeView>
-    @if (isAuthenticated)
-    {
-        <MudDivider Class="my-3" />
-        <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Chat">Conversations</MudNavLink>
-        <div class="nav-conversations" aria-label="Conversation rooms">
-            @if (!conversationsLoaded)
-            {
-                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-3">Loading chats…</MudText>
-            }
-            else if (!string.IsNullOrWhiteSpace(conversationsError))
-            {
-                <MudText Typo="Typo.caption" Color="Color.Error" Class="px-3">@conversationsError</MudText>
-            }
-            else if (conversations.Count == 0)
-            {
-                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-3">No conversations yet</MudText>
-            }
-            else
-            {
-                @foreach (var conversation in conversations.Take(8))
-                {
-                    <div class="nav-conversation-row">
-                        <MudNavLink Href="@($"/?conversationId={conversation.Id}")"
-                                    Icon="@Icons.Material.Filled.Forum"
-                                    Class="nav-conversation-link">
-                            @GetConversationTitle(conversation)
-                        </MudNavLink>
-                        <MudIconButton Icon="@Icons.Material.Filled.Delete"
-                                       Color="Color.Error"
-                                       Size="Size.Small"
-                                       title="@($"Delete conversation {GetConversationTitle(conversation)}")"
-                                       OnClick="@(() => ConfirmDelete(conversation))" />
-                    </div>
-                }
-            }
-        </div>
-    }
         <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-3 nav-build-version"
              title="Application build time">
         Build @BuildTime
