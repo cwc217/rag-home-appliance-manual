@@ -11,15 +11,18 @@ namespace HomeApplianceManualRag.Tests;
 public sealed class ChatTests
 {
     [Fact]
-    public void Grounded_prompt_requires_context_and_citations()
+    public void Grounded_prompt_contains_manual_excerpts_and_user_question()
     {
         var prompt = GroundedPrompt.Build("How do I clean it?", [
             new RetrievedChunk(Guid.NewGuid(), "washer.pdf", 4, "Disconnect power first.", .9)
         ]);
 
-        Assert.Contains("only the manual excerpts", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("[washer.pdf, p. 4]", prompt, StringComparison.Ordinal);
-        Assert.Contains("Do not invent", prompt, StringComparison.Ordinal);
+        Assert.Contains("<manual_excerpts>", prompt, StringComparison.Ordinal);
+        Assert.Contains("[washer.pdf, p. 4] Disconnect power first.", prompt, StringComparison.Ordinal);
+        Assert.Contains("</manual_excerpts>", prompt, StringComparison.Ordinal);
+        Assert.Contains("<user_question>", prompt, StringComparison.Ordinal);
+        Assert.Contains("How do I clean it?", prompt, StringComparison.Ordinal);
+        Assert.Contains("</user_question>", prompt, StringComparison.Ordinal);
     }
 
     [Fact]
