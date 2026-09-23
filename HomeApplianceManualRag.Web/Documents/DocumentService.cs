@@ -307,6 +307,9 @@ public sealed class DocumentService(
         if (!currentUser.IsAuthenticated) throw new DocumentForbiddenException();
         await accountGuard.EnsureEnabledAsync(ct);
         var document = await db.ManualDocuments.SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw new KeyNotFoundException("Document was not found.");
+        await db.Entry(document).ReloadAsync(ct);
+        if (db.Entry(document).State == EntityState.Detached)
+            throw new KeyNotFoundException("Document was not found.");
         if (!currentUser.IsInRole(ApplicationRoles.Admin) &&
             (document.DeletedAtUtc is not null ||
              !(currentUser.IsAuthenticated && document.OwnerUserId == currentUser.UserId)))

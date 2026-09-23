@@ -165,6 +165,32 @@ public sealed class DocumentValidationTests
         }
 
         [Fact]
+        public async Task Delete_uses_the_latest_document_status_when_context_is_stale()
+        {
+            var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .Options;
+            await using var db = new ApplicationDbContext(options);
+            var document = Document("just-indexed", "user-1");
+            document.Status = DocumentStatus.Pending;
+            db.ManualDocuments.Add(document);
+            await db.SaveChangesAsync();
+
+            await using (var workerDb = new ApplicationDbContext(options))
+            {
+                var indexed = await workerDb.ManualDocuments.SingleAsync(x => x.Id == document.Id);
+                indexed.Status = DocumentStatus.Ready;
+                await workerDb.SaveChangesAsync();
+            }
+
+            var service = Service(db, new TestCurrentUser("user-1", false));
+            await service.DeleteAsync(document.Id);
+
+            Assert.NotNull(document.DeletedAtUtc);
+            Assert.Equal(DocumentStatus.Ready, document.Status);
+        }
+
+        [Fact]
         public async Task Admin_can_restore_and_hard_delete_soft_deleted_document()
         {
             await using var db = CreateDb();
