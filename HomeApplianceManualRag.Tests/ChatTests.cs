@@ -1,6 +1,7 @@
 using HomeApplianceManualRag.Web.Chat;
 using HomeApplianceManualRag.Web.Configuration;
 using HomeApplianceManualRag.Web.Data;
+using HomeApplianceManualRag.Web.Diagnostics;
 using HomeApplianceManualRag.Web.Providers;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -422,6 +423,29 @@ public sealed class ChatTests
         new(new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
 
+    [Fact]
+    public async Task Chat_provider_failure_is_recorded_as_operational_error()
+    {
+        await using var db = CreateDatabase();
+        var recorder = new RecordingErrorRecorder();
+        var service = CreateChatService(
+            db,
+            new ThrowingChatProvider(),
+            new ToolTestCurrentUser("user-1"),
+            recorder);
+
+        var (_, stream) = await service.StartAsync("How do I reset it?");
+        await Assert.ThrowsAsync<ChatProviderException>(async () =>
+        {
+            await foreach (var _ in stream!) { }
+        });
+
+        var recorded = Assert.Single(recorder.Events);
+        Assert.Equal("Chat provider", recorded.Service);
+        Assert.Equal("Generate answer", recorded.Operation);
+        Assert.IsType<HttpRequestException>(recorded.Exception);
+    }
+
     private static ChatToolsService CreateTools(
         ApplicationDbContext db,
         ICurrentUser user) =>
@@ -436,7 +460,8 @@ public sealed class ChatTests
     private static ChatService CreateChatService(
         ApplicationDbContext db,
         IChatProvider provider,
-        ICurrentUser user)
+        ICurrentUser user,
+        IOperationalErrorRecorder? errorRecorder = null)
     {
         var retriever = new ManualRetriever(db, new DeterministicFakeEmbeddingProvider(1536),
             Options.Create(new RetrievalOptions { TopK = 10 }));
@@ -445,7 +470,50 @@ public sealed class ChatTests
         return new ChatService(provider, tools,
             new ChatRateLimiter(Options.Create(new RateLimitingOptions())),
             user, new FakeActiveAccountGuard(), new HttpContextAccessor(),
-            Options.Create(new ChatOptions()));
+            Options.Create(new ChatOptions()), errorRecorder ?? new RecordingErrorRecorder());
+    }
+
+    private sealed class RecordingErrorRecorder : IOperationalErrorRecorder
+    {
+        public List<(string Service, string Operation, Exception Exception)> Events { get; } = [];
+
+        public Task RecordAsync(
+            string service,
+            string operation,
+            Exception exception,
+            string severity = "Error",
+            Guid? documentId = null,
+            Guid? indexingJobId = null,
+            CancellationToken cancellationToken = default)
+        {
+            Events.Add((service, operation, exception));
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class ThrowingChatProvider : IChatProvider
+    {
+        public async IAsyncEnumerable<string> StreamAsync(
+            string prompt,
+            [System.Runtime.CompilerServices.EnumeratorCancellation]
+            CancellationToken cancellationToken = default)
+        {
+            await Task.Yield();
+            yield break;
+        }
+
+        public async IAsyncEnumerable<ChatProviderUpdate> StreamWithToolsAsync(
+            string prompt,
+            IReadOnlyList<ChatToolDefinition> tools,
+            IReadOnlyList<ChatToolRound> rounds,
+            [System.Runtime.CompilerServices.EnumeratorCancellation]
+            CancellationToken cancellationToken = default)
+        {
+            await Task.Yield();
+            if (cancellationToken.IsCancellationRequested)
+                yield break;
+            throw new HttpRequestException("Connection refused.");
+        }
     }
 
     private sealed class ToolTestCurrentUser(string? id, bool admin = false) : ICurrentUser

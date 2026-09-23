@@ -1,5 +1,6 @@
 using HomeApplianceManualRag.Web.Configuration;
 using HomeApplianceManualRag.Web.Data;
+using HomeApplianceManualRag.Web.Diagnostics;
 using HomeApplianceManualRag.Web.Providers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -197,7 +198,8 @@ public sealed class ChatService(
     ICurrentUser currentUser,
     IActiveAccountGuard accountGuard,
     IHttpContextAccessor httpContextAccessor,
-    IOptions<ChatOptions> chatOptions)
+    IOptions<ChatOptions> chatOptions,
+    IOperationalErrorRecorder errorRecorder)
 {
     public async Task<(ChatResponse Response, IAsyncEnumerable<string>? Stream)> StartAsync(
         string question, CancellationToken ct = default)
@@ -303,8 +305,13 @@ public sealed class ChatService(
         {
             stream = provider.StreamWithToolsAsync(prompt, definitions, rounds, ct);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            await errorRecorder.RecordAsync("Chat provider", "Generate answer", ex, cancellationToken: ct);
             throw new ChatProviderException(ex);
         }
 
@@ -316,8 +323,13 @@ public sealed class ChatService(
             {
                 moved = await enumerator.MoveNextAsync();
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                await errorRecorder.RecordAsync("Chat provider", "Generate answer", ex, cancellationToken: ct);
                 throw new ChatProviderException(ex);
             }
 
@@ -339,6 +351,7 @@ public sealed class ChatService(
         }
         catch (Exception ex)
         {
+            await errorRecorder.RecordAsync("Chat tools", call.Name, ex, cancellationToken: ct);
             throw new ChatProviderException(ex);
         }
     }

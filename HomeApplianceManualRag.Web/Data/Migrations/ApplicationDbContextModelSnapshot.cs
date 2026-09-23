@@ -389,6 +389,74 @@ namespace HomeApplianceManualRag.Web.Data.Migrations
                     b.ToTable("ManualDocuments");
                 });
 
+            modelBuilder.Entity("HomeApplianceManualRag.Web.Data.OperationalErrorEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("CorrelationId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Details")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ExceptionType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Fingerprint")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int?>("HttpStatusCode")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("IndexingJobId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("LastOccurredAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("OccurrenceCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Operation")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Service")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LastOccurredAtUtc");
+
+                    b.HasIndex("Fingerprint", "LastOccurredAtUtc");
+
+                    b.HasIndex("Service", "LastOccurredAtUtc");
+
+                    b.ToTable("OperationalErrorEvents");
+                });
+
             modelBuilder.Entity("HomeApplianceManualRag.Web.Data.StorageCleanup", b =>
                 {
                     b.Property<Guid>("Id")

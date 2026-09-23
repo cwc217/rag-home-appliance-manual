@@ -18,6 +18,7 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<Conversation> Conversations => Set<Conversation>();
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
     public DbSet<UserActivity> UserActivities => Set<UserActivity>();
+    public DbSet<OperationalErrorEvent> OperationalErrorEvents => Set<OperationalErrorEvent>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -38,6 +39,9 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
         builder.Entity<UserActivity>().HasIndex(x => x.UserId);
         builder.Entity<UserActivity>().HasIndex(x => x.IpAddress);
         builder.Entity<UserActivity>().HasIndex(x => new { x.Path, x.CreatedAtUtc });
+        builder.Entity<OperationalErrorEvent>().HasIndex(x => x.LastOccurredAtUtc);
+        builder.Entity<OperationalErrorEvent>().HasIndex(x => new { x.Service, x.LastOccurredAtUtc });
+        builder.Entity<OperationalErrorEvent>().HasIndex(x => new { x.Fingerprint, x.LastOccurredAtUtc });
         builder.Entity<Conversation>()
             .HasMany(x => x.Messages)
             .WithOne(x => x.Conversation)
@@ -172,4 +176,23 @@ public sealed class ManualChunk
     public Vector? Embedding { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public ManualDocument? Document { get; set; }
+}
+
+public sealed class OperationalErrorEvent
+{
+    public long Id { get; set; }
+    public DateTime OccurredAtUtc { get; set; } = DateTime.UtcNow;
+    public DateTime LastOccurredAtUtc { get; set; } = DateTime.UtcNow;
+    public int OccurrenceCount { get; set; } = 1;
+    public string Fingerprint { get; set; } = string.Empty;
+    public string Service { get; set; } = string.Empty;
+    public string Operation { get; set; } = string.Empty;
+    public string Severity { get; set; } = "Error";
+    public string ExceptionType { get; set; } = string.Empty;
+    public string Summary { get; set; } = string.Empty;
+    public string Details { get; set; } = string.Empty;
+    public int? HttpStatusCode { get; set; }
+    public Guid? DocumentId { get; set; }
+    public Guid? IndexingJobId { get; set; }
+    public string? CorrelationId { get; set; }
 }

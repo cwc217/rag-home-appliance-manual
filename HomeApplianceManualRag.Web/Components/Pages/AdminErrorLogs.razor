@@ -1,0 +1,225 @@
+@page "/admin/error-logs"
+@attribute [Authorize(Policy = ApplicationPolicies.AdminOnly)]
+@using HomeApplianceManualRag.Web.Admin
+@inject AdminOperationalErrorLogService ErrorLogs
+@inject ILogger<AdminErrorLogs> Logger
+
+<PageTitle>System errors</PageTitle>
+
+<MudStack Spacing="3">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <div>
+            <MudText Typo="Typo.h4">System errors</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Operational failures from document indexing, chat, and dependent services.
+                Prompts, manual text, and stack traces are not stored here. History is retained for 90 days.
+            </MudText>
+        </div>
+        <MudButton Href="/admin" Variant="Variant.Outlined"
+                   StartIcon="@Icons.Material.Filled.ArrowBack">Dashboard</MudButton>
+    </MudStack>
+
+    <MudStack Row="true" Spacing="2" Class="flex-wrap">
+        <MudSelect T="string" Label="Service" Value="@serviceFilter"
+                   ValueChanged="OnServiceChangedAsync" Dense="true" Style="min-width: 200px">
+            <MudSelectItem T="string" Value="@string.Empty">All services</MudSelectItem>
+            @if (errorPage is not null)
+            {
+                @foreach (var service in errorPage.Services)
+                {
+                    <MudSelectItem T="string" Value="@service">@service</MudSelectItem>
+                }
+            }
+        </MudSelect>
+        <MudSelect T="string" Label="Severity" Value="@severityFilter"
+                   ValueChanged="OnSeverityChangedAsync" Dense="true" Style="min-width: 160px">
+            <MudSelectItem T="string" Value="@string.Empty">All severities</MudSelectItem>
+            <MudSelectItem T="string" Value="@("Error")">Error</MudSelectItem>
+            <MudSelectItem T="string" Value="@("Warning")">Warning</MudSelectItem>
+        </MudSelect>
+        <MudSelect T="string" Label="Time range" Value="@timeRange"
+                   ValueChanged="OnTimeRangeChangedAsync" Dense="true" Style="min-width: 170px">
+            <MudSelectItem T="string" Value="@("24")">Last 24 hours</MudSelectItem>
+            <MudSelectItem T="string" Value="@("7")">Last 7 days</MudSelectItem>
+            <MudSelectItem T="string" Value="@("30")">Last 30 days</MudSelectItem>
+            <MudSelectItem T="string" Value="@("all")">All retained</MudSelectItem>
+        </MudSelect>
+    </MudStack>
+
+    @if (errorPage is null && errorMessage is null)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+    else if (errorMessage is not null)
+    {
+        <MudAlert Severity="Severity.Error">@errorMessage</MudAlert>
+    }
+    else if (errorPage is not null)
+    {
+        <MudPaper Class="pa-0" Elevation="1">
+            <MudTable T="AdminOperationalErrorRow" Items="@errorPage.Items" Dense="true"
+                      Hover="true" Breakpoint="Breakpoint.Sm" Loading="@loading">
+                <HeaderContent>
+                    <MudTh>Last occurred</MudTh>
+                    <MudTh>Service / operation</MudTh>
+                    <MudTh>Severity</MudTh>
+                    <MudTh>Summary</MudTh>
+                    <MudTh>Diagnostic details</MudTh>
+                    <MudTh>References</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Last occurred">
+                        @DateTimeDisplay.FormatUtcPlusEight(context.LastOccurredAtUtc)
+                        @if (context.OccurrenceCount > 1)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @context.OccurrenceCount occurrences; first @DateTimeDisplay.FormatUtcPlusEight(context.OccurredAtUtc)
+                            </MudText>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Service / operation">
+                        <MudText Typo="Typo.body2">@context.Service</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@context.Operation</MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Severity">
+                        <MudChip T="string" Size="Size.Small"
+                                 Color="@(context.Severity == "Error" ? Color.Error : Color.Warning)">
+                            @context.Severity
+                        </MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Summary">
+                        <MudText Typo="Typo.body2">@context.Summary</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@context.ExceptionType</MudText>
+                        @if (context.HttpStatusCode is not null)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                HTTP @context.HttpStatusCode
+                            </MudText>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Diagnostic details">
+                        <MudText Typo="Typo.caption" Class="text-break"
+                                 Style="white-space: pre-wrap">@context.Details</MudText>
+                    </MudTd>
+                    <MudTd DataLabel="References">
+                        @if (context.DocumentId is not null)
+                        {
+                            <MudText Typo="Typo.caption" Class="text-break">
+                                Document: @context.DocumentId
+                            </MudText>
+                        }
+                        @if (context.IndexingJobId is not null)
+                        {
+                            <MudText Typo="Typo.caption" Class="text-break">
+                                Job: @context.IndexingJobId
+                            </MudText>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(context.CorrelationId))
+                        {
+                            <MudText Typo="Typo.caption" Class="text-break">
+                                Trace: @context.CorrelationId
+                            </MudText>
+                        }
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText Class="pa-4" Color="Color.Secondary">No system errors in this time range.</MudText>
+                </NoRecordsContent>
+            </MudTable>
+        </MudPaper>
+
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                Showing @GetFirstItem()–@GetLastItem() of @errorPage.TotalCount errors
+            </MudText>
+            <MudPagination Count="@PageCount" Selected="@pageNumber"
+                           SelectedChanged="LoadPageAsync" Color="Color.Primary"
+                           BoundaryCount="1" />
+        </MudStack>
+    }
+</MudStack>
+
+@code {
+    private const int PageSize = 20;
+    private AdminOperationalErrorPage? errorPage;
+    private string? errorMessage;
+    private string serviceFilter = string.Empty;
+    private string severityFilter = string.Empty;
+    private string timeRange = "7";
+    private bool loading;
+    private int pageNumber = 1;
+
+    protected override async Task OnInitializedAsync() => await LoadPageAsync(1);
+
+    private async Task OnServiceChangedAsync(string value)
+    {
+        serviceFilter = value;
+        await LoadPageAsync(1);
+    }
+
+    private async Task OnSeverityChangedAsync(string value)
+    {
+        severityFilter = value;
+        await LoadPageAsync(1);
+    }
+
+    private async Task OnTimeRangeChangedAsync(string value)
+    {
+        timeRange = value;
+        await LoadPageAsync(1);
+    }
+
+    private async Task LoadPageAsync(int selectedPage)
+    {
+        if (selectedPage < 1)
+            return;
+
+        loading = true;
+        errorMessage = null;
+        try
+        {
+            DateTime? since = timeRange switch
+            {
+                "24" => DateTime.UtcNow.AddHours(-24),
+                "7" => DateTime.UtcNow.AddDays(-7),
+                "30" => DateTime.UtcNow.AddDays(-30),
+                _ => null
+            };
+            errorPage = await ErrorLogs.GetPageAsync(
+                selectedPage,
+                PageSize,
+                serviceFilter,
+                severityFilter,
+                since);
+            pageNumber = errorPage.PageNumber;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            errorMessage = "Administrator access is required.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Unable to load operational error records.");
+            errorMessage = "System error data is temporarily unavailable.";
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private int PageCount =>
+        errorPage is null || errorPage.TotalCount == 0
+            ? 1
+            : (int)Math.Ceiling(errorPage.TotalCount / (double)PageSize);
+
+    private int GetFirstItem() =>
+        errorPage is null || errorPage.TotalCount == 0
+            ? 0
+            : ((errorPage.PageNumber - 1) * PageSize) + 1;
+
+    private int GetLastItem() =>
+        errorPage is null
+            ? 0
+            : Math.Min(errorPage.PageNumber * PageSize, errorPage.TotalCount);
+}

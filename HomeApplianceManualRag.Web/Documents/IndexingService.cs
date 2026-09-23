@@ -1,6 +1,7 @@
 using HomeApplianceManualRag.Web.Configuration;
 using HomeApplianceManualRag.Web.Data;
 using HomeApplianceManualRag.Web.Providers;
+using HomeApplianceManualRag.Web.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Pgvector;
@@ -371,6 +372,22 @@ public sealed class IndexingWorker(
             job.Document.UpdatedAtUtc = DateTime.UtcNow;
         }
         await db.SaveChangesAsync(ct);
+        var service = exception switch
+        {
+            DocumentParseException => "Docling",
+            ManualClassificationException => "Manual classification",
+            ImageAnalysisException => "Image analysis",
+            _ => "Document indexing"
+        };
+        await scope.ServiceProvider.GetRequiredService<IOperationalErrorRecorder>()
+            .RecordAsync(
+                service,
+                "Index document",
+                exception,
+                job.Status == IndexingJobStatus.Pending ? "Warning" : "Error",
+                job.DocumentId,
+                job.Id,
+                ct);
         if (job.Document is not null)
         {
             await progressNotifier.PublishAsync(new(

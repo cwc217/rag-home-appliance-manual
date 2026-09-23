@@ -1,6 +1,7 @@
 using HomeApplianceManualRag.Web.Components;
 using HomeApplianceManualRag.Web.Configuration;
 using HomeApplianceManualRag.Web.Data;
+using HomeApplianceManualRag.Web.Diagnostics;
 using HomeApplianceManualRag.Web.Providers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
@@ -91,6 +92,10 @@ builder.Services.AddScoped<ChatToolsService>();
 builder.Services.AddScoped<ChatService>();
 builder.Services.AddScoped<ChatHistoryService>();
 builder.Services.AddScoped<AdminDashboardService>();
+builder.Services.AddScoped<AdminOperationalErrorLogService>();
+builder.Services.AddScoped<IOperationalErrorRecorder, OperationalErrorRecorder>();
+builder.Services.AddScoped<OperationalErrorLogRetentionService>();
+builder.Services.AddHostedService<OperationalErrorLogRetentionWorker>();
 builder.Services.AddScoped<AdminUserService>();
 builder.Services.AddScoped<ActivityLogService>();
 builder.Services.AddScoped<AdminActivityService>();
