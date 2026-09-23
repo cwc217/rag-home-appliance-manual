@@ -19,11 +19,13 @@ public sealed record ChatConversation(Guid Id, string Title, DateTime CreatedAtU
 public sealed class ChatHistoryService(
     IDbContextFactory<ApplicationDbContext> dbFactory,
     ICurrentUser currentUser,
+    IActiveAccountGuard accountGuard,
     ActivityLogService? activityLog = null)
 {
     public async Task<IReadOnlyList<ChatConversation>> GetConversationsAsync(
         string? anonymousAccessKey = null, CancellationToken ct = default)
     {
+        await accountGuard.EnsureEnabledAsync(ct);
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var query = OwnedConversations(db, anonymousAccessKey);
         return await query.OrderByDescending(x => x.UpdatedAtUtc)
@@ -34,6 +36,7 @@ public sealed class ChatHistoryService(
     public async Task<IReadOnlyList<ChatHistoryMessage>> GetHistoryAsync(
         Guid? conversationId = null, string? anonymousAccessKey = null, CancellationToken ct = default)
     {
+        await accountGuard.EnsureEnabledAsync(ct);
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var conversation = conversationId is null
             ? await OwnedConversations(db, anonymousAccessKey).OrderByDescending(x => x.UpdatedAtUtc).FirstOrDefaultAsync(ct)
@@ -49,6 +52,7 @@ public sealed class ChatHistoryService(
     public async Task<ChatConversation> CreateConversationAsync(
         string? anonymousAccessKey = null, CancellationToken ct = default)
     {
+        await accountGuard.EnsureEnabledAsync(ct);
         if (!currentUser.IsAuthenticated && string.IsNullOrWhiteSpace(anonymousAccessKey))
             throw new UnauthorizedAccessException("An anonymous access key is required.");
         await using var db = await dbFactory.CreateDbContextAsync(ct);
@@ -71,6 +75,7 @@ public sealed class ChatHistoryService(
     public async Task DeleteConversationAsync(
         Guid conversationId, string? anonymousAccessKey = null, CancellationToken ct = default)
     {
+        await accountGuard.EnsureEnabledAsync(ct);
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var conversation = await FindOwnedConversation(db, conversationId, anonymousAccessKey, ct)
             ?? throw new UnauthorizedAccessException("Conversation access denied.");
@@ -87,6 +92,7 @@ public sealed class ChatHistoryService(
         Guid conversationId, string question, string answer, IReadOnlyList<ChatCitation> citations,
         string? anonymousAccessKey = null, CancellationToken ct = default)
     {
+        await accountGuard.EnsureEnabledAsync(ct);
         if (string.IsNullOrWhiteSpace(question) || string.IsNullOrWhiteSpace(answer))
             throw new ArgumentException("A question and answer are required.");
         await using var db = await dbFactory.CreateDbContextAsync(ct);
@@ -117,6 +123,7 @@ public sealed class ChatHistoryService(
     public async Task PersistExchangeAsync(string question, string answer, IReadOnlyList<ChatCitation> citations,
         CancellationToken ct = default)
     {
+        await accountGuard.EnsureEnabledAsync(ct);
         if (!currentUser.IsAuthenticated || string.IsNullOrWhiteSpace(currentUser.UserId)) return;
         var conversation = (await GetConversationsAsync(null, ct)).LastOrDefault();
         if (conversation is null) conversation = await CreateConversationAsync(null, ct);

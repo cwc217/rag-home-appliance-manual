@@ -72,8 +72,11 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.LoginPath = "/login";
     options.AccessDeniedPath = "/forbidden";
 });
+builder.Services.Configure<SecurityStampValidatorOptions>(options =>
+    options.ValidationInterval = TimeSpan.FromMinutes(5));
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
+builder.Services.AddScoped<IActiveAccountGuard, ActiveAccountGuard>();
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy(ApplicationPolicies.AdminOnly, policy => policy.RequireRole(ApplicationRoles.Admin));

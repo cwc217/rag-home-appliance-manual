@@ -26,7 +26,8 @@ public sealed record AdminActivityPage(
 
 public sealed class AdminActivityService(
     IDbContextFactory<ApplicationDbContext> dbFactory,
-    ICurrentUser currentUser)
+    ICurrentUser currentUser,
+    IActiveAccountGuard accountGuard)
 {
     public async Task<AdminActivityPage> GetPageAsync(
         int pageNumber,
@@ -37,7 +38,7 @@ public sealed class AdminActivityService(
         string? path = null,
         CancellationToken cancellationToken = default)
     {
-        EnsureAdmin();
+        await EnsureAdminAsync(cancellationToken);
         pageNumber = Math.Max(1, pageNumber);
         pageSize = Math.Clamp(pageSize, 1, 100);
         activityType = activityType?.Trim();
@@ -95,9 +96,10 @@ public sealed class AdminActivityService(
         return new AdminActivityPage(items, totalCount, pageNumber, pageSize);
     }
 
-    private void EnsureAdmin()
+    private async Task EnsureAdminAsync(CancellationToken cancellationToken)
     {
         if (!currentUser.IsAuthenticated || !currentUser.IsInRole(ApplicationRoles.Admin))
             throw new UnauthorizedAccessException("Administrator access is required.");
+        await accountGuard.EnsureEnabledAsync(cancellationToken);
     }
 }

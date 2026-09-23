@@ -130,7 +130,7 @@ public sealed class ChatTests
         await db.SaveChangesAsync();
 
         var current = new FakeCurrentUser("user-1");
-        var service = new ChatHistoryService(new TestDbFactory(options), current);
+        var service = new ChatHistoryService(new TestDbFactory(options), current, new FakeActiveAccountGuard());
         await service.PersistExchangeAsync("first", "answer", []);
         await service.PersistExchangeAsync("second", "answer 2", []);
 
@@ -145,7 +145,7 @@ public sealed class ChatTests
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
         await using var db = new ApplicationDbContext(options);
-        var service = new ChatHistoryService(new TestDbFactory(options), new FakeCurrentUser(null));
+        var service = new ChatHistoryService(new TestDbFactory(options), new FakeCurrentUser(null), new FakeActiveAccountGuard());
 
         await service.PersistExchangeAsync("question", "answer", []);
 
@@ -158,7 +158,7 @@ public sealed class ChatTests
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
-        var service = new ChatHistoryService(new TestDbFactory(options), new FakeCurrentUser("user-1"));
+        var service = new ChatHistoryService(new TestDbFactory(options), new FakeCurrentUser("user-1"), new FakeActiveAccountGuard());
         var conversation = await service.CreateConversationAsync();
 
         await service.DeleteConversationAsync(conversation.Id);
@@ -197,7 +197,7 @@ public sealed class ChatTests
             await db.SaveChangesAsync();
         }
 
-        var service = new ChatHistoryService(new TestDbFactory(options), new FakeCurrentUser("user-1"));
+        var service = new ChatHistoryService(new TestDbFactory(options), new FakeCurrentUser("user-1"), new FakeActiveAccountGuard());
         var history = await service.GetHistoryAsync(conversationId);
 
         Assert.Equal([ChatMessageRole.User, ChatMessageRole.Assistant], history.Select(x => x.Role));
@@ -208,7 +208,7 @@ public sealed class ChatTests
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
-        var service = new ChatHistoryService(new TestDbFactory(options), new FakeCurrentUser(null));
+        var service = new ChatHistoryService(new TestDbFactory(options), new FakeCurrentUser(null), new FakeActiveAccountGuard());
         var room = await service.CreateConversationAsync("key-a");
         await service.PersistExchangeAsync(room.Id, "question", "answer", [], "key-a");
 

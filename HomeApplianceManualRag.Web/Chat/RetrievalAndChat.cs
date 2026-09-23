@@ -193,12 +193,14 @@ public sealed class ChatService(
     IChatProvider provider,
     ChatRateLimiter rateLimiter,
     ICurrentUser currentUser,
+    IActiveAccountGuard accountGuard,
     IHttpContextAccessor httpContextAccessor,
     IOptions<ChatOptions> chatOptions)
 {
     public async Task<(ChatResponse Response, IAsyncEnumerable<string>? Stream)> StartAsync(
         string question, CancellationToken ct = default)
     {
+        await accountGuard.EnsureEnabledAsync(ct);
         if (string.IsNullOrWhiteSpace(question))
             throw new ArgumentException("Ask a question first.", nameof(question));
         var normalizedQuestion = question.Trim();

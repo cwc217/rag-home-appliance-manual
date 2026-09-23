@@ -37,12 +37,13 @@ public sealed record AdminIndexingJobPage(
 public sealed class AdminDashboardService(
     IDbContextFactory<ApplicationDbContext> dbFactory,
     ICurrentUser currentUser,
-    AdminConversationService conversations)
+    AdminConversationService conversations,
+    IActiveAccountGuard accountGuard)
 {
     public async Task<AdminDashboardSnapshot> GetSnapshotAsync(
         CancellationToken cancellationToken = default)
     {
-        EnsureAdmin();
+        await EnsureAdminAsync(cancellationToken);
 
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var since = DateTime.UtcNow.AddHours(-24);
@@ -76,23 +77,25 @@ public sealed class AdminDashboardService(
             recentConversations);
     }
 
-    private void EnsureAdmin()
+    private async Task EnsureAdminAsync(CancellationToken cancellationToken)
     {
         if (!currentUser.IsAuthenticated || !currentUser.IsInRole(ApplicationRoles.Admin))
             throw new UnauthorizedAccessException("Administrator access is required.");
+        await accountGuard.EnsureEnabledAsync(cancellationToken);
     }
 }
 
 public sealed class AdminIndexingJobService(
     IDbContextFactory<ApplicationDbContext> dbFactory,
-    ICurrentUser currentUser)
+    ICurrentUser currentUser,
+    IActiveAccountGuard accountGuard)
 {
     public async Task<AdminIndexingJobPage> GetPageAsync(
         int pageNumber,
         int pageSize,
         CancellationToken cancellationToken = default)
     {
-        EnsureAdmin();
+        await EnsureAdminAsync(cancellationToken);
 
         pageNumber = Math.Max(1, pageNumber);
         pageSize = Math.Clamp(pageSize, 1, 100);
@@ -125,9 +128,10 @@ public sealed class AdminIndexingJobService(
         return new AdminIndexingJobPage(items, totalCount, pageNumber, pageSize);
     }
 
-    private void EnsureAdmin()
+    private async Task EnsureAdminAsync(CancellationToken cancellationToken)
     {
         if (!currentUser.IsAuthenticated || !currentUser.IsInRole(ApplicationRoles.Admin))
             throw new UnauthorizedAccessException("Administrator access is required.");
+        await accountGuard.EnsureEnabledAsync(cancellationToken);
     }
 }

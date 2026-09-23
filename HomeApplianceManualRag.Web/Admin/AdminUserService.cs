@@ -23,7 +23,8 @@ public sealed record AdminUserPage(
 public sealed class AdminUserService(
     IDbContextFactory<ApplicationDbContext> dbFactory,
     ICurrentUser currentUser,
-    ActivityLogService activityLog)
+    ActivityLogService activityLog,
+    IActiveAccountGuard accountGuard)
 {
     public async Task<AdminUserPage> GetPageAsync(
         int pageNumber,
@@ -31,7 +32,7 @@ public sealed class AdminUserService(
         string? search = null,
         CancellationToken cancellationToken = default)
     {
-        EnsureAdmin();
+        await EnsureAdminAsync(cancellationToken);
 
         pageNumber = Math.Max(1, pageNumber);
         pageSize = Math.Clamp(pageSize, 1, 100);
@@ -101,7 +102,7 @@ public sealed class AdminUserService(
         bool disabled,
         CancellationToken cancellationToken)
     {
-        EnsureAdmin();
+        await EnsureAdminAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(userId))
             throw new ArgumentException("A user ID is required.", nameof(userId));
         if (string.Equals(currentUser.UserId, userId, StringComparison.Ordinal))
@@ -128,6 +129,7 @@ public sealed class AdminUserService(
         }
 
         user.AccountDisabled = disabled;
+        user.SecurityStamp = Guid.NewGuid().ToString();
         user.DisabledAtUtc = disabled ? DateTime.UtcNow : null;
         user.DisabledByUserId = disabled ? currentUser.UserId : null;
         if (!disabled)
@@ -153,9 +155,10 @@ public sealed class AdminUserService(
          where userRole.UserId == userId && role.Name == ApplicationRoles.Admin
          select userRole.UserId).AnyAsync(cancellationToken);
 
-    private void EnsureAdmin()
+    private async Task EnsureAdminAsync(CancellationToken cancellationToken)
     {
         if (!currentUser.IsAuthenticated || !currentUser.IsInRole(ApplicationRoles.Admin))
             throw new UnauthorizedAccessException("Administrator access is required.");
+        await accountGuard.EnsureEnabledAsync(cancellationToken);
     }
 }

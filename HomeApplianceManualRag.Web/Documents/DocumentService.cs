@@ -17,6 +17,7 @@ public sealed class DocumentService(
     ICurrentUser currentUser,
     PdfValidator validator,
     IFileStorage storage,
+    IActiveAccountGuard accountGuard,
     ActivityLogService? activityLog = null)
 {
     private static readonly DocumentStatus[] ActiveStatuses = [DocumentStatus.Pending, DocumentStatus.Processing, DocumentStatus.Ready];
@@ -29,6 +30,7 @@ public sealed class DocumentService(
 
     private async Task<ManualDocument> UploadAsync(PdfUpload file, CancellationToken cancellationToken = default)
     {
+        await accountGuard.EnsureEnabledAsync(cancellationToken);
         var validation = await validator.ValidateAsync(file, cancellationToken);
         if (!validation.IsValid) throw new InvalidDataException(validation.Error);
         var isAdmin = currentUser.IsInRole(ApplicationRoles.Admin);
@@ -82,12 +84,13 @@ public sealed class DocumentService(
         }
     }
 
-    public Task<List<ManualDocument>> ListAsync(CancellationToken ct = default)
+    public async Task<List<ManualDocument>> ListAsync(CancellationToken ct = default)
     {
         if (!currentUser.IsAuthenticated) throw new DocumentForbiddenException();
+        await accountGuard.EnsureEnabledAsync(ct);
         var isAdmin = currentUser.IsInRole(ApplicationRoles.Admin);
         var owner = currentUser.UserId;
-        return ListCoreAsync(isAdmin, owner, ct);
+        return await ListCoreAsync(isAdmin, owner, ct);
     }
 
     public async Task<List<ManualDocument>> ListProgressAsync(
@@ -95,6 +98,7 @@ public sealed class DocumentService(
         CancellationToken ct = default)
     {
         if (!currentUser.IsAuthenticated) throw new DocumentForbiddenException();
+        await accountGuard.EnsureEnabledAsync(ct);
         if (documentIds.Count == 0) return [];
 
         var isAdmin = currentUser.IsInRole(ApplicationRoles.Admin);
@@ -164,7 +168,7 @@ public sealed class DocumentService(
 
     public async Task RestoreAsync(Guid id, CancellationToken ct = default)
     {
-        EnsureAdmin();
+        await EnsureAdminAsync(ct);
         var document = await db.ManualDocuments.SingleOrDefaultAsync(x => x.Id == id, ct)
             ?? throw new KeyNotFoundException("Document was not found.");
         if (document.DeletedAtUtc is null)
@@ -184,7 +188,7 @@ public sealed class DocumentService(
 
     public async Task HardDeleteAsync(Guid id, CancellationToken ct = default)
     {
-        EnsureAdmin();
+        await EnsureAdminAsync(ct);
         var document = await db.ManualDocuments.SingleOrDefaultAsync(x => x.Id == id, ct)
             ?? throw new KeyNotFoundException("Document was not found.");
         if (document.DeletedAtUtc is null)
@@ -248,6 +252,7 @@ public sealed class DocumentService(
 
     public async Task ReindexAsync(Guid id, CancellationToken ct = default)
     {
+        await accountGuard.EnsureEnabledAsync(ct);
         if (!currentUser.IsInRole(ApplicationRoles.Admin)) throw new DocumentForbiddenException();
         var document = await GetAuthorizedAsync(id, ct);
         EnsureNotProcessing(document);
@@ -300,6 +305,7 @@ public sealed class DocumentService(
     private async Task<ManualDocument> GetAuthorizedAsync(Guid id, CancellationToken ct)
     {
         if (!currentUser.IsAuthenticated) throw new DocumentForbiddenException();
+        await accountGuard.EnsureEnabledAsync(ct);
         var document = await db.ManualDocuments.SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw new KeyNotFoundException("Document was not found.");
         if (!currentUser.IsInRole(ApplicationRoles.Admin) &&
             (document.DeletedAtUtc is not null ||
@@ -308,10 +314,11 @@ public sealed class DocumentService(
         return document;
     }
 
-    private void EnsureAdmin()
+    private async Task EnsureAdminAsync(CancellationToken cancellationToken)
     {
         if (!currentUser.IsAuthenticated || !currentUser.IsInRole(ApplicationRoles.Admin))
             throw new DocumentForbiddenException();
+        await accountGuard.EnsureEnabledAsync(cancellationToken);
     }
 
     private static void EnsureNotProcessing(ManualDocument document)

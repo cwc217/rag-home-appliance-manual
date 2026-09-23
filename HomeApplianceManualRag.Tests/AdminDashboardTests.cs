@@ -38,8 +38,9 @@ public sealed class AdminDashboardTests
 
         var currentUser = new FakeCurrentUser(isAdmin: true);
         var factory = new TestDbFactory(options);
-        var conversationService = new AdminConversationService(factory, currentUser);
-        var service = new AdminDashboardService(factory, currentUser, conversationService);
+        var accountGuard = new FakeActiveAccountGuard();
+        var conversationService = new AdminConversationService(factory, currentUser, accountGuard);
+        var service = new AdminDashboardService(factory, currentUser, conversationService, accountGuard);
 
         var snapshot = await service.GetSnapshotAsync();
 
@@ -61,10 +62,12 @@ public sealed class AdminDashboardTests
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
         var currentUser = new FakeCurrentUser(isAdmin: false);
+        var accountGuard = new FakeActiveAccountGuard();
         var service = new AdminDashboardService(
             new TestDbFactory(options),
             currentUser,
-            new AdminConversationService(new TestDbFactory(options), currentUser));
+            new AdminConversationService(new TestDbFactory(options), currentUser, accountGuard),
+            accountGuard);
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.GetSnapshotAsync());
     }
@@ -93,7 +96,8 @@ public sealed class AdminDashboardTests
 
         var service = new AdminConversationService(
             new TestDbFactory(options),
-            new FakeCurrentUser(isAdmin: true));
+            new FakeCurrentUser(isAdmin: true),
+            new FakeActiveAccountGuard());
 
         var detail = await service.GetDetailAsync(conversationId);
 
@@ -132,7 +136,8 @@ public sealed class AdminDashboardTests
 
         var service = new AdminIndexingJobService(
             new TestDbFactory(options),
-            new FakeCurrentUser(isAdmin: true));
+            new FakeCurrentUser(isAdmin: true),
+            new FakeActiveAccountGuard());
 
         var page = await service.GetPageAsync(1, 1);
 
@@ -181,7 +186,8 @@ public sealed class AdminDashboardTests
             new ActivityLogService(
                 new TestDbFactory(options),
                 new FakeCurrentUser(isAdmin: true),
-                new HttpContextAccessor()));
+                new HttpContextAccessor()),
+            new FakeActiveAccountGuard());
 
         var page = await service.GetPageAsync(1, 20);
 
@@ -204,7 +210,8 @@ public sealed class AdminDashboardTests
             new ActivityLogService(
                 new TestDbFactory(options),
                 new FakeCurrentUser(isAdmin: false),
-                new HttpContextAccessor()));
+                new HttpContextAccessor()),
+            new FakeActiveAccountGuard());
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(
             () => service.GetPageAsync(1, 20));
@@ -222,7 +229,8 @@ public sealed class AdminDashboardTests
             {
                 Id = "user-2",
                 UserName = "user@example.invalid",
-                Email = "user@example.invalid"
+                Email = "user@example.invalid",
+                SecurityStamp = "initial-stamp"
             });
             await db.SaveChangesAsync();
         }
@@ -231,7 +239,8 @@ public sealed class AdminDashboardTests
         var service = new AdminUserService(
             new TestDbFactory(options),
             currentUser,
-            new ActivityLogService(new TestDbFactory(options), currentUser, new HttpContextAccessor()));
+            new ActivityLogService(new TestDbFactory(options), currentUser, new HttpContextAccessor()),
+            new FakeActiveAccountGuard());
 
         await service.DisableAsync("user-2");
         await using (var db = new ApplicationDbContext(options))
@@ -240,7 +249,12 @@ public sealed class AdminDashboardTests
             Assert.True(user.AccountDisabled);
             Assert.Equal("admin-1", user.DisabledByUserId);
             Assert.NotNull(user.DisabledAtUtc);
+            Assert.NotEqual("initial-stamp", user.SecurityStamp);
         }
+
+        string disabledStamp;
+        await using (var db = new ApplicationDbContext(options))
+            disabledStamp = (await db.Users.SingleAsync(item => item.Id == "user-2")).SecurityStamp!;
 
         await service.EnableAsync("user-2");
         await using (var db = new ApplicationDbContext(options))
@@ -249,6 +263,7 @@ public sealed class AdminDashboardTests
             Assert.False(user.AccountDisabled);
             Assert.Null(user.DisabledByUserId);
             Assert.Null(user.DisabledAtUtc);
+            Assert.NotEqual(disabledStamp, user.SecurityStamp);
         }
 
         await using var activityDb = new ApplicationDbContext(options);
@@ -283,7 +298,8 @@ public sealed class AdminDashboardTests
         var service = new AdminUserService(
             new TestDbFactory(options),
             currentUser,
-            new ActivityLogService(new TestDbFactory(options), currentUser, new HttpContextAccessor()));
+            new ActivityLogService(new TestDbFactory(options), currentUser, new HttpContextAccessor()),
+            new FakeActiveAccountGuard());
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.DisableAsync("admin-1"));
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.DisableAsync("admin-2"));
@@ -379,7 +395,8 @@ public sealed class AdminDashboardTests
 
         var service = new AdminActivityService(
             new TestDbFactory(options),
-            new FakeCurrentUser(isAdmin: true));
+            new FakeCurrentUser(isAdmin: true),
+            new FakeActiveAccountGuard());
 
         var page = await service.GetPageAsync(1, 20);
 
@@ -427,7 +444,8 @@ public sealed class AdminDashboardTests
 
         var service = new AdminActivityService(
             new TestDbFactory(options),
-            new FakeCurrentUser(isAdmin: true));
+            new FakeCurrentUser(isAdmin: true),
+            new FakeActiveAccountGuard());
 
         var page = await service.GetPageAsync(
             1,
@@ -458,7 +476,8 @@ public sealed class AdminDashboardTests
 
         var service = new AdminActivityService(
             new TestDbFactory(options),
-            new FakeCurrentUser(isAdmin: true));
+            new FakeCurrentUser(isAdmin: true),
+            new FakeActiveAccountGuard());
 
         var page = await service.GetPageAsync(1, 20, ipAddress: "172");
 

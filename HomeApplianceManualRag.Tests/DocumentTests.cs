@@ -152,7 +152,7 @@ public sealed class DocumentValidationTests
             await db.SaveChangesAsync();
             var storage = new RecordingStorage();
             var service = new DocumentService(db, new TestCurrentUser("user-1", false),
-                new PdfValidator(Options.Create(new UploadOptions())), storage);
+                new PdfValidator(Options.Create(new UploadOptions())), storage, new FakeActiveAccountGuard());
 
             await service.DeleteAsync(document.Id);
 
@@ -175,7 +175,7 @@ public sealed class DocumentValidationTests
             await db.SaveChangesAsync();
             var storage = new RecordingStorage();
             var service = new DocumentService(db, new TestCurrentUser("admin", true),
-                new PdfValidator(Options.Create(new UploadOptions())), storage);
+                new PdfValidator(Options.Create(new UploadOptions())), storage, new FakeActiveAccountGuard());
 
             await service.RestoreAsync(document.Id);
             Assert.Null((await db.ManualDocuments.FindAsync(document.Id))!.DeletedAtUtc);
@@ -197,7 +197,7 @@ public sealed class DocumentValidationTests
             db.ManualDocuments.Add(document);
             await db.SaveChangesAsync();
             var service = new DocumentService(db, new TestCurrentUser("user-1", false),
-                new PdfValidator(Options.Create(new UploadOptions())), new RecordingStorage());
+                new PdfValidator(Options.Create(new UploadOptions())), new RecordingStorage(), new FakeActiveAccountGuard());
 
             await Assert.ThrowsAsync<DocumentForbiddenException>(() => service.RestoreAsync(document.Id));
             await Assert.ThrowsAsync<DocumentForbiddenException>(() => service.HardDeleteAsync(document.Id));
@@ -330,7 +330,8 @@ public sealed class DocumentValidationTests
         };
 
         private static DocumentService Service(ApplicationDbContext db, ICurrentUser user) =>
-            new(db, user, new PdfValidator(Options.Create(new UploadOptions())), new NoopStorage());
+            new(db, user, new PdfValidator(Options.Create(new UploadOptions())), new NoopStorage(),
+                new FakeActiveAccountGuard());
 
         private sealed class TestCurrentUser(string? id, bool admin) : ICurrentUser
         {

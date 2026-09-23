@@ -19,13 +19,14 @@ public sealed record AdminConversationDetail(
 
 public sealed class AdminConversationService(
     IDbContextFactory<ApplicationDbContext> dbFactory,
-    ICurrentUser currentUser)
+    ICurrentUser currentUser,
+    IActiveAccountGuard accountGuard)
 {
     public async Task<IReadOnlyList<AdminConversationSummary>> GetRecentSummariesAsync(
         int limit,
         CancellationToken cancellationToken = default)
     {
-        EnsureAdmin();
+        await EnsureAdminAsync(cancellationToken);
         if (limit < 1)
             throw new ArgumentOutOfRangeException(nameof(limit));
 
@@ -53,7 +54,7 @@ public sealed class AdminConversationService(
         Guid conversationId,
         CancellationToken cancellationToken = default)
     {
-        EnsureAdmin();
+        await EnsureAdminAsync(cancellationToken);
 
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var conversation = await db.Conversations
@@ -87,9 +88,10 @@ public sealed class AdminConversationService(
         return new AdminConversationDetail(summary, messages);
     }
 
-    private void EnsureAdmin()
+    private async Task EnsureAdminAsync(CancellationToken cancellationToken)
     {
         if (!currentUser.IsAuthenticated || !currentUser.IsInRole(ApplicationRoles.Admin))
             throw new UnauthorizedAccessException("Administrator access is required.");
+        await accountGuard.EnsureEnabledAsync(cancellationToken);
     }
 }

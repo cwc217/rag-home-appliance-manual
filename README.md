@@ -27,6 +27,11 @@
   `POST /account/logout` signs out. The configured `SeedAdmin` account is idempotently
   assigned the Admin role at startup. Validation errors support English and Traditional
   Chinese based on the request language.
+- Identity locks an account for 15 minutes after five consecutive failed password
+  attempts. Administrators can disable or re-enable accounts; disabling rotates the
+  security stamp, and protected document, chat, and admin service operations check
+  the current account status. Authentication cookies revalidate their security stamp
+  every five minutes on subsequent HTTP requests.
 - Authenticated users manage documents at `/my-documents`. The page is role-aware:
   normal users see and manage only their own documents and have three active
   (Pending, Processing, or Ready) document slots; administrators see every document
