@@ -64,7 +64,9 @@
                       Placeholder="How do I clean the filter?" Lines="2" Disabled="@busy"
                       FullWidth="true" />
         <div class="composer-actions">
-            <MudText Typo="Typo.caption" Color="Color.Secondary">Use the manual wording when possible.</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                Content is AI-generated for reference only and may not be fully accurate.
+            </MudText>
             <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary"
                        Disabled="@busy">
                 @if (busy)
