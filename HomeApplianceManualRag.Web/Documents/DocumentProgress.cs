@@ -6,7 +6,10 @@ public sealed record DocumentProgressUpdate(
     Guid DocumentId,
     string? OwnerUserId,
     DocumentStatus Status,
-    string? LastError);
+    string? LastError,
+    DocumentProcessingStage Stage = DocumentProcessingStage.Queued,
+    int? CompletedUnits = null,
+    int? TotalUnits = null);
 
 public sealed class DocumentProgressNotifier(ILogger<DocumentProgressNotifier> logger)
 {

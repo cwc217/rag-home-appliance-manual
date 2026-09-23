@@ -288,6 +288,7 @@ public sealed class DocumentValidationTests
             Assert.Equal(document.Id, job.DocumentId);
             Assert.Equal(document.DocumentVersion, job.DocumentVersion);
             Assert.Equal(IndexingJobStatus.Pending, job.Status);
+            Assert.Equal(DocumentProcessingStage.Queued, document.ProcessingStage);
         }
 
         [Fact]
@@ -301,7 +302,29 @@ public sealed class DocumentValidationTests
 
             Assert.Equal("manual.pdf", document.DisplayName);
             Assert.Equal(DocumentStatus.Pending, document.Status);
+            Assert.Equal(DocumentProcessingStage.Queued, document.ProcessingStage);
             Assert.Single(db.IndexingJobs);
+        }
+
+        [Fact]
+        public async Task Browser_upload_reports_bytes_read_while_saving_the_file()
+        {
+            await using var db = CreateDb();
+            var storage = new CopyingStorage();
+            var service = new DocumentService(
+                db,
+                new TestCurrentUser("admin", true),
+                new PdfValidator(Options.Create(new UploadOptions())),
+                storage,
+                new FakeActiveAccountGuard());
+            var file = new BrowserFile("manual.pdf", "application/pdf", "%PDF-1.7\ncontent"u8.ToArray());
+            var progress = new RecordingProgress();
+
+            await service.UploadAsync(file, byteProgress: progress);
+
+            Assert.NotEmpty(progress.Values);
+            Assert.Equal(file.Size, progress.Values[^1]);
+            Assert.Equal(file.Size, storage.BytesCopied);
         }
 
         [Fact]
@@ -322,6 +345,9 @@ public sealed class DocumentValidationTests
             await using var db = CreateDb();
             var failed = Document("failed", "user-1");
             failed.Status = DocumentStatus.Failed;
+            failed.ProcessingStage = DocumentProcessingStage.Failed;
+            failed.ProgressCompletedUnits = 2;
+            failed.ProgressTotalUnits = 5;
             db.ManualDocuments.Add(failed);
             await db.SaveChangesAsync();
             var service = Service(db, new TestCurrentUser("user-1", false));
@@ -329,6 +355,9 @@ public sealed class DocumentValidationTests
             await service.RetryAsync(failed.Id);
 
             Assert.Equal(DocumentStatus.Pending, failed.Status);
+            Assert.Equal(DocumentProcessingStage.Queued, failed.ProcessingStage);
+            Assert.Null(failed.ProgressCompletedUnits);
+            Assert.Null(failed.ProgressTotalUnits);
         }
 
         [Fact]
@@ -369,7 +398,7 @@ public sealed class DocumentValidationTests
 
         private class NoopStorage : IFileStorage
         {
-            public Task StoreAsync(string key, Stream content, CancellationToken ct = default) => Task.CompletedTask;
+            public virtual Task StoreAsync(string key, Stream content, CancellationToken ct = default) => Task.CompletedTask;
             public Task<Stream> OpenReadAsync(string key, CancellationToken ct = default) => Task.FromResult<Stream>(new MemoryStream());
             public virtual Task DeleteAsync(string key, CancellationToken ct = default) => Task.CompletedTask;
             public Task<IReadOnlyCollection<StoredFile>> ListAsync(CancellationToken ct = default) =>
@@ -384,6 +413,24 @@ public sealed class DocumentValidationTests
                 DeletedKeys.Add(key);
                 return Task.CompletedTask;
             }
+        }
+
+        private sealed class CopyingStorage : NoopStorage
+        {
+            public long BytesCopied { get; private set; }
+
+            public override async Task StoreAsync(string key, Stream content, CancellationToken ct = default)
+            {
+                using var copy = new MemoryStream();
+                await content.CopyToAsync(copy, ct);
+                BytesCopied = copy.Length;
+            }
+        }
+
+        private sealed class RecordingProgress : IProgress<long>
+        {
+            public List<long> Values { get; } = [];
+            public void Report(long value) => Values.Add(value);
         }
 
         private sealed class BrowserFile(string name, string contentType, byte[] content) : IBrowserFile

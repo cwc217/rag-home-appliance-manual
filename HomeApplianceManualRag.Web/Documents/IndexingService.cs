@@ -62,19 +62,19 @@ public sealed class IndexingPipeline(
 
         document.Status = DocumentStatus.Processing;
         document.LastError = null;
-        document.UpdatedAtUtc = DateTime.UtcNow;
-        await db.SaveChangesAsync(cancellationToken);
-        await progressNotifier.PublishAsync(new(
-            document.Id, document.OwnerUserId, document.Status, document.LastError));
+        await ReportProgressAsync(document, DocumentProcessingStage.ExtractingText, cancellationToken);
 
         await using var content = await storage.OpenReadAsync(document.StorageKey, cancellationToken);
         var parsed = await parser.ParseAsync(new DocumentParseRequest(document.Id, document.DisplayName, content, cancellationToken));
+        await ReportProgressAsync(document, DocumentProcessingStage.VerifyingManual, cancellationToken);
         var classification = await classifier.ClassifyAsync(document.DisplayName, parsed, cancellationToken);
         if (!classification.IsManual ||
             classification.Confidence < typeSafeOptions.Value.MinimumConfidence)
             throw new DocumentRejectedException(
                 "This file does not appear to be a household appliance manual.");
+        await ReportProgressAsync(document, DocumentProcessingStage.AnalyzingImages, cancellationToken);
         parsed = await AnalyzeImagesAsync(parsed, cancellationToken);
+        await ReportProgressAsync(document, DocumentProcessingStage.ExtractingMetadata, cancellationToken);
         var metadata = await metadataExtractor.ExtractAsync(
             document.DisplayName, parsed, cancellationToken);
         document.ProductName = metadata.ProductName;
@@ -85,13 +85,22 @@ public sealed class IndexingPipeline(
         document.MetadataConfidence = metadata.Confidence;
         document.MetadataStatus = metadata.Status;
         document.MetadataExtractedAtUtc = DateTime.UtcNow;
+        await ReportProgressAsync(document, DocumentProcessingStage.PreparingChunks, cancellationToken);
         var drafts = chunker.Chunk(parsed);
         if (drafts.Count == 0)
             throw new DocumentParseException("The document has no extractable text.");
 
         var vectors = new List<ManualChunk>(drafts.Count);
-        foreach (var draft in drafts)
+        await ReportProgressAsync(
+            document,
+            DocumentProcessingStage.CreatingEmbeddings,
+            cancellationToken,
+            completedUnits: 0,
+            totalUnits: drafts.Count);
+        var progressInterval = Math.Max(1, (drafts.Count + 19) / 20);
+        for (var index = 0; index < drafts.Count; index++)
         {
+            var draft = drafts[index];
             var values = await embedding.EmbedAsync(draft.Text, cancellationToken);
             if (values.Length != ApplicationDbContext.EmbeddingDimensions)
                 throw new DocumentParseException(
@@ -106,8 +115,24 @@ public sealed class IndexingPipeline(
                 Embedding = new Vector(values.ToArray()),
                 CreatedAtUtc = DateTime.UtcNow
             });
+            var completedUnits = index + 1;
+            if (completedUnits % progressInterval == 0 || completedUnits == drafts.Count)
+            {
+                await ReportProgressAsync(
+                    document,
+                    DocumentProcessingStage.CreatingEmbeddings,
+                    cancellationToken,
+                    completedUnits,
+                    drafts.Count);
+            }
         }
 
+        await ReportProgressAsync(
+            document,
+            DocumentProcessingStage.SavingIndex,
+            cancellationToken,
+            drafts.Count,
+            drafts.Count);
         await using var transaction = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(cancellationToken) : null;
         if (!await db.ManualDocuments.AnyAsync(
                 x => x.Id == job.DocumentId &&
@@ -121,6 +146,9 @@ public sealed class IndexingPipeline(
         db.ManualChunks.RemoveRange(existingChunks);
         db.ManualChunks.AddRange(vectors);
         document.Status = DocumentStatus.Ready;
+        document.ProcessingStage = DocumentProcessingStage.Completed;
+        document.ProgressCompletedUnits = drafts.Count;
+        document.ProgressTotalUnits = drafts.Count;
         document.IndexedAtUtc = DateTime.UtcNow;
         document.UpdatedAtUtc = DateTime.UtcNow;
         document.LastError = null;
@@ -130,8 +158,36 @@ public sealed class IndexingPipeline(
         if (transaction is not null)
             await transaction.CommitAsync(cancellationToken);
         await progressNotifier.PublishAsync(new(
-            document.Id, document.OwnerUserId, document.Status, document.LastError));
+            document.Id,
+            document.OwnerUserId,
+            document.Status,
+            document.LastError,
+            document.ProcessingStage,
+            document.ProgressCompletedUnits,
+            document.ProgressTotalUnits));
         logger.LogInformation("Indexed document {DocumentId} with {ChunkCount} chunks.", document.Id, vectors.Count);
+    }
+
+    private async Task ReportProgressAsync(
+        ManualDocument document,
+        DocumentProcessingStage stage,
+        CancellationToken cancellationToken,
+        int? completedUnits = null,
+        int? totalUnits = null)
+    {
+        document.ProcessingStage = stage;
+        document.ProgressCompletedUnits = completedUnits;
+        document.ProgressTotalUnits = totalUnits;
+        document.UpdatedAtUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+        await progressNotifier.PublishAsync(new(
+            document.Id,
+            document.OwnerUserId,
+            document.Status,
+            document.LastError,
+            stage,
+            completedUnits,
+            totalUnits));
     }
 
     private async Task<ParsedDocument> AnalyzeImagesAsync(
@@ -308,6 +364,9 @@ public sealed class IndexingWorker(
             job.Document.DocumentVersion == job.DocumentVersion)
         {
             job.Document.Status = DocumentStatus.Failed;
+            job.Document.ProcessingStage = DocumentProcessingStage.Failed;
+            job.Document.ProgressCompletedUnits = null;
+            job.Document.ProgressTotalUnits = null;
             job.Document.LastError = exception.Message;
             job.Document.UpdatedAtUtc = DateTime.UtcNow;
         }
@@ -318,7 +377,10 @@ public sealed class IndexingWorker(
                 job.Document.Id,
                 job.Document.OwnerUserId,
                 job.Document.Status,
-                job.Document.LastError));
+                job.Document.LastError,
+                job.Document.ProcessingStage,
+                job.Document.ProgressCompletedUnits,
+                job.Document.ProgressTotalUnits));
         }
         logger.LogWarning(exception, "Indexing job {JobId} failed on attempt {Attempt}.", jobId, job.Attempts);
     }
@@ -338,6 +400,9 @@ public sealed class IndexingWorker(
             job.Document.DocumentVersion == job.DocumentVersion)
         {
             job.Document.Status = DocumentStatus.Rejected;
+            job.Document.ProcessingStage = DocumentProcessingStage.Failed;
+            job.Document.ProgressCompletedUnits = null;
+            job.Document.ProgressTotalUnits = null;
             job.Document.LastError = exception.Message;
             job.Document.UpdatedAtUtc = DateTime.UtcNow;
         }
@@ -347,7 +412,10 @@ public sealed class IndexingWorker(
                 job.Document.Id,
                 job.Document.OwnerUserId,
                 job.Document.Status,
-                job.Document.LastError));
+                job.Document.LastError,
+                job.Document.ProcessingStage,
+                job.Document.ProgressCompletedUnits,
+                job.Document.ProgressTotalUnits));
         logger.LogInformation("Indexing job {JobId} rejected because the document is not a supported manual.", jobId);
     }
 }

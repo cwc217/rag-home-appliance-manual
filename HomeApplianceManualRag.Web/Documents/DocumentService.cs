@@ -25,10 +25,19 @@ public sealed class DocumentService(
     public async Task<ManualDocument> UploadAsync(IFormFile file, CancellationToken cancellationToken = default)
         => await UploadAsync(new PdfUpload(file.FileName, file.ContentType, file.Length, () => file.OpenReadStream()), cancellationToken);
 
-    public async Task<ManualDocument> UploadAsync(IBrowserFile file, CancellationToken cancellationToken = default)
-        => await UploadAsync(new PdfUpload(file.Name, file.ContentType, file.Size, () => file.OpenReadStream(file.Size)), cancellationToken);
+    public async Task<ManualDocument> UploadAsync(
+        IBrowserFile file,
+        CancellationToken cancellationToken = default,
+        IProgress<long>? byteProgress = null)
+        => await UploadAsync(
+            new PdfUpload(file.Name, file.ContentType, file.Size, () => file.OpenReadStream(file.Size)),
+            cancellationToken,
+            byteProgress);
 
-    private async Task<ManualDocument> UploadAsync(PdfUpload file, CancellationToken cancellationToken = default)
+    private async Task<ManualDocument> UploadAsync(
+        PdfUpload file,
+        CancellationToken cancellationToken = default,
+        IProgress<long>? byteProgress = null)
     {
         await accountGuard.EnsureEnabledAsync(cancellationToken);
         var validation = await validator.ValidateAsync(file, cancellationToken);
@@ -47,12 +56,20 @@ public sealed class DocumentService(
             throw new DocumentQuotaExceededException();
         var key = $"{Guid.NewGuid():N}.pdf";
         var document = new ManualDocument { Id = Guid.NewGuid(), OwnerUserId = owner, DisplayName = Path.GetFileName(file.FileName), StorageKey = key, ContentType = "application/pdf", SizeBytes = validation.SizeBytes, Status = DocumentStatus.Pending, CreatedAtUtc = DateTime.UtcNow, UpdatedAtUtc = DateTime.UtcNow };
-        await using var stream = file.OpenRead();
         var storageWriteStarted = false;
         try
         {
             storageWriteStarted = true;
-            await storage.StoreAsync(key, stream, cancellationToken);
+            await using var stream = file.OpenRead();
+            if (byteProgress is null)
+            {
+                await storage.StoreAsync(key, stream, cancellationToken);
+            }
+            else
+            {
+                await using var progressStream = new UploadProgressStream(stream, byteProgress, leaveOpen: true);
+                await storage.StoreAsync(key, progressStream, cancellationToken);
+            }
             db.ManualDocuments.Add(document);
             db.IndexingJobs.Add(CreateIndexingJob(document));
             await db.SaveChangesAsync(cancellationToken);
@@ -237,6 +254,7 @@ public sealed class DocumentService(
             await HasInProgressDocumentAsync(currentUser.UserId!, ct))
             throw new DocumentProcessingInProgressException();
         document.Status = DocumentStatus.Pending;
+        ResetProgress(document);
         document.LastError = null;
         document.DocumentVersion = Guid.NewGuid();
         document.UpdatedAtUtc = DateTime.UtcNow;
@@ -257,6 +275,7 @@ public sealed class DocumentService(
         var document = await GetAuthorizedAsync(id, ct);
         EnsureNotProcessing(document);
         document.Status = DocumentStatus.Pending;
+        ResetProgress(document);
         document.LastError = null;
         document.IndexedAtUtc = null;
         document.DocumentVersion = Guid.NewGuid();
@@ -280,6 +299,13 @@ public sealed class DocumentService(
         CreatedAtUtc = DateTime.UtcNow,
         NextAttemptAtUtc = DateTime.UtcNow
     };
+
+    private static void ResetProgress(ManualDocument document)
+    {
+        document.ProcessingStage = DocumentProcessingStage.Queued;
+        document.ProgressCompletedUnits = null;
+        document.ProgressTotalUnits = null;
+    }
 
     private async Task CancelOutstandingJobsAsync(Guid documentId, CancellationToken ct)
     {

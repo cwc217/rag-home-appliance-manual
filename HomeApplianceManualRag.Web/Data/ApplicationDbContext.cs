@@ -82,6 +82,20 @@ public sealed class ChatMessage
 
 public enum DocumentStatus { Pending, Processing, Ready, Failed, Rejected }
 
+public enum DocumentProcessingStage
+{
+    Queued,
+    ExtractingText,
+    VerifyingManual,
+    AnalyzingImages,
+    ExtractingMetadata,
+    PreparingChunks,
+    CreatingEmbeddings,
+    SavingIndex,
+    Completed,
+    Failed
+}
+
 public enum MetadataExtractionStatus { Pending, Completed, NeedsReview, Failed }
 
 public enum IndexingJobStatus { Pending, Processing, Completed, Failed }
@@ -126,6 +140,9 @@ public sealed class ManualDocument
     public string ContentType { get; set; } = "application/pdf";
     public long SizeBytes { get; set; }
     public DocumentStatus Status { get; set; } = DocumentStatus.Pending;
+    public DocumentProcessingStage ProcessingStage { get; set; } = DocumentProcessingStage.Queued;
+    public int? ProgressCompletedUnits { get; set; }
+    public int? ProgressTotalUnits { get; set; }
     public string? LastError { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;

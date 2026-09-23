@@ -20,8 +20,19 @@
     <InputFile OnChange="SelectFile" accept=".pdf,application/pdf" />
     <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Upload"
                OnClick="Upload" Disabled="@(selectedFile is null || IsUploadDisabled)">Upload</MudButton>
-    @if (busy) { <MudText Typo="Typo.body2" Color="Color.Secondary">Uploading...</MudText> }
+    @if (busy)
+    {
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            @(uploadProgressPercent is int percent
+                ? percent == 100 ? "Finishing upload..." : $"Uploading PDF: {percent}%"
+                : "Validating PDF and preparing upload...")
+        </MudText>
+    }
 </MudStack>
+@if (uploadProgressPercent is int uploadPercent)
+{
+    <MudProgressLinear Value="@((double)uploadPercent)" Color="Color.Primary" Class="mt-2" />
+}
 </MudPaper>
 @if (!string.IsNullOrWhiteSpace(errorMessage))
 {
@@ -48,12 +59,16 @@
                 }
                 @if (!refreshStopped && IsProcessing(document))
                 {
-                    <MudProgressLinear Value="@GetProgressWidth(document.Status)" Color="Color.Primary"
-                                       Indeterminate="false" Class="mb-3" />
                     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-2">
                         <MudProgressCircular Size="Size.Small" Indeterminate="true" />
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">Indexing in progress. This page updates automatically.</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @GetProgressLabel(document). This page updates automatically.
+                        </MudText>
                     </MudStack>
+                    @if (TryGetEmbeddingProgress(document, out var embeddingProgress))
+                    {
+                        <MudProgressLinear Value="@embeddingProgress" Color="Color.Primary" Class="mb-3" />
+                    }
                 }
                 @if (isAdmin) { <MudText Typo="Typo.caption" Color="Color.Secondary">Owner: @(document.OwnerEmail ?? "Admin/public")</MudText> }
                 @if (!string.IsNullOrWhiteSpace(document.LastError))
@@ -91,6 +106,7 @@
     private readonly HashSet<Guid> busyDocuments = [];
     private IBrowserFile? selectedFile;
     private bool busy;
+    private int? uploadProgressPercent;
     private bool refreshStopped;
     [SupplyParameterFromQuery(Name = "error")]
     private string? errorMessage { get; set; }
@@ -117,10 +133,22 @@
             return;
 
         busy = true;
+        uploadProgressPercent = null;
         errorMessage = null;
         try
         {
-            await Documents.UploadAsync(selectedFile);
+            var file = selectedFile;
+            var progress = new Progress<long>(bytesRead =>
+            {
+                if (!busy)
+                    return;
+                var percent = (int)Math.Clamp(bytesRead * 100d / file.Size, 0, 100);
+                if (uploadProgressPercent == percent)
+                    return;
+                uploadProgressPercent = percent;
+                StateHasChanged();
+            });
+            await Documents.UploadAsync(file, byteProgress: progress);
             selectedFile = null;
             refreshStopped = false;
             await Refresh();
@@ -133,6 +161,7 @@
         finally
         {
             busy = false;
+            uploadProgressPercent = null;
         }
     }
     private async Task Retry(Guid id)
@@ -257,6 +286,9 @@
                 }
                 document.Status = update.Status;
                 document.LastError = update.LastError;
+                document.ProcessingStage = update.Stage;
+                document.ProgressCompletedUnits = update.CompletedUnits;
+                document.ProgressTotalUnits = update.TotalUnits;
                 document.UpdatedAtUtc = DateTime.UtcNow;
                 refreshStopped = false;
                 StateHasChanged();
@@ -313,7 +345,49 @@
             _ => document.Status.ToString()
         };
     }
-    private static int GetProgressWidth(DocumentStatus status) => status == DocumentStatus.Processing ? 66 : 33;
+    private static string GetProgressLabel(ManualDocument document) =>
+        $"{GetProgressStageNumber(document.ProcessingStage)}/8 · {GetProgressStageName(document.ProcessingStage)}" +
+        (document.ProcessingStage == DocumentProcessingStage.CreatingEmbeddings &&
+         document.ProgressCompletedUnits is int completed &&
+         document.ProgressTotalUnits is int total
+            ? $" ({completed}/{total} chunks)"
+            : string.Empty);
+    private static int GetProgressStageNumber(DocumentProcessingStage stage) => stage switch
+    {
+        DocumentProcessingStage.Queued => 1,
+        DocumentProcessingStage.ExtractingText => 2,
+        DocumentProcessingStage.VerifyingManual => 3,
+        DocumentProcessingStage.AnalyzingImages => 4,
+        DocumentProcessingStage.ExtractingMetadata => 5,
+        DocumentProcessingStage.PreparingChunks => 6,
+        DocumentProcessingStage.CreatingEmbeddings => 7,
+        _ => 8
+    };
+    private static string GetProgressStageName(DocumentProcessingStage stage) => stage switch
+    {
+        DocumentProcessingStage.Queued => "Waiting in queue",
+        DocumentProcessingStage.ExtractingText => "Extracting PDF text",
+        DocumentProcessingStage.VerifyingManual => "Checking the manual",
+        DocumentProcessingStage.AnalyzingImages => "Analyzing diagrams, if present",
+        DocumentProcessingStage.ExtractingMetadata => "Identifying appliance details",
+        DocumentProcessingStage.PreparingChunks => "Preparing searchable sections",
+        DocumentProcessingStage.CreatingEmbeddings => "Building search index",
+        DocumentProcessingStage.SavingIndex => "Saving search index",
+        _ => "Finishing"
+    };
+    private static bool TryGetEmbeddingProgress(ManualDocument document, out double value)
+    {
+        if (document.ProcessingStage == DocumentProcessingStage.CreatingEmbeddings &&
+            document.ProgressCompletedUnits is int completed &&
+            document.ProgressTotalUnits is int total &&
+            total > 0)
+        {
+            value = Math.Clamp(completed * 100d / total, 0, 100);
+            return true;
+        }
+        value = 0;
+        return false;
+    }
     private static Color GetStatusColor(ManualDocument document) =>
         document.DeletedAtUtc is not null ? Color.Dark :
         IsFailed(document) ? Color.Error : document.Status switch

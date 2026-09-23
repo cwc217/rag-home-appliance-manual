@@ -355,8 +355,17 @@ namespace HomeApplianceManualRag.Web.Data.Migrations
                     b.Property<string>("OwnerUserId")
                         .HasColumnType("text");
 
+                    b.Property<int>("ProcessingStage")
+                        .HasColumnType("integer");
+
                     b.Property<string>("ProductName")
                         .HasColumnType("text");
+
+                    b.Property<int?>("ProgressCompletedUnits")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("ProgressTotalUnits")
+                        .HasColumnType("integer");
 
                     b.Property<long>("SizeBytes")
                         .HasColumnType("bigint");

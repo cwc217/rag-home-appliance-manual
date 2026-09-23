@@ -332,6 +332,54 @@ public sealed class IndexingTests
     }
 
     [Fact]
+    public async Task Pipeline_publishes_each_processing_stage_and_embedding_count()
+    {
+        await using var db = CreateDb();
+        var document = NewDocument();
+        var job = NewJob(document);
+        db.AddRange(document, job);
+        await db.SaveChangesAsync();
+        var notifier = new DocumentProgressNotifier(NullLogger<DocumentProgressNotifier>.Instance);
+        var updates = new List<DocumentProgressUpdate>();
+        using var subscription = notifier.Subscribe(null, true, update =>
+        {
+            updates.Add(update);
+            return Task.CompletedTask;
+        });
+        var pipeline = Pipeline(
+            db,
+            new FixedParser(),
+            new FixedEmbedding(1536),
+            progressNotifier: notifier);
+
+        await pipeline.ProcessAsync(job.Id, CancellationToken.None);
+
+        Assert.Equal(
+            [
+                DocumentProcessingStage.ExtractingText,
+                DocumentProcessingStage.VerifyingManual,
+                DocumentProcessingStage.AnalyzingImages,
+                DocumentProcessingStage.ExtractingMetadata,
+                DocumentProcessingStage.PreparingChunks,
+                DocumentProcessingStage.CreatingEmbeddings,
+                DocumentProcessingStage.SavingIndex,
+                DocumentProcessingStage.Completed
+            ],
+            updates.Select(update => update.Stage).Distinct().ToArray());
+        Assert.Contains(updates, update =>
+            update.Stage == DocumentProcessingStage.CreatingEmbeddings &&
+            update.CompletedUnits == 0 &&
+            update.TotalUnits == 1);
+        Assert.Contains(updates, update =>
+            update.Stage == DocumentProcessingStage.CreatingEmbeddings &&
+            update.CompletedUnits == 1 &&
+            update.TotalUnits == 1);
+        Assert.Equal(DocumentProcessingStage.Completed, document.ProcessingStage);
+        Assert.Equal(1, document.ProgressCompletedUnits);
+        Assert.Equal(1, document.ProgressTotalUnits);
+    }
+
+    [Fact]
     public async Task Pipeline_analyzes_picture_and_indexes_ocr_and_description()
     {
         await using var db = CreateDb();
@@ -433,7 +481,8 @@ public sealed class IndexingTests
         IDocumentParser parser,
         IEmbeddingProvider embedding,
         IManualClassifier? classifier = null,
-        IImageAnalyzer? imageAnalyzer = null) =>
+        IImageAnalyzer? imageAnalyzer = null,
+        DocumentProgressNotifier? progressNotifier = null) =>
         new(db, new TestStorage(), parser,
             new DocumentChunker(Options.Create(new RetrievalOptions { ChunkSize = 100, ChunkOverlap = 10 })),
             embedding,
@@ -442,7 +491,7 @@ public sealed class IndexingTests
             imageAnalyzer ?? new NoOpImageAnalyzer(),
             Options.Create(new ImageAnalysisOptions { Enabled = true }),
             Options.Create(new TypeSafeOptions()),
-            new DocumentProgressNotifier(NullLogger<DocumentProgressNotifier>.Instance),
+            progressNotifier ?? new DocumentProgressNotifier(NullLogger<DocumentProgressNotifier>.Instance),
             NullLogger<IndexingPipeline>.Instance);
 
     private sealed class FixedParser : IDocumentParser
