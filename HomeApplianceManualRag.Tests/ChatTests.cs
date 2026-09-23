@@ -75,6 +75,17 @@ public sealed class ChatTests
     }
 
     [Fact]
+    public void Tool_call_options_disable_reasoning_effort()
+    {
+        var options = AzureOpenAiChatProvider.CreateToolOptions(ChatToolDefinitions.All);
+
+#pragma warning disable OPENAI001
+        Assert.Equal("none", options.ReasoningEffortLevel?.ToString());
+#pragma warning restore OPENAI001
+        Assert.Equal(2, options.Tools.Count);
+    }
+
+    [Fact]
     public void Rate_limiter_rejects_requests_over_configured_limit()
     {
         var limiter = new ChatRateLimiter(Options.Create(new RateLimitingOptions { RequestsPerMinute = 1 }));

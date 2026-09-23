@@ -91,14 +91,7 @@ public sealed class AzureOpenAiChatProvider : IChatProvider
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var messages = CreateMessages(prompt, rounds, SystemPrompt);
-        var options = new ChatCompletionOptions();
-        foreach (var tool in tools)
-        {
-            options.Tools.Add(ChatTool.CreateFunctionTool(
-                tool.Name,
-                tool.Description,
-                BinaryData.FromString(tool.ParametersJson)));
-        }
+        var options = CreateToolOptions(tools);
 
         var calls = new SortedDictionary<int, StreamingToolCall>();
         await foreach (var update in client.CompleteChatStreamingAsync(messages, options, cancellationToken))
@@ -153,6 +146,22 @@ public sealed class AzureOpenAiChatProvider : IChatProvider
                 messages.Add(new ToolChatMessage(result.CallId, result.Content));
         }
         return messages.ToArray();
+    }
+
+    public static ChatCompletionOptions CreateToolOptions(IReadOnlyList<ChatToolDefinition> tools)
+    {
+        var options = new ChatCompletionOptions();
+#pragma warning disable OPENAI001
+        options.ReasoningEffortLevel = new ChatReasoningEffortLevel("none");
+#pragma warning restore OPENAI001
+        foreach (var tool in tools)
+        {
+            options.Tools.Add(ChatTool.CreateFunctionTool(
+                tool.Name,
+                tool.Description,
+                BinaryData.FromString(tool.ParametersJson)));
+        }
+        return options;
     }
 
     private sealed class StreamingToolCall
