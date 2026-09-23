@@ -59,6 +59,27 @@ public sealed class ConfigurationValidationTests
     }
 
     [Fact]
+    public void Current_user_keeps_circuit_identity_when_http_context_is_unavailable()
+    {
+        var context = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(
+            [
+                new Claim(ClaimTypes.NameIdentifier, "admin-1"),
+                new Claim(ClaimTypes.Email, "admin@example.invalid"),
+                new Claim(ClaimTypes.Role, ApplicationRoles.Admin)
+            ], "test"))
+        };
+        var accessor = new HttpContextAccessor { HttpContext = context };
+        var currentUser = new CurrentUser(accessor);
+        accessor.HttpContext = null;
+
+        Assert.True(currentUser.IsAuthenticated);
+        Assert.Equal("admin-1", currentUser.UserId);
+        Assert.True(currentUser.IsInRole(ApplicationRoles.Admin));
+    }
+
+    [Fact]
     public void Identity_validation_messages_follow_requested_culture()
     {
         Assert.Contains("required", IdentityMessages.Required("Email", "en-US"));

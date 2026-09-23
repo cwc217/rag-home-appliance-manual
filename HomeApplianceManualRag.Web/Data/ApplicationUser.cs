@@ -18,14 +18,19 @@ public interface ICurrentUser
     bool IsInRole(string role);
 }
 
-public sealed class CurrentUser(IHttpContextAccessor httpContextAccessor) : ICurrentUser
+public sealed class CurrentUser : ICurrentUser
 {
-    private System.Security.Claims.ClaimsPrincipal Principal =>
-        httpContextAccessor.HttpContext?.User ?? new System.Security.Claims.ClaimsPrincipal();
+    private readonly System.Security.Claims.ClaimsPrincipal principal;
 
-    public string? UserId => Principal.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-    public string? Email => Principal.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
-        ?? Principal.Identity?.Name;
-    public bool IsAuthenticated => Principal.Identity?.IsAuthenticated == true;
-    public bool IsInRole(string role) => Principal.IsInRole(role);
+    public CurrentUser(IHttpContextAccessor httpContextAccessor)
+    {
+        principal = httpContextAccessor.HttpContext?.User
+            ?? new System.Security.Claims.ClaimsPrincipal();
+    }
+
+    public string? UserId => principal.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+    public string? Email => principal.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
+        ?? principal.Identity?.Name;
+    public bool IsAuthenticated => principal.Identity?.IsAuthenticated == true;
+    public bool IsInRole(string role) => principal.IsInRole(role);
 }
