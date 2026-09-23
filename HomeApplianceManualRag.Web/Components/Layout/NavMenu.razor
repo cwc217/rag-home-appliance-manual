@@ -15,7 +15,7 @@
         <details class="nav-conversations-collapse" open>
             <summary>
                 <MudIcon Icon="@Icons.Material.Filled.Chat" Size="Size.Small" />
-                <span>Conversations</span>
+                <span>Conversations (@activeConversationCount/@ChatHistoryService.MaxActiveConversations)</span>
             </summary>
             <div class="nav-conversations" aria-label="Conversation rooms">
                 @if (!conversationsLoaded)
@@ -86,6 +86,7 @@
 @code {
     [CascadingParameter] private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
     private readonly List<ChatConversation> conversations = [];
+    private int activeConversationCount;
     private bool isAuthenticated;
     private bool conversationsLoaded;
     private string? conversationsError;
@@ -137,6 +138,7 @@
 
         await History.DeleteConversationAsync(conversation.Id);
         conversations.RemoveAll(item => item.Id == conversation.Id);
+        ConversationState.NotifyChanged();
         if (Navigation.ToAbsoluteUri(Navigation.Uri).Query.Contains(conversation.Id.ToString(), StringComparison.OrdinalIgnoreCase))
             Navigation.NavigateTo("/");
         else
@@ -159,6 +161,7 @@
     {
         conversations.Clear();
         conversations.AddRange(await History.GetConversationsAsync(null));
+        activeConversationCount = await History.GetActiveConversationCountAsync();
     }
 
     public void Dispose()

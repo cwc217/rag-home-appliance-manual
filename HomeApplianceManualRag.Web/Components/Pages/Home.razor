@@ -3,12 +3,14 @@
 @inject ChatService Chat
 @inject ChatHistoryService History
 @inject ChatConversationState ConversationState
+@inject ILogger<Home> Logger
 @inject IJSRuntime JS
 @using HomeApplianceManualRag.Web.Data
 @using HomeApplianceManualRag.Web.Resources
 @using System.Globalization
 @using System.Text.Json
 @using Microsoft.JSInterop
+@implements IDisposable
 
 <PageTitle>Chat Room</PageTitle>
 <main class="chat-shell">
@@ -53,18 +55,31 @@
         {
             <MudAlert Severity="Severity.Error">@error</MudAlert>
         }
+        @if (!loadingHistory && IsNewConversationBlocked)
+        {
+            <MudAlert Severity="Severity.Warning">
+                You have reached the limit of @ChatHistoryService.MaxActiveConversations active conversations.
+                Delete an existing conversation to start a new one. Existing conversations remain available.
+            </MudAlert>
+        }
     </section>
 
     <EditForm Model="form" OnValidSubmit="Ask" class="chat-composer">
         <MudTextField T="string" @bind-Value="form.Question" Label="Question" Variant="Variant.Outlined"
-                      Placeholder="How do I clean the filter?" Lines="2" Disabled="@busy"
+                      Placeholder="How do I clean the filter?" Lines="2" Disabled="@IsComposerDisabled"
                       FullWidth="true" />
         <div class="composer-actions">
             <MudText Typo="Typo.caption" Color="Color.Secondary">
                 Content is AI-generated for reference only and may not be fully accurate.
             </MudText>
+            @if (selectedConversationId is null && conversationCountLoaded)
+            {
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    Active conversations: @activeConversationCount/@ChatHistoryService.MaxActiveConversations
+                </MudText>
+            }
             <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary"
-                       Disabled="@busy">
+                       Disabled="@IsComposerDisabled">
                 @if (busy)
                 {
                     <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-2" />
@@ -87,6 +102,8 @@
     private bool loadingHistory = true;
     private bool initialized;
     private bool scrollToLatest;
+    private int activeConversationCount;
+    private bool conversationCountLoaded;
     private Guid? selectedConversationId;
     private string? anonymousAccessKey;
     private readonly List<ChatConversation> rooms = [];
@@ -112,6 +129,11 @@
 
         selectedConversationId = id;
         await LoadSelected();
+    }
+
+    protected override void OnInitialized()
+    {
+        ConversationState.Changed += OnConversationStateChanged;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -152,6 +174,9 @@
         IsAuthenticated = (await AuthenticationStateTask!).User.Identity?.IsAuthenticated == true;
         rooms.Clear();
         rooms.AddRange(await History.GetConversationsAsync(IsAuthenticated ? null : anonymousAccessKey));
+        activeConversationCount = await History.GetActiveConversationCountAsync(
+            IsAuthenticated ? null : anonymousAccessKey);
+        conversationCountLoaded = true;
         selectedConversationId = ConversationId is Guid requestedId && rooms.Any(x => x.Id == requestedId)
             ? requestedId
             : null;
@@ -187,10 +212,12 @@
 
     private async Task Ask()
     {
-        if (busy || string.IsNullOrWhiteSpace(form.Question)) return;
+        if (IsComposerDisabled || string.IsNullOrWhiteSpace(form.Question)) return;
         busy = true;
         error = null;
         var question = form.Question.Trim();
+        var isNewConversation = selectedConversationId is null;
+        var originalMessageCount = messages.Count;
         messages.Add(new UiMessage(ChatMessageRole.User, question, [], DateTime.UtcNow));
         form.Question = string.Empty;
         try
@@ -214,6 +241,7 @@
                 messages.Add(new UiMessage(ChatMessageRole.Assistant, noContextMessage, noContextCitations, DateTime.UtcNow));
                 await History.PersistExchangeAsync(conversationId, question, noContextMessage, noContextCitations,
                     IsAuthenticated ? null : anonymousAccessKey);
+                RecordPersistedConversation(isNewConversation);
                 ConversationState.NotifyChanged();
                 await SaveAnonymousCache(conversationId);
                 return;
@@ -234,8 +262,19 @@
                 assistant.Content, assistant.Citations).TrimEnd();
             await History.PersistExchangeAsync(conversationId, question, assistant.Content, assistant.Citations,
                 IsAuthenticated ? null : anonymousAccessKey);
+            RecordPersistedConversation(isNewConversation);
             ConversationState.NotifyChanged();
             await SaveAnonymousCache(conversationId);
+        }
+        catch (ConversationLimitExceededException ex)
+        {
+            messages.RemoveRange(originalMessageCount, messages.Count - originalMessageCount);
+            form.Question = question;
+            selectedConversationId = null;
+            activeConversationCount = ChatHistoryService.MaxActiveConversations;
+            conversationCountLoaded = true;
+            error = ex.Message;
+            ConversationState.NotifyChanged();
         }
         catch (ChatRateLimitException ex)
         {
@@ -261,6 +300,49 @@
         {
             busy = false;
         }
+    }
+
+    private bool IsNewConversationBlocked =>
+        conversationCountLoaded &&
+        selectedConversationId is null &&
+        activeConversationCount >= ChatHistoryService.MaxActiveConversations;
+    private bool IsComposerDisabled =>
+        busy || loadingHistory || !conversationCountLoaded || IsNewConversationBlocked;
+
+    private void RecordPersistedConversation(bool isNewConversation)
+    {
+        if (isNewConversation)
+            activeConversationCount = Math.Min(
+                activeConversationCount + 1,
+                ChatHistoryService.MaxActiveConversations);
+    }
+
+    private async void OnConversationStateChanged(object? sender, EventArgs args)
+    {
+        if (!initialized)
+            return;
+
+        await InvokeAsync(async () =>
+        {
+            try
+            {
+                activeConversationCount = await History.GetActiveConversationCountAsync(
+                    IsAuthenticated ? null : anonymousAccessKey);
+                conversationCountLoaded = true;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Unable to refresh the active conversation count.");
+                conversationCountLoaded = false;
+                error = "Conversation history is temporarily unavailable.";
+            }
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        ConversationState.Changed -= OnConversationStateChanged;
     }
 
     private sealed class ChatForm { public string Question { get; set; } = string.Empty; }

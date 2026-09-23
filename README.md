@@ -13,7 +13,9 @@
 - 登入使用者的問答會儲存於自己的 conversation/message history，並按時間順序重載；
   anonymous chat 也會在伺服器保存 30 天；瀏覽器 localStorage 只保存匿名存取金鑰及 UI cache，
   不是真實資料來源。匿名對話按金鑰隔離，清除網站資料後將無法取回。
-- Chat Room 支援建立多個 conversation；管理員可在 `/admin` 查看 users、manuals、indexing
+- 每個 user 最多有 3 個有效且未刪除的 conversation；有效對話須已有已儲存訊息，刪除後可再建立。
+  匿名訪客按瀏覽器 access key 計算上限，清除網站資料後可重設。
+- 管理員可在 `/admin` 查看 users、manuals、indexing
   及最新 10 個 conversations，並在 `/admin/chat-review` 以 table 檢視最新 20 個對話。
   `/admin/indexing-jobs` 顯示文件索引歷史；`/admin/error-logs` 顯示經清理的索引、
   Chat 及相依服務錯誤診斷，記錄保留 90 天。

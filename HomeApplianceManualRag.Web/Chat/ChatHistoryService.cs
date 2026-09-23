@@ -22,6 +22,8 @@ public sealed class ChatHistoryService(
     IActiveAccountGuard accountGuard,
     ActivityLogService? activityLog = null)
 {
+    public const int MaxActiveConversations = 3;
+
     public async Task<IReadOnlyList<ChatConversation>> GetConversationsAsync(
         string? anonymousAccessKey = null, CancellationToken ct = default)
     {
@@ -31,6 +33,14 @@ public sealed class ChatHistoryService(
         return await query.OrderByDescending(x => x.UpdatedAtUtc)
             .Select(x => new ChatConversation(x.Id, x.Title, x.CreatedAtUtc, x.UpdatedAtUtc))
             .ToListAsync(ct);
+    }
+
+    public async Task<int> GetActiveConversationCountAsync(
+        string? anonymousAccessKey = null, CancellationToken ct = default)
+    {
+        await accountGuard.EnsureEnabledAsync(ct);
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await CountActiveConversationsAsync(db, anonymousAccessKey, ct);
     }
 
     public async Task<IReadOnlyList<ChatHistoryMessage>> GetHistoryAsync(
@@ -56,6 +66,9 @@ public sealed class ChatHistoryService(
         if (!currentUser.IsAuthenticated && string.IsNullOrWhiteSpace(anonymousAccessKey))
             throw new UnauthorizedAccessException("An anonymous access key is required.");
         await using var db = await dbFactory.CreateDbContextAsync(ct);
+        if (await CountActiveConversationsAsync(db, anonymousAccessKey, ct) >= MaxActiveConversations)
+            throw new ConversationLimitExceededException();
+
         var conversation = new Conversation
         {
             UserId = currentUser.IsAuthenticated ? currentUser.UserId : null,
@@ -95,10 +108,36 @@ public sealed class ChatHistoryService(
         await accountGuard.EnsureEnabledAsync(ct);
         if (string.IsNullOrWhiteSpace(question) || string.IsNullOrWhiteSpace(answer))
             throw new ArgumentException("A question and answer are required.");
+        if (!currentUser.IsAuthenticated && string.IsNullOrWhiteSpace(anonymousAccessKey))
+            throw new UnauthorizedAccessException("An anonymous access key is required.");
         await using var db = await dbFactory.CreateDbContextAsync(ct);
+        await using var transaction = db.Database.IsRelational()
+            ? await db.Database.BeginTransactionAsync(ct)
+            : null;
+        if (db.Database.IsNpgsql())
+        {
+            var lockKey = currentUser.IsAuthenticated
+                ? $"chat-conversation-limit:user:{currentUser.UserId}"
+                : $"chat-conversation-limit:anonymous:{HashKey(anonymousAccessKey!)}";
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT pg_advisory_xact_lock(hashtextextended({lockKey}, 0))",
+                ct);
+        }
+
         var conversation = await FindOwnedConversation(db, conversationId, anonymousAccessKey, ct)
             ?? throw new UnauthorizedAccessException("Conversation access denied.");
         var now = DateTime.UtcNow;
+        var hasMessages = await db.ChatMessages.AnyAsync(x => x.ConversationId == conversation.Id, ct);
+        if (!hasMessages &&
+            await CountActiveConversationsAsync(db, anonymousAccessKey, ct) >= MaxActiveConversations)
+        {
+            conversation.DeletedAtUtc = now;
+            await db.SaveChangesAsync(ct);
+            if (transaction is not null)
+                await transaction.CommitAsync(ct);
+            throw new ConversationLimitExceededException();
+        }
+
         var nextSequence = (await db.ChatMessages
             .Where(x => x.ConversationId == conversation.Id)
             .MaxAsync(x => (int?)x.Sequence, ct) ?? 0) + 1;
@@ -112,6 +151,8 @@ public sealed class ChatHistoryService(
                 CitationsJson = JsonSerializer.Serialize(citations), Sequence = nextSequence + 1,
                 CreatedAtUtc = now.AddMilliseconds(1) });
         await db.SaveChangesAsync(ct);
+        if (transaction is not null)
+            await transaction.CommitAsync(ct);
         if (activityLog is not null)
             await activityLog.RecordAsync(
                 ActivityTypes.ChatExchangePersisted,
@@ -147,6 +188,10 @@ public sealed class ChatHistoryService(
                 ? db.Conversations.Where(x => x.UserId == null && x.AnonymousAccessKeyHash == HashKey(key)
                     && x.DeletedAtUtc == null)
                 : db.Conversations.Where(_ => false);
+
+    private Task<int> CountActiveConversationsAsync(
+        ApplicationDbContext db, string? key, CancellationToken ct) =>
+        OwnedConversations(db, key).CountAsync(x => x.Messages.Any(), ct);
 
     private async Task<Conversation?> FindOwnedConversation(ApplicationDbContext db, Guid? id, string? key, CancellationToken ct)
     {
@@ -191,3 +236,8 @@ public sealed class ChatHistoryService(
             message.CreatedAtUtc);
     }
 }
+
+public sealed class ConversationLimitExceededException()
+    : InvalidOperationException(
+        $"You can have up to {ChatHistoryService.MaxActiveConversations} active conversations. " +
+        "Delete an existing conversation to start a new one.");

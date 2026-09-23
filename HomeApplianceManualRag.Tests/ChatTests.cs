@@ -343,6 +343,93 @@ public sealed class ChatTests
     }
 
     [Fact]
+    public async Task Active_conversation_count_includes_only_owned_undeleted_conversations_with_messages()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        var ownedId = Guid.NewGuid();
+        var emptyId = Guid.NewGuid();
+        var deletedId = Guid.NewGuid();
+        var otherUserId = Guid.NewGuid();
+        await using (var db = new ApplicationDbContext(options))
+        {
+            db.Conversations.AddRange(
+                new Conversation { Id = ownedId, UserId = "user-1" },
+                new Conversation { Id = emptyId, UserId = "user-1" },
+                new Conversation { Id = deletedId, UserId = "user-1", DeletedAtUtc = DateTime.UtcNow },
+                new Conversation { Id = otherUserId, UserId = "user-2" });
+            db.ChatMessages.AddRange(
+                new ChatMessage { ConversationId = ownedId, Role = ChatMessageRole.User, Content = "active" },
+                new ChatMessage { ConversationId = deletedId, Role = ChatMessageRole.User, Content = "deleted" },
+                new ChatMessage { ConversationId = otherUserId, Role = ChatMessageRole.User, Content = "other user" });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new ChatHistoryService(new TestDbFactory(options), new FakeCurrentUser("user-1"), new FakeActiveAccountGuard());
+
+        Assert.Equal(1, await service.GetActiveConversationCountAsync());
+    }
+
+    [Fact]
+    public async Task Creating_a_new_conversation_is_blocked_at_limit_and_deletion_frees_a_slot()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        var service = new ChatHistoryService(new TestDbFactory(options), new FakeCurrentUser("user-1"), new FakeActiveAccountGuard());
+        var conversations = new List<ChatConversation>();
+        for (var i = 0; i < ChatHistoryService.MaxActiveConversations; i++)
+            conversations.Add(await CreateActiveConversationAsync(service));
+
+        Assert.Equal(ChatHistoryService.MaxActiveConversations, await service.GetActiveConversationCountAsync());
+        await Assert.ThrowsAsync<ConversationLimitExceededException>(() => service.CreateConversationAsync());
+
+        await service.DeleteConversationAsync(conversations[0].Id);
+        await service.CreateConversationAsync();
+
+        Assert.Equal(ChatHistoryService.MaxActiveConversations - 1, await service.GetActiveConversationCountAsync());
+    }
+
+    [Fact]
+    public async Task Persisting_a_new_conversation_rechecks_limit_and_allows_existing_conversation()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        var service = new ChatHistoryService(new TestDbFactory(options), new FakeCurrentUser("user-1"), new FakeActiveAccountGuard());
+        var conversations = new List<ChatConversation>();
+        for (var i = 0; i < ChatHistoryService.MaxActiveConversations; i++)
+            conversations.Add(await CreateActiveConversationAsync(service));
+        var pendingId = Guid.NewGuid();
+        await using (var db = new ApplicationDbContext(options))
+        {
+            db.Conversations.Add(new Conversation { Id = pendingId, UserId = "user-1" });
+            await db.SaveChangesAsync();
+        }
+
+        await Assert.ThrowsAsync<ConversationLimitExceededException>(
+            () => service.PersistExchangeAsync(pendingId, "new question", "answer", []));
+        await service.PersistExchangeAsync(conversations[0].Id, "follow-up", "answer", []);
+
+        await using var verify = new ApplicationDbContext(options);
+        Assert.NotNull((await verify.Conversations.SingleAsync(x => x.Id == pendingId)).DeletedAtUtc);
+        Assert.Equal(ChatHistoryService.MaxActiveConversations, await service.GetActiveConversationCountAsync());
+    }
+
+    [Fact]
+    public async Task Anonymous_conversation_limit_is_scoped_to_access_key()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        var service = new ChatHistoryService(new TestDbFactory(options), new FakeCurrentUser(null), new FakeActiveAccountGuard());
+        for (var i = 0; i < ChatHistoryService.MaxActiveConversations; i++)
+            await CreateActiveConversationAsync(service, "key-a");
+
+        Assert.Equal(ChatHistoryService.MaxActiveConversations, await service.GetActiveConversationCountAsync("key-a"));
+        Assert.Equal(0, await service.GetActiveConversationCountAsync("key-b"));
+        await Assert.ThrowsAsync<ConversationLimitExceededException>(() => service.CreateConversationAsync("key-a"));
+        await service.CreateConversationAsync("key-b");
+    }
+
+    [Fact]
     public async Task History_orders_user_before_assistant_when_timestamps_match()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
@@ -401,6 +488,14 @@ public sealed class ChatTests
         Id = Guid.NewGuid(), DocumentId = document.Id, Document = document, Text = text,
         PageNumber = 2, Embedding = new Vector(Enumerable.Repeat(.1f, 1536).ToArray())
     };
+
+    private static async Task<ChatConversation> CreateActiveConversationAsync(
+        ChatHistoryService service, string? anonymousAccessKey = null)
+    {
+        var conversation = await service.CreateConversationAsync(anonymousAccessKey);
+        await service.PersistExchangeAsync(conversation.Id, "question", "answer", [], anonymousAccessKey);
+        return conversation;
+    }
 
     private static ManualDocument ApplianceManual(
         string? owner,
