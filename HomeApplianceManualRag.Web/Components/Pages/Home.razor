@@ -53,10 +53,6 @@
         {
             <MudAlert Severity="Severity.Error">@error</MudAlert>
         }
-        @if (!string.IsNullOrWhiteSpace(noContext))
-        {
-            <MudAlert Severity="Severity.Info">@noContext</MudAlert>
-        }
     </section>
 
     <EditForm Model="form" OnValidSubmit="Ask" class="chat-composer">
@@ -87,7 +83,6 @@
     private readonly ChatForm form = new();
     private readonly List<UiMessage> messages = [];
     private string? error;
-    private string? noContext;
     private bool busy;
     private bool loadingHistory = true;
     private bool initialized;
@@ -109,7 +104,6 @@
             selectedConversationId = null;
             messages.Clear();
             error = null;
-            noContext = null;
             return;
         }
 
@@ -196,7 +190,6 @@
         if (busy || string.IsNullOrWhiteSpace(form.Question)) return;
         busy = true;
         error = null;
-        noContext = null;
         var question = form.Question.Trim();
         messages.Add(new UiMessage(ChatMessageRole.User, question, [], DateTime.UtcNow));
         form.Question = string.Empty;
@@ -214,12 +207,12 @@
             }
 
             var result = await Chat.StartAsync(question);
-            if (!result.Response.HasContext)
+            if (result.Stream is null)
             {
-                noContext = ChatMessages.NoContext(CultureInfo.CurrentUICulture.Name);
-                var noContextCitations = CitationSelector.SelectReferenced(noContext, result.Response.Citations);
-                messages.Add(new UiMessage(ChatMessageRole.Assistant, noContext, noContextCitations, DateTime.UtcNow));
-                await History.PersistExchangeAsync(conversationId, question, noContext, noContextCitations,
+                var noContextMessage = ChatMessages.NoContext(CultureInfo.CurrentUICulture.Name);
+                var noContextCitations = CitationSelector.SelectReferenced(noContextMessage, result.Response.Citations);
+                messages.Add(new UiMessage(ChatMessageRole.Assistant, noContextMessage, noContextCitations, DateTime.UtcNow));
+                await History.PersistExchangeAsync(conversationId, question, noContextMessage, noContextCitations,
                     IsAuthenticated ? null : anonymousAccessKey);
                 ConversationState.NotifyChanged();
                 await SaveAnonymousCache(conversationId);

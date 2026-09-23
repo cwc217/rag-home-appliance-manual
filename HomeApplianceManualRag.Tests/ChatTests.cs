@@ -2,9 +2,12 @@ using HomeApplianceManualRag.Web.Chat;
 using HomeApplianceManualRag.Web.Configuration;
 using HomeApplianceManualRag.Web.Data;
 using HomeApplianceManualRag.Web.Providers;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging.Abstractions;
 using Pgvector;
+using System.Text.Json;
 
 namespace HomeApplianceManualRag.Tests;
 
@@ -116,6 +119,161 @@ public sealed class ChatTests
 
         var item = Assert.Single(result);
         Assert.Equal("mine.pdf", item.DocumentName);
+    }
+
+    [Fact]
+    public async Task Appliance_catalog_is_scoped_to_owner_and_ready_non_deleted_manuals()
+    {
+        await using var db = CreateDatabase();
+        db.ManualDocuments.AddRange(
+            ApplianceManual("user-1", "mine.pdf"),
+            ApplianceManual("user-1", "deleted.pdf", deleted: true),
+            ApplianceManual("user-1", "processing.pdf", status: DocumentStatus.Processing),
+            ApplianceManual("user-2", "other.pdf"),
+            ApplianceManual(null, "public.pdf"));
+        await db.SaveChangesAsync();
+        var service = CreateTools(db, new ToolTestCurrentUser("user-1"));
+
+        var execution = await service.ExecuteAsync(
+            new ChatToolCall("call-1", "get_my_appliances", "{}"));
+        var catalog = JsonSerializer.Deserialize<ApplianceCatalogResult>(
+            execution.Content, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        Assert.NotNull(catalog);
+        var appliance = Assert.Single(catalog.Appliances);
+        Assert.Equal("mine.pdf", appliance.ManualName);
+        Assert.False(catalog.IsTruncated);
+    }
+
+    [Fact]
+    public async Task Anonymous_appliance_catalog_contains_only_public_ready_manuals()
+    {
+        await using var db = CreateDatabase();
+        db.ManualDocuments.AddRange(
+            ApplianceManual(null, "public.pdf"),
+            ApplianceManual(null, "deleted-public.pdf", deleted: true),
+            ApplianceManual("user-1", "private.pdf"));
+        await db.SaveChangesAsync();
+        var service = CreateTools(db, new ToolTestCurrentUser(null));
+
+        var execution = await service.ExecuteAsync(
+            new ChatToolCall("call-1", "get_my_appliances", "{}"));
+        var catalog = JsonSerializer.Deserialize<ApplianceCatalogResult>(
+            execution.Content, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        Assert.NotNull(catalog);
+        Assert.Equal("public manuals", catalog.BasedOn);
+        Assert.Equal(["public.pdf"], catalog.Appliances.Select(x => x.ManualName));
+    }
+
+    [Fact]
+    public async Task Admin_appliance_catalog_includes_all_ready_non_deleted_manuals()
+    {
+        await using var db = CreateDatabase();
+        db.ManualDocuments.AddRange(
+            ApplianceManual("user-1", "user.pdf"),
+            ApplianceManual(null, "public.pdf"),
+            ApplianceManual("user-2", "deleted.pdf", deleted: true));
+        await db.SaveChangesAsync();
+        var service = CreateTools(db, new ToolTestCurrentUser("admin-1", admin: true));
+
+        var execution = await service.ExecuteAsync(
+            new ChatToolCall("call-1", "get_my_appliances", "{}"));
+        var catalog = JsonSerializer.Deserialize<ApplianceCatalogResult>(
+            execution.Content, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        Assert.NotNull(catalog);
+        Assert.Equal(["public.pdf", "user.pdf"], catalog.Appliances.Select(x => x.ManualName));
+    }
+
+    [Fact]
+    public async Task Manual_search_restricts_results_to_accessible_appliance_id()
+    {
+        await using var db = CreateDatabase();
+        var first = ApplianceManual("user-1", "first.pdf");
+        var selected = ApplianceManual("user-1", "selected.pdf");
+        var privateDocument = ApplianceManual("user-2", "private.pdf");
+        db.AddRange(first, selected, privateDocument);
+        db.AddRange(Chunk(first, "first chunk"), Chunk(selected, "selected chunk"),
+            Chunk(privateDocument, "private chunk"));
+        await db.SaveChangesAsync();
+        var service = CreateTools(db, new ToolTestCurrentUser("user-1"));
+        var arguments = $$"""{"query":"find manual details","applianceId":"{{selected.Id}}"}""";
+
+        var execution = await service.ExecuteAsync(
+            new ChatToolCall("call-1", "search_my_manuals", arguments));
+        var result = JsonSerializer.Deserialize<ManualSearchResult>(
+            execution.Content, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        var chunk = Assert.Single(result!.Chunks);
+        Assert.Equal(selected.Id, chunk.DocumentId);
+        Assert.Equal("selected.pdf", chunk.DocumentName);
+    }
+
+    [Fact]
+    public async Task Appliance_tool_rejects_caller_supplied_user_id()
+    {
+        await using var db = CreateDatabase();
+        db.ManualDocuments.Add(ApplianceManual("user-1", "mine.pdf"));
+        await db.SaveChangesAsync();
+        var service = CreateTools(db, new ToolTestCurrentUser("user-1"));
+
+        var execution = await service.ExecuteAsync(
+            new ChatToolCall("call-1", "get_my_appliances", """{"userId":"user-2"}"""));
+
+        Assert.Contains("does not accept arguments", execution.Content, StringComparison.Ordinal);
+        Assert.Empty(execution.Chunks);
+    }
+
+    [Fact]
+    public async Task Chat_executes_selected_tool_and_collects_manual_citations()
+    {
+        await using var db = CreateDatabase();
+        var document = ApplianceManual("user-1", "washer.pdf");
+        db.Add(document);
+        db.Add(Chunk(document, "Disconnect power before cleaning."));
+        await db.SaveChangesAsync();
+        var provider = new ScriptedToolChatProvider(
+            [
+                [new ChatProviderUpdate(ToolCalls:
+                    [new ChatToolCall("call-1", "search_my_manuals",
+                        $$"""{"query":"cleaning instructions","applianceId":"{{document.Id}}"}""")])],
+                [new ChatProviderUpdate(Text: "Disconnect power first. [washer.pdf, p. 2]")]
+            ]);
+        var service = CreateChatService(db, provider, new ToolTestCurrentUser("user-1"));
+
+        var result = await service.StartAsync("How do I clean it?");
+        var responseText = new System.Text.StringBuilder();
+        await foreach (var part in result.Stream!)
+            responseText.Append(part);
+
+        Assert.Contains("Disconnect power first.", responseText.ToString(), StringComparison.Ordinal);
+        Assert.Equal(document.Id, Assert.Single(result.Response.Context).DocumentId);
+        Assert.Equal("[washer.pdf, p. 2]", Assert.Single(result.Response.Citations).Label);
+        Assert.Equal(2, provider.RequestCount);
+        var round = Assert.Single(provider.LastRounds!);
+        Assert.Equal("search_my_manuals", Assert.Single(round.Calls).Name);
+        Assert.Equal("call-1", Assert.Single(round.Results).CallId);
+    }
+
+    [Fact]
+    public async Task Chat_disables_tools_after_four_calls_and_streams_a_final_answer()
+    {
+        await using var db = CreateDatabase();
+        var user = new ToolTestCurrentUser("user-1");
+        db.ManualDocuments.Add(ApplianceManual("user-1", "mine.pdf"));
+        await db.SaveChangesAsync();
+        var provider = new RepeatingToolChatProvider();
+        var service = CreateChatService(db, provider, user);
+
+        var result = await service.StartAsync("What appliances do I have?");
+        var responseText = new System.Text.StringBuilder();
+        await foreach (var part in result.Stream!)
+            responseText.Append(part);
+
+        Assert.Equal("Here is what I found.", responseText.ToString());
+        Assert.Equal(4, provider.ToolEnabledRequests);
+        Assert.Equal(1, provider.ToolDisabledRequests);
     }
 
     [Fact]
@@ -231,6 +389,125 @@ public sealed class ChatTests
         Id = Guid.NewGuid(), DocumentId = document.Id, Document = document, Text = text,
         PageNumber = 2, Embedding = new Vector(Enumerable.Repeat(.1f, 1536).ToArray())
     };
+
+    private static ManualDocument ApplianceManual(
+        string? owner,
+        string name,
+        bool deleted = false,
+        DocumentStatus status = DocumentStatus.Ready) => new()
+    {
+        Id = Guid.NewGuid(),
+        OwnerUserId = owner,
+        DisplayName = name,
+        ProductName = "Appliance",
+        ApplianceCategory = "Washer",
+        Brand = "Acme",
+        ModelNumber = "WM-100",
+        Status = status,
+        DeletedAtUtc = deleted ? DateTime.UtcNow : null
+    };
+
+    private static ApplicationDbContext CreateDatabase() =>
+        new(new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+
+    private static ChatToolsService CreateTools(
+        ApplicationDbContext db,
+        ICurrentUser user) =>
+        new(db,
+            new ManualRetriever(db, new DeterministicFakeEmbeddingProvider(1536),
+                Options.Create(new RetrievalOptions { TopK = 10 })),
+            user,
+            new FakeActiveAccountGuard(),
+            Options.Create(new ChatOptions()),
+            NullLogger<ChatToolsService>.Instance);
+
+    private static ChatService CreateChatService(
+        ApplicationDbContext db,
+        IChatProvider provider,
+        ICurrentUser user)
+    {
+        var retriever = new ManualRetriever(db, new DeterministicFakeEmbeddingProvider(1536),
+            Options.Create(new RetrievalOptions { TopK = 10 }));
+        var tools = new ChatToolsService(db, retriever, user, new FakeActiveAccountGuard(),
+            Options.Create(new ChatOptions()), NullLogger<ChatToolsService>.Instance);
+        return new ChatService(provider, tools,
+            new ChatRateLimiter(Options.Create(new RateLimitingOptions())),
+            user, new FakeActiveAccountGuard(), new HttpContextAccessor(),
+            Options.Create(new ChatOptions()));
+    }
+
+    private sealed class ToolTestCurrentUser(string? id, bool admin = false) : ICurrentUser
+    {
+        public string? UserId => id;
+        public string? Email => null;
+        public bool IsAuthenticated => id is not null;
+        public bool IsInRole(string role) => admin && role == ApplicationRoles.Admin;
+    }
+
+    private sealed class ScriptedToolChatProvider(
+        IReadOnlyList<IReadOnlyList<ChatProviderUpdate>> responses) : IChatProvider
+    {
+        public int RequestCount { get; private set; }
+        public IReadOnlyList<ChatToolRound>? LastRounds { get; private set; }
+
+        public async IAsyncEnumerable<string> StreamAsync(
+            string prompt,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
+
+        public async IAsyncEnumerable<ChatProviderUpdate> StreamWithToolsAsync(
+            string prompt,
+            IReadOnlyList<ChatToolDefinition> tools,
+            IReadOnlyList<ChatToolRound> rounds,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            LastRounds = rounds;
+            foreach (var update in responses[RequestCount++])
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await Task.Yield();
+                yield return update;
+            }
+        }
+    }
+
+    private sealed class RepeatingToolChatProvider : IChatProvider
+    {
+        public int ToolEnabledRequests { get; private set; }
+        public int ToolDisabledRequests { get; private set; }
+
+        public async IAsyncEnumerable<string> StreamAsync(
+            string prompt,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
+
+        public async IAsyncEnumerable<ChatProviderUpdate> StreamWithToolsAsync(
+            string prompt,
+            IReadOnlyList<ChatToolDefinition> tools,
+            IReadOnlyList<ChatToolRound> rounds,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (tools.Count == 0)
+            {
+                ToolDisabledRequests++;
+                yield return new ChatProviderUpdate(Text: "Here is what I found.");
+                yield break;
+            }
+
+            ToolEnabledRequests++;
+            await Task.Yield();
+            yield return new ChatProviderUpdate(ToolCalls:
+                [new ChatToolCall($"call-{ToolEnabledRequests}", "get_my_appliances", "{}")]);
+        }
+    }
 
     private sealed class FakeCurrentUser(string? id) : ICurrentUser
     {

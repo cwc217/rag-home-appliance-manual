@@ -87,6 +87,7 @@ builder.Services.AddScoped<IManualMetadataExtractor, AzureOpenAiManualMetadataEx
 builder.Services.AddScoped<IImageAnalyzer, AzureOpenAiImageAnalyzer>();
 builder.Services.AddScoped<IEmbeddingProvider, AzureOpenAiEmbeddingProvider>();
 builder.Services.AddScoped<ManualRetriever>();
+builder.Services.AddScoped<ChatToolsService>();
 builder.Services.AddScoped<ChatService>();
 builder.Services.AddScoped<ChatHistoryService>();
 builder.Services.AddScoped<AdminDashboardService>();

@@ -84,12 +84,18 @@ public sealed class ManualRetriever(
     IOptions<RetrievalOptions> options)
 {
     public async Task<IReadOnlyList<RetrievedChunk>> RetrieveAsync(
-        string question, RetrievalScope scope, string? userId, CancellationToken ct = default)
+        string question,
+        RetrievalScope scope,
+        string? userId,
+        Guid? documentId = null,
+        CancellationToken ct = default)
     {
         var query = db.ManualChunks.AsNoTracking()
             .Where(x => x.Document != null &&
                         x.Document.DeletedAtUtc == null &&
                         x.Document.Status == DocumentStatus.Ready);
+        if (documentId is Guid selectedDocumentId)
+            query = query.Where(x => x.DocumentId == selectedDocumentId);
         query = scope switch
         {
             RetrievalScope.AnonymousAdminPublic => query.Where(x => x.Document!.OwnerUserId == null),
@@ -113,21 +119,24 @@ public sealed class ManualRetriever(
                     SELECT c.* FROM "ManualChunks" c
                     INNER JOIN "ManualDocuments" d ON d."Id" = c."DocumentId"
                     WHERE d."Status" = {(int)DocumentStatus.Ready} AND d."DeletedAtUtc" IS NULL AND d."OwnerUserId" = {userId}
+                    AND ({documentId} IS NULL OR c."DocumentId" = {documentId})
                     ORDER BY c."Embedding" <=> {vector} LIMIT {options.Value.TopK}
-                    """).Include(x => x.Document).ToListAsync(ct)
+                    """).AsNoTracking().Include(x => x.Document).ToListAsync(ct)
                 : scope == RetrievalScope.AnonymousAdminPublic
                 ? await db.ManualChunks.FromSqlInterpolated($"""
                     SELECT c.* FROM "ManualChunks" c
                     INNER JOIN "ManualDocuments" d ON d."Id" = c."DocumentId"
                     WHERE d."Status" = {(int)DocumentStatus.Ready} AND d."DeletedAtUtc" IS NULL AND d."OwnerUserId" IS NULL
+                    AND ({documentId} IS NULL OR c."DocumentId" = {documentId})
                     ORDER BY c."Embedding" <=> {vector} LIMIT {options.Value.TopK}
-                    """).Include(x => x.Document).ToListAsync(ct)
+                    """).AsNoTracking().Include(x => x.Document).ToListAsync(ct)
                 : await db.ManualChunks.FromSqlInterpolated($"""
                     SELECT c.* FROM "ManualChunks" c
                     INNER JOIN "ManualDocuments" d ON d."Id" = c."DocumentId"
                     WHERE d."Status" = {(int)DocumentStatus.Ready} AND d."DeletedAtUtc" IS NULL
+                    AND ({documentId} IS NULL OR c."DocumentId" = {documentId})
                     ORDER BY c."Embedding" <=> {vector} LIMIT {options.Value.TopK}
-                    """).Include(x => x.Document).ToListAsync(ct);
+                    """).AsNoTracking().Include(x => x.Document).ToListAsync(ct);
             return chunks.Select(x => new RetrievedChunk(
                 x.DocumentId, x.Document!.DisplayName, x.PageNumber, x.Text,
                 1d - CosineDistance(x.Embedding, queryVector))).ToArray();
@@ -182,8 +191,8 @@ public static class GroundedPrompt
 }
 
 public sealed class ChatService(
-    ManualRetriever retriever,
     IChatProvider provider,
+    ChatToolsService tools,
     ChatRateLimiter rateLimiter,
     ICurrentUser currentUser,
     IActiveAccountGuard accountGuard,
@@ -204,30 +213,133 @@ public sealed class ChatService(
 
         var key = currentUser.UserId ?? httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
         rateLimiter.EnsureAllowed(key);
-        var scope = currentUser.IsInRole(ApplicationRoles.Admin)
-            ? RetrievalScope.AdminAll
-            : currentUser.IsAuthenticated ? RetrievalScope.UserOwn : RetrievalScope.AnonymousAdminPublic;
-        var chunks = await retriever.RetrieveAsync(normalizedQuestion, scope, currentUser.UserId, ct);
-        var citations = chunks.Select(x => new ChatCitation(x.DocumentId, x.DocumentName, x.PageNumber)).DistinctBy(x => (x.DocumentId, x.PageNumber)).ToArray();
-        var response = new ChatResponse(chunks, citations,
-            chunks.Count == 0 ? "I can't find an answer in the available manuals." : null);
-        return chunks.Count == 0 ? (response, null) : (response, StreamProviderAsync(GroundedPrompt.Build(normalizedQuestion, chunks), ct));
+        var prompt = GroundedPrompt.Build(normalizedQuestion, []);
+        var context = new List<RetrievedChunk>();
+        var citations = new List<ChatCitation>();
+        var response = new ChatResponse(context, citations);
+        return (response, StreamToolsAsync(prompt, context, citations, ct));
     }
 
-    private async IAsyncEnumerable<string> StreamProviderAsync(
-        string prompt, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    private async IAsyncEnumerable<string> StreamToolsAsync(
+        string prompt,
+        List<RetrievedChunk> context,
+        List<ChatCitation> citations,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
-        IAsyncEnumerable<string> stream;
-        try { stream = provider.StreamAsync(prompt, ct); }
-        catch (Exception ex) { throw new ChatProviderException(ex); }
+        var rounds = new List<ChatToolRound>();
+        var callsMade = 0;
+        while (true)
+        {
+            IReadOnlyList<ChatToolCall>? requestedCalls = null;
+            await foreach (var update in StreamProviderUpdatesAsync(
+                               prompt, ChatToolDefinitions.All, rounds, ct).WithCancellation(ct))
+            {
+                if (!string.IsNullOrEmpty(update.Text))
+                    yield return update.Text;
+                if (update.ToolCalls is { Count: > 0 } toolCalls)
+                    requestedCalls = toolCalls;
+            }
+
+            if (requestedCalls is null)
+                yield break;
+
+            var results = new List<ChatToolResult>(requestedCalls.Count);
+            foreach (var call in requestedCalls)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (callsMade >= 4)
+                {
+                    results.Add(new ChatToolResult(
+                        call.Id, """{"error":"The per-question tool-call limit has been reached."}"""));
+                    continue;
+                }
+
+                var execution = await ExecuteToolAsync(call, ct);
+                callsMade++;
+                results.Add(new ChatToolResult(call.Id, execution.Content));
+                foreach (var chunk in execution.Chunks)
+                {
+                    if (!context.Any(existing => existing.DocumentId == chunk.DocumentId &&
+                                                 existing.PageNumber == chunk.PageNumber))
+                        context.Add(chunk);
+                }
+            }
+
+            rounds.Add(new ChatToolRound(requestedCalls, results));
+            var citationsForContext = context
+                .Select(x => new ChatCitation(x.DocumentId, x.DocumentName, x.PageNumber))
+                .DistinctBy(x => (x.DocumentId, x.PageNumber));
+            foreach (var citation in citationsForContext)
+            {
+                if (!citations.Any(existing => existing.DocumentId == citation.DocumentId &&
+                                               existing.PageNumber == citation.PageNumber))
+                    citations.Add(citation);
+            }
+
+            if (callsMade >= 4)
+            {
+                await foreach (var update in StreamProviderUpdatesAsync(
+                                   prompt, [], rounds, ct).WithCancellation(ct))
+                {
+                    if (!string.IsNullOrEmpty(update.Text))
+                        yield return update.Text;
+                    if (update.ToolCalls is { Count: > 0 })
+                        throw new ChatProviderException(
+                            new InvalidOperationException("The provider returned tools after tools had been disabled."));
+                }
+                yield break;
+            }
+        }
+    }
+
+    private async IAsyncEnumerable<ChatProviderUpdate> StreamProviderUpdatesAsync(
+        string prompt,
+        IReadOnlyList<ChatToolDefinition> definitions,
+        IReadOnlyList<ChatToolRound> rounds,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        IAsyncEnumerable<ChatProviderUpdate> stream;
+        try
+        {
+            stream = provider.StreamWithToolsAsync(prompt, definitions, rounds, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            throw new ChatProviderException(ex);
+        }
+
         await using var enumerator = stream.GetAsyncEnumerator(ct);
         while (true)
         {
             bool moved;
-            try { moved = await enumerator.MoveNextAsync(); }
-            catch (Exception ex) { throw new ChatProviderException(ex); }
-            if (!moved) yield break;
+            try
+            {
+                moved = await enumerator.MoveNextAsync();
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                throw new ChatProviderException(ex);
+            }
+
+            if (!moved)
+                yield break;
             yield return enumerator.Current;
+        }
+    }
+
+    private async Task<ChatToolExecution> ExecuteToolAsync(ChatToolCall call, CancellationToken ct)
+    {
+        try
+        {
+            return await tools.ExecuteAsync(call, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new ChatProviderException(ex);
         }
     }
 }

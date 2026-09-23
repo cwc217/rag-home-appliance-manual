@@ -1,4 +1,5 @@
 using HomeApplianceManualRag.Web.Configuration;
+using HomeApplianceManualRag.Web.Chat;
 using HomeApplianceManualRag.Web.Data;
 using HomeApplianceManualRag.Web.Documents;
 using HomeApplianceManualRag.Web.Providers;
@@ -532,6 +533,16 @@ public sealed class IndexingTests
             cancellationToken.ThrowIfCancellationRequested();
             await Task.Yield();
             yield return response;
+        }
+
+        public async IAsyncEnumerable<ChatProviderUpdate> StreamWithToolsAsync(
+            string prompt,
+            IReadOnlyList<ChatToolDefinition> tools,
+            IReadOnlyList<ChatToolRound> rounds,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await foreach (var token in StreamAsync(prompt, cancellationToken))
+                yield return new ChatProviderUpdate(Text: token);
         }
     }
 
