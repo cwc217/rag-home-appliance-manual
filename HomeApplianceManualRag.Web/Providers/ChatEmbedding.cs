@@ -56,6 +56,7 @@ public sealed class AzureOpenAiChatProvider : IChatProvider
         ## Tool Selection and Grounding
         - Use get_my_appliances for questions about the user's appliances, brands, categories, or model numbers.
         - Use search_my_manuals for instructions and manual details. When the catalog identifies a matching appliance, pass its applianceId to narrow the search.
+        - When selected manual IDs are supplied in the request, use only those manuals; never broaden the search beyond that selection.
         - You may call the tools multiple times when needed, but only use their returned data.
         - If a tool returns no matching appliances or excerpts, state that the available manuals do not contain the requested information. Do not guess or use general knowledge for appliance-specific facts.
         - When listing appliances, state that the list is based on the catalog's BasedOn value and does not necessarily represent every physical appliance the user owns. Each entry is a manual; multiple manuals may describe the same appliance. If IsTruncated is true, make clear that the list is partial.

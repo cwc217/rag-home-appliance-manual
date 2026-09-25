@@ -234,6 +234,11 @@ body {
     box-shadow: 0 8px 24px rgb(15 23 42 / 8%);
 }
 
+.manual-chip-list {
+    flex-wrap: wrap;
+    margin-bottom: .5rem;
+}
+
 .chat-composer .mud-input-outlined-border {
     border-color: #cbd5e1;
 }

@@ -30,6 +30,18 @@ public sealed class ChatTests
     }
 
     [Fact]
+    public void Grounded_prompt_includes_selected_manual_ids_and_scope_instruction()
+    {
+        var selectedId = Guid.NewGuid();
+
+        var prompt = GroundedPrompt.Build("How do I clean it?", [], [selectedId]);
+
+        Assert.Contains("<selected_manual_ids>", prompt, StringComparison.Ordinal);
+        Assert.Contains(selectedId.ToString(), prompt, StringComparison.Ordinal);
+        Assert.Contains("Search only these selected manual IDs.", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Citation_selector_keeps_only_valid_citations_referenced_by_answer()
     {
         var documentId = Guid.NewGuid();
@@ -131,6 +143,90 @@ public sealed class ChatTests
 
         var item = Assert.Single(result);
         Assert.Equal("mine.pdf", item.DocumentName);
+    }
+
+    [Fact]
+    public async Task Manual_search_is_limited_to_all_selected_manuals_when_model_omits_appliance_id()
+    {
+        await using var db = CreateDatabase();
+        var first = ApplianceManual("user-1", "first.pdf");
+        var second = ApplianceManual("user-1", "second.pdf");
+        var unselected = ApplianceManual("user-1", "unselected.pdf");
+        db.AddRange(first, second, unselected);
+        db.AddRange(Chunk(first, "first chunk"), Chunk(second, "second chunk"),
+            Chunk(unselected, "unselected chunk"));
+        await db.SaveChangesAsync();
+        var service = CreateTools(db, new ToolTestCurrentUser("user-1"));
+
+        var execution = await service.ExecuteAsync(
+            new ChatToolCall("call-1", "search_my_manuals", """{"query":"find manual details"}"""),
+            selectedDocumentIds: [first.Id, second.Id]);
+        var result = JsonSerializer.Deserialize<ManualSearchResult>(
+            execution.Content, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        Assert.Equal(
+            new HashSet<Guid> { first.Id, second.Id },
+            result!.Chunks.Select(chunk => chunk.DocumentId).ToHashSet());
+    }
+
+    [Fact]
+    public async Task Manual_search_rejects_model_request_for_unselected_manual()
+    {
+        await using var db = CreateDatabase();
+        var selected = ApplianceManual("user-1", "selected.pdf");
+        var unselected = ApplianceManual("user-1", "unselected.pdf");
+        db.AddRange(selected, unselected);
+        db.AddRange(Chunk(selected, "selected chunk"), Chunk(unselected, "unselected chunk"));
+        await db.SaveChangesAsync();
+        var service = CreateTools(db, new ToolTestCurrentUser("user-1"));
+        var arguments = $$"""{"query":"find manual details","applianceId":"{{unselected.Id}}"}""";
+
+        var execution = await service.ExecuteAsync(
+            new ChatToolCall("call-1", "search_my_manuals", arguments),
+            selectedDocumentIds: [selected.Id]);
+
+        Assert.Contains("outside the selected manuals", execution.Content, StringComparison.Ordinal);
+        Assert.Empty(execution.Chunks);
+    }
+
+    [Fact]
+    public async Task Appliance_catalog_is_limited_to_selected_manuals()
+    {
+        await using var db = CreateDatabase();
+        var first = ApplianceManual("user-1", "first.pdf");
+        var selected = ApplianceManual("user-1", "selected.pdf");
+        db.AddRange(first, selected);
+        await db.SaveChangesAsync();
+        var service = CreateTools(db, new ToolTestCurrentUser("user-1"));
+
+        var execution = await service.ExecuteAsync(
+            new ChatToolCall("call-1", "get_my_appliances", "{}"),
+            selectedDocumentIds: [selected.Id]);
+        var catalog = JsonSerializer.Deserialize<ApplianceCatalogResult>(
+            execution.Content, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        Assert.Equal(["selected.pdf"], catalog!.Appliances.Select(item => item.ManualName));
+    }
+
+    [Fact]
+    public async Task Chat_rejects_empty_or_unavailable_selected_manuals()
+    {
+        await using var db = CreateDatabase();
+        var owned = ApplianceManual("user-1", "owned.pdf");
+        var other = ApplianceManual("user-2", "other.pdf");
+        db.AddRange(owned, other);
+        await db.SaveChangesAsync();
+        var service = CreateChatService(
+            db,
+            new ScriptedToolChatProvider([]),
+            new ToolTestCurrentUser("user-1"));
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.StartAsync("Question", selectedDocumentIds: []));
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.StartAsync("Question", selectedDocumentIds: [other.Id]));
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.StartAsync("Question", selectedDocumentIds: [Guid.NewGuid()]));
     }
 
     [Fact]

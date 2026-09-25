@@ -88,15 +88,19 @@ public sealed class ManualRetriever(
         string question,
         RetrievalScope scope,
         string? userId,
-        Guid? documentId = null,
+        IReadOnlyCollection<Guid>? documentIds = null,
         CancellationToken ct = default)
     {
+        var selectedIds = documentIds?.Distinct().ToArray();
+        if (selectedIds is { Length: 0 })
+            return [];
+
         var query = db.ManualChunks.AsNoTracking()
             .Where(x => x.Document != null &&
                         x.Document.DeletedAtUtc == null &&
                         x.Document.Status == DocumentStatus.Ready);
-        if (documentId is Guid selectedDocumentId)
-            query = query.Where(x => x.DocumentId == selectedDocumentId);
+        if (selectedIds is not null)
+            query = query.Where(x => selectedIds.Contains(x.DocumentId));
         query = scope switch
         {
             RetrievalScope.AnonymousAdminPublic => query.Where(x => x.Document!.OwnerUserId == null),
@@ -114,13 +118,15 @@ public sealed class ManualRetriever(
         if (db.Database.IsNpgsql())
         {
             var vector = new Vector(queryVector.ToArray());
+            var restrictToSelected = selectedIds is not null;
+            var selectedDocumentIds = selectedIds ?? [];
             // Keep the visibility predicate in SQL before pgvector's cosine operator.
             var chunks = scope == RetrievalScope.UserOwn
                 ? await db.ManualChunks.FromSqlInterpolated($"""
                     SELECT c.* FROM "ManualChunks" c
                     INNER JOIN "ManualDocuments" d ON d."Id" = c."DocumentId"
                     WHERE d."Status" = {(int)DocumentStatus.Ready} AND d."DeletedAtUtc" IS NULL AND d."OwnerUserId" = {userId}
-                    AND ({documentId} IS NULL OR c."DocumentId" = {documentId})
+                    AND (NOT {restrictToSelected} OR c."DocumentId" = ANY({selectedDocumentIds}))
                     ORDER BY c."Embedding" <=> {vector} LIMIT {options.Value.TopK}
                     """).AsNoTracking().Include(x => x.Document).ToListAsync(ct)
                 : scope == RetrievalScope.AnonymousAdminPublic
@@ -128,14 +134,14 @@ public sealed class ManualRetriever(
                     SELECT c.* FROM "ManualChunks" c
                     INNER JOIN "ManualDocuments" d ON d."Id" = c."DocumentId"
                     WHERE d."Status" = {(int)DocumentStatus.Ready} AND d."DeletedAtUtc" IS NULL AND d."OwnerUserId" IS NULL
-                    AND ({documentId} IS NULL OR c."DocumentId" = {documentId})
+                    AND (NOT {restrictToSelected} OR c."DocumentId" = ANY({selectedDocumentIds}))
                     ORDER BY c."Embedding" <=> {vector} LIMIT {options.Value.TopK}
                     """).AsNoTracking().Include(x => x.Document).ToListAsync(ct)
                 : await db.ManualChunks.FromSqlInterpolated($"""
                     SELECT c.* FROM "ManualChunks" c
                     INNER JOIN "ManualDocuments" d ON d."Id" = c."DocumentId"
                     WHERE d."Status" = {(int)DocumentStatus.Ready} AND d."DeletedAtUtc" IS NULL
-                    AND ({documentId} IS NULL OR c."DocumentId" = {documentId})
+                    AND (NOT {restrictToSelected} OR c."DocumentId" = ANY({selectedDocumentIds}))
                     ORDER BY c."Embedding" <=> {vector} LIMIT {options.Value.TopK}
                     """).AsNoTracking().Include(x => x.Document).ToListAsync(ct);
             return chunks.Select(x => new RetrievedChunk(
@@ -174,12 +180,26 @@ public sealed class ManualRetriever(
 
 public static class GroundedPrompt
 {
-    public static string Build(string question, IReadOnlyList<RetrievedChunk> chunks)
+    public static string Build(
+        string question,
+        IReadOnlyList<RetrievedChunk> chunks,
+        IReadOnlyCollection<Guid>? selectedDocumentIds = null)
     {
         var context = new StringBuilder();
         foreach (var chunk in chunks)
             context.AppendLine($"[{chunk.DocumentName}, p. {chunk.PageNumber}] {chunk.Text}");
+        var selectedManuals = selectedDocumentIds is null
+            ? string.Empty
+            : $$"""
+                <selected_manual_ids>
+                {{string.Join(Environment.NewLine, selectedDocumentIds)}}
+                </selected_manual_ids>
+
+                Search only these selected manual IDs. Do not use any other manual.
+
+                """;
         return $$"""
+            {{selectedManuals}}
             <manual_excerpts>
             {{context}}
             </manual_excerpts>
@@ -202,7 +222,9 @@ public sealed class ChatService(
     IOperationalErrorRecorder errorRecorder)
 {
     public async Task<(ChatResponse Response, IAsyncEnumerable<string>? Stream)> StartAsync(
-        string question, CancellationToken ct = default)
+        string question,
+        CancellationToken ct = default,
+        IReadOnlyCollection<Guid>? selectedDocumentIds = null)
     {
         await accountGuard.EnsureEnabledAsync(ct);
         if (string.IsNullOrWhiteSpace(question))
@@ -212,20 +234,26 @@ public sealed class ChatService(
             throw new ArgumentException(
                 $"Question cannot exceed {chatOptions.Value.MaxQuestionLength} characters.",
                 nameof(question));
+        if (selectedDocumentIds is { Count: 0 })
+            throw new ArgumentException("Select at least one available manual.", nameof(selectedDocumentIds));
 
+        var selectedIds = selectedDocumentIds?.Distinct().ToArray();
+        if (selectedIds is not null)
+            await tools.ValidateSelectedManualsAsync(selectedIds, ct);
         var key = currentUser.UserId ?? httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
         rateLimiter.EnsureAllowed(key);
-        var prompt = GroundedPrompt.Build(normalizedQuestion, []);
+        var prompt = GroundedPrompt.Build(normalizedQuestion, [], selectedIds);
         var context = new List<RetrievedChunk>();
         var citations = new List<ChatCitation>();
         var response = new ChatResponse(context, citations);
-        return (response, StreamToolsAsync(prompt, context, citations, ct));
+        return (response, StreamToolsAsync(prompt, context, citations, selectedIds, ct));
     }
 
     private async IAsyncEnumerable<string> StreamToolsAsync(
         string prompt,
         List<RetrievedChunk> context,
         List<ChatCitation> citations,
+        IReadOnlyCollection<Guid>? selectedDocumentIds,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
         var rounds = new List<ChatToolRound>();
@@ -256,7 +284,7 @@ public sealed class ChatService(
                     continue;
                 }
 
-                var execution = await ExecuteToolAsync(call, ct);
+                var execution = await ExecuteToolAsync(call, selectedDocumentIds, ct);
                 callsMade++;
                 results.Add(new ChatToolResult(call.Id, execution.Content));
                 foreach (var chunk in execution.Chunks)
@@ -339,11 +367,14 @@ public sealed class ChatService(
         }
     }
 
-    private async Task<ChatToolExecution> ExecuteToolAsync(ChatToolCall call, CancellationToken ct)
+    private async Task<ChatToolExecution> ExecuteToolAsync(
+        ChatToolCall call,
+        IReadOnlyCollection<Guid>? selectedDocumentIds,
+        CancellationToken ct)
     {
         try
         {
-            return await tools.ExecuteAsync(call, ct);
+            return await tools.ExecuteAsync(call, ct, selectedDocumentIds);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

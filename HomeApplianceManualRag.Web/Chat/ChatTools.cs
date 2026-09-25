@@ -47,7 +47,7 @@ public static class ChatToolDefinitions
             """{"type":"object","properties":{},"additionalProperties":false}"""),
         new(
             "search_my_manuals",
-            "Search accessible appliance manuals for instructions or details. Use applianceId from get_my_appliances to restrict the search to one manual when appropriate.",
+            "Search accessible appliance manuals for instructions or details. When selected manual IDs are provided by the application, search only within that selection. Use applianceId only to narrow to one selected manual.",
             """{"type":"object","properties":{"query":{"type":"string","description":"The appliance or manual question to search for."},"applianceId":{"type":"string","description":"Optional manual ID returned as applianceId by get_my_appliances."}},"required":["query"],"additionalProperties":false}""")
     ];
 }
@@ -66,7 +66,42 @@ public sealed class ChatToolsService(
     private const int MaxArgumentsCharacters = 4096;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    public async Task<ChatToolExecution> ExecuteAsync(ChatToolCall call, CancellationToken ct = default)
+    public async Task<IReadOnlyList<ApplianceManualInfo>> ListAvailableManualsAsync(
+        CancellationToken ct = default)
+    {
+        await accountGuard.EnsureEnabledAsync(ct);
+        return await AccessibleDocuments()
+            .Where(x => x.Status == DocumentStatus.Ready && x.DeletedAtUtc == null)
+            .OrderBy(x => x.DisplayName)
+            .Select(x => new ApplianceManualInfo(
+                x.Id, x.DisplayName, x.ProductName, x.ApplianceCategory, x.Brand, x.ModelNumber))
+            .ToListAsync(ct);
+    }
+
+    public async Task ValidateSelectedManualsAsync(
+        IReadOnlyCollection<Guid> documentIds,
+        CancellationToken ct = default)
+    {
+        var selectedIds = documentIds.Distinct().ToArray();
+        if (selectedIds.Length == 0)
+            throw new ArgumentException("Select at least one available manual.", nameof(documentIds));
+
+        await accountGuard.EnsureEnabledAsync(ct);
+        var availableCount = await AccessibleDocuments()
+            .Where(x => x.Status == DocumentStatus.Ready &&
+                        x.DeletedAtUtc == null &&
+                        selectedIds.Contains(x.Id))
+            .CountAsync(ct);
+        if (availableCount != selectedIds.Length)
+            throw new ArgumentException(
+                "One or more selected manuals are no longer available. Refresh the page and try again.",
+                nameof(documentIds));
+    }
+
+    public async Task<ChatToolExecution> ExecuteAsync(
+        ChatToolCall call,
+        CancellationToken ct = default,
+        IReadOnlyCollection<Guid>? selectedDocumentIds = null)
     {
         if (call.ArgumentsJson.Length > MaxArgumentsCharacters)
             return Error("Tool arguments exceed the allowed size.");
@@ -89,8 +124,8 @@ public sealed class ChatToolsService(
 
             return call.Name switch
             {
-                "get_my_appliances" => await ExecuteApplianceCatalogAsync(arguments.RootElement, ct),
-                "search_my_manuals" => await ExecuteManualSearchAsync(arguments.RootElement, ct),
+                "get_my_appliances" => await ExecuteApplianceCatalogAsync(arguments.RootElement, selectedDocumentIds, ct),
+                "search_my_manuals" => await ExecuteManualSearchAsync(arguments.RootElement, selectedDocumentIds, ct),
                 _ => Error("This tool is not available.")
             };
         }
@@ -98,6 +133,7 @@ public sealed class ChatToolsService(
 
     private async Task<ChatToolExecution> ExecuteApplianceCatalogAsync(
         JsonElement arguments,
+        IReadOnlyCollection<Guid>? selectedDocumentIds,
         CancellationToken ct)
     {
         if (arguments.EnumerateObject().Any())
@@ -106,6 +142,7 @@ public sealed class ChatToolsService(
         await accountGuard.EnsureEnabledAsync(ct);
         var query = AccessibleDocuments()
             .Where(x => x.Status == DocumentStatus.Ready && x.DeletedAtUtc == null)
+            .Where(x => selectedDocumentIds == null || selectedDocumentIds.Contains(x.Id))
             .OrderBy(x => x.DisplayName)
             .Select(x => new ApplianceManualInfo(
                 x.Id, x.DisplayName, x.ProductName, x.ApplianceCategory, x.Brand, x.ModelNumber));
@@ -122,6 +159,7 @@ public sealed class ChatToolsService(
 
     private async Task<ChatToolExecution> ExecuteManualSearchAsync(
         JsonElement arguments,
+        IReadOnlyCollection<Guid>? selectedDocumentIds,
         CancellationToken ct)
     {
         var allowedProperties = new HashSet<string>(StringComparer.Ordinal)
@@ -152,10 +190,18 @@ public sealed class ChatToolsService(
                 applianceId = parsedId;
         }
 
+        if (applianceId is Guid requestedId &&
+            selectedDocumentIds is not null &&
+            !selectedDocumentIds.Contains(requestedId))
+            return Error("The requested appliance is outside the selected manuals.");
+
         await accountGuard.EnsureEnabledAsync(ct);
         var scope = GetRetrievalScope();
+        IReadOnlyCollection<Guid>? documentIds = applianceId is Guid selectedId
+            ? [selectedId]
+            : selectedDocumentIds;
         var results = await retriever.RetrieveAsync(
-            query, scope, currentUser.UserId, applianceId, ct);
+            query, scope, currentUser.UserId, documentIds, ct);
         var boundedResults = results
             .Take(MaxSearchResults)
             .Select(chunk => chunk with

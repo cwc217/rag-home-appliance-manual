@@ -1,11 +1,13 @@
 @page "/"
 @rendermode InteractiveServer
 @inject ChatService Chat
+@inject ChatToolsService ChatTools
 @inject ChatHistoryService History
 @inject ChatConversationState ConversationState
 @inject ILogger<Home> Logger
 @inject IJSRuntime JS
 @using HomeApplianceManualRag.Web.Data
+@using HomeApplianceManualRag.Web.Chat
 @using HomeApplianceManualRag.Web.Resources
 @using System.Globalization
 @using System.Text.Json
@@ -65,11 +67,48 @@
     </section>
 
     <EditForm Model="form" OnValidSubmit="Ask" class="chat-composer">
+        <MudStack Row="true" Spacing="1" Class="manual-chip-list" aria-label="Select manuals for this answer">
+            @if (manualsLoading)
+            {
+                <MudChip T="string" Disabled="true" Variant="Variant.Outlined">Loading manuals…</MudChip>
+            }
+            else if (!string.IsNullOrWhiteSpace(manualsError))
+            {
+                <MudChip T="string" Disabled="true" Color="Color.Error" Variant="Variant.Outlined">
+                    Manuals unavailable
+                </MudChip>
+                <MudAlert Severity="Severity.Error" Dense="true">@manualsError</MudAlert>
+            }
+            else if (availableManuals.Count == 0)
+            {
+                <MudChip T="string" Disabled="true" Variant="Variant.Outlined">
+                    Upload a manual to start chatting
+                </MudChip>
+            }
+            else
+            {
+                @foreach (var manual in availableManuals)
+                {
+                    var isSelected = selectedManualIds.Contains(manual.ApplianceId);
+                    <MudChip T="Guid" @key="manual.ApplianceId" Value="@manual.ApplianceId"
+                             OnClick="@(() => ToggleManual(manual.ApplianceId))"
+                             Color="@(isSelected ? Color.Primary : Color.Default)"
+                             Variant="@(isSelected ? Variant.Filled : Variant.Outlined)"
+                             Disabled="@busy">
+                        @(isSelected ? "✓ " : "")@GetManualLabel(manual)
+                    </MudChip>
+                }
+            }
+        </MudStack>
         <MudTextField T="string" @bind-Value="form.Question" Label="Question" Variant="Variant.Outlined"
                       Placeholder="How do I clean the filter?" Lines="2" Disabled="@IsComposerDisabled"
                       FullWidth="true" />
         <div class="composer-actions">
             <MudText Typo="Typo.caption" Color="Color.Secondary">
+                @if (availableManuals.Count > 0)
+                {
+                    <span>Searching @selectedManualIds.Count selected manual(s).</span>
+                }
                 Content is AI-generated for reference only and may not be fully accurate.
             </MudText>
             @if (selectedConversationId is null && conversationCountLoaded)
@@ -107,6 +146,11 @@
     private Guid? selectedConversationId;
     private string? anonymousAccessKey;
     private readonly List<ChatConversation> rooms = [];
+    private readonly List<ApplianceManualInfo> availableManuals = [];
+    private readonly HashSet<Guid> selectedManualIds = [];
+    private bool manualsLoading = true;
+    private bool manualsLoaded;
+    private string? manualsError;
 
     [SupplyParameterFromQuery(Name = "conversationId")]
     private Guid? ConversationId { get; set; }
@@ -121,6 +165,7 @@
             selectedConversationId = null;
             messages.Clear();
             error = null;
+            ResetManualSelection();
             return;
         }
 
@@ -128,6 +173,7 @@
             return;
 
         selectedConversationId = id;
+        ResetManualSelection();
         await LoadSelected();
     }
 
@@ -177,6 +223,7 @@
         activeConversationCount = await History.GetActiveConversationCountAsync(
             IsAuthenticated ? null : anonymousAccessKey);
         conversationCountLoaded = true;
+        await LoadAvailableManuals();
         selectedConversationId = ConversationId is Guid requestedId && rooms.Any(x => x.Id == requestedId)
             ? requestedId
             : null;
@@ -185,6 +232,59 @@
             await LoadSelected();
             scrollToLatest = true;
         }
+    }
+
+    private async Task LoadAvailableManuals()
+    {
+        manualsLoading = true;
+        manualsError = null;
+        try
+        {
+            availableManuals.Clear();
+            availableManuals.AddRange(await ChatTools.ListAvailableManualsAsync());
+            ResetManualSelection();
+            manualsLoaded = true;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Unable to load available manuals for chat.");
+            manualsError = "Manuals could not be loaded. Refresh the page and try again.";
+        }
+        finally
+        {
+            manualsLoading = false;
+        }
+    }
+
+    private void ResetManualSelection()
+    {
+        selectedManualIds.Clear();
+        foreach (var manual in availableManuals)
+            selectedManualIds.Add(manual.ApplianceId);
+    }
+
+    private void ToggleManual(Guid documentId)
+    {
+        if (busy || !availableManuals.Any(manual => manual.ApplianceId == documentId))
+            return;
+
+        if (!selectedManualIds.Add(documentId))
+            selectedManualIds.Remove(documentId);
+    }
+
+    private static string GetManualLabel(ApplianceManualInfo manual)
+    {
+        var productDetails = new[]
+            {
+                manual.Brand,
+                manual.ApplianceCategory,
+                manual.ModelNumber
+            }
+            .Where(value => !string.IsNullOrWhiteSpace(value));
+        var label = string.Join(" · ", productDetails);
+        return string.IsNullOrWhiteSpace(label)
+            ? string.IsNullOrWhiteSpace(manual.ProductName) ? manual.ManualName : manual.ProductName
+            : label;
     }
 
     private async Task LoadSelected()
@@ -233,7 +333,9 @@
                 ConversationState.NotifyChanged();
             }
 
-            var result = await Chat.StartAsync(question);
+            var result = await Chat.StartAsync(
+                question,
+                selectedDocumentIds: selectedManualIds.ToArray());
             if (result.Stream is null)
             {
                 var noContextMessage = ChatMessages.NoContext(CultureInfo.CurrentUICulture.Name);
@@ -290,6 +392,7 @@
         catch (ArgumentException ex)
         {
             messages.RemoveAt(messages.Count - 1);
+            form.Question = question;
             error = ex.Message;
         }
         catch
@@ -307,7 +410,9 @@
         selectedConversationId is null &&
         activeConversationCount >= ChatHistoryService.MaxActiveConversations;
     private bool IsComposerDisabled =>
-        busy || loadingHistory || !conversationCountLoaded || IsNewConversationBlocked;
+        busy || loadingHistory || !conversationCountLoaded || IsNewConversationBlocked ||
+        manualsLoading || !manualsLoaded || manualsError is not null ||
+        availableManuals.Count == 0 || selectedManualIds.Count == 0;
 
     private void RecordPersistedConversation(bool isNewConversation)
     {
