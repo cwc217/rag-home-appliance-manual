@@ -107,7 +107,11 @@
             <MudText Typo="Typo.caption" Color="Color.Secondary">
                 @if (availableManuals.Count > 0)
                 {
-                    <span>Searching @selectedManualIds.Count selected manual(s).</span>
+                    <span>
+                        @(selectedManualIds.Count == 0 || selectedManualIds.Count == availableManuals.Count
+                            ? "Searching all available manuals."
+                            : $"Searching {selectedManualIds.Count} selected manual(s).")
+                    </span>
                 }
                 Content is AI-generated for reference only and may not be fully accurate.
             </MudText>
@@ -412,7 +416,7 @@
     private bool IsComposerDisabled =>
         busy || loadingHistory || !conversationCountLoaded || IsNewConversationBlocked ||
         manualsLoading || !manualsLoaded || manualsError is not null ||
-        availableManuals.Count == 0 || selectedManualIds.Count == 0;
+        availableManuals.Count == 0;
 
     private void RecordPersistedConversation(bool isNewConversation)
     {

@@ -84,7 +84,7 @@ public sealed class ChatToolsService(
     {
         var selectedIds = documentIds.Distinct().ToArray();
         if (selectedIds.Length == 0)
-            throw new ArgumentException("Select at least one available manual.", nameof(documentIds));
+            return;
 
         await accountGuard.EnsureEnabledAsync(ct);
         var availableCount = await AccessibleDocuments()
@@ -103,6 +103,9 @@ public sealed class ChatToolsService(
         CancellationToken ct = default,
         IReadOnlyCollection<Guid>? selectedDocumentIds = null)
     {
+        if (selectedDocumentIds is { Count: 0 })
+            selectedDocumentIds = null;
+
         if (call.ArgumentsJson.Length > MaxArgumentsCharacters)
             return Error("Tool arguments exceed the allowed size.");
 

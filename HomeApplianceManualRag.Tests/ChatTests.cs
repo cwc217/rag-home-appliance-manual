@@ -42,6 +42,15 @@ public sealed class ChatTests
     }
 
     [Fact]
+    public void Grounded_prompt_treats_empty_selection_as_unrestricted()
+    {
+        var prompt = GroundedPrompt.Build("How do I clean it?", [], []);
+
+        Assert.DoesNotContain("<selected_manual_ids>", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("Do not search manuals", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Citation_selector_keeps_only_valid_citations_referenced_by_answer()
     {
         var documentId = Guid.NewGuid();
@@ -170,6 +179,37 @@ public sealed class ChatTests
     }
 
     [Fact]
+    public async Task Manual_search_treats_empty_selection_as_equivalent_to_selecting_all_manuals()
+    {
+        await using var db = CreateDatabase();
+        var first = ApplianceManual("user-1", "first.pdf");
+        var second = ApplianceManual("user-1", "second.pdf");
+        var otherUser = ApplianceManual("user-2", "private.pdf");
+        db.AddRange(first, second, otherUser);
+        db.AddRange(Chunk(first, "first chunk"), Chunk(second, "second chunk"),
+            Chunk(otherUser, "private chunk"));
+        await db.SaveChangesAsync();
+        var service = CreateTools(db, new ToolTestCurrentUser("user-1"));
+
+        var emptySelectionExecution = await service.ExecuteAsync(
+            new ChatToolCall("call-1", "search_my_manuals", """{"query":"find manual details"}"""),
+            selectedDocumentIds: []);
+        var allSelectedExecution = await service.ExecuteAsync(
+            new ChatToolCall("call-2", "search_my_manuals", """{"query":"find manual details"}"""),
+            selectedDocumentIds: [first.Id, second.Id]);
+        var emptySelectionResult = JsonSerializer.Deserialize<ManualSearchResult>(
+            emptySelectionExecution.Content, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var allSelectedResult = JsonSerializer.Deserialize<ManualSearchResult>(
+            allSelectedExecution.Content, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        Assert.Equal(
+            allSelectedResult!.Chunks.Select(chunk => chunk.DocumentId).Order(),
+            emptySelectionResult!.Chunks.Select(chunk => chunk.DocumentId).Order());
+        Assert.Equal(new HashSet<Guid> { first.Id, second.Id },
+            emptySelectionResult.Chunks.Select(chunk => chunk.DocumentId).ToHashSet());
+    }
+
+    [Fact]
     public async Task Manual_search_rejects_model_request_for_unselected_manual()
     {
         await using var db = CreateDatabase();
@@ -209,7 +249,7 @@ public sealed class ChatTests
     }
 
     [Fact]
-    public async Task Chat_rejects_empty_or_unavailable_selected_manuals()
+    public async Task Chat_allows_empty_selection_but_rejects_unavailable_selected_manuals()
     {
         await using var db = CreateDatabase();
         var owned = ApplianceManual("user-1", "owned.pdf");
@@ -221,8 +261,8 @@ public sealed class ChatTests
             new ScriptedToolChatProvider([]),
             new ToolTestCurrentUser("user-1"));
 
-        await Assert.ThrowsAsync<ArgumentException>(() =>
-            service.StartAsync("Question", selectedDocumentIds: []));
+        var (_, stream) = await service.StartAsync("Question", selectedDocumentIds: []);
+        Assert.NotNull(stream);
         await Assert.ThrowsAsync<ArgumentException>(() =>
             service.StartAsync("Question", selectedDocumentIds: [other.Id]));
         await Assert.ThrowsAsync<ArgumentException>(() =>

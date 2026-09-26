@@ -93,7 +93,7 @@ public sealed class ManualRetriever(
     {
         var selectedIds = documentIds?.Distinct().ToArray();
         if (selectedIds is { Length: 0 })
-            return [];
+            selectedIds = null;
 
         var query = db.ManualChunks.AsNoTracking()
             .Where(x => x.Document != null &&
@@ -185,11 +185,16 @@ public static class GroundedPrompt
         IReadOnlyList<RetrievedChunk> chunks,
         IReadOnlyCollection<Guid>? selectedDocumentIds = null)
     {
+        if (selectedDocumentIds is { Count: 0 })
+            selectedDocumentIds = null;
+
         var context = new StringBuilder();
         foreach (var chunk in chunks)
             context.AppendLine($"[{chunk.DocumentName}, p. {chunk.PageNumber}] {chunk.Text}");
         var selectedManuals = selectedDocumentIds is null
             ? string.Empty
+            : selectedDocumentIds.Count == 0
+                ? "No manuals are selected. Do not search manuals; tell the user to select one to get a manual-based answer."
             : $$"""
                 <selected_manual_ids>
                 {{string.Join(Environment.NewLine, selectedDocumentIds)}}
@@ -234,11 +239,10 @@ public sealed class ChatService(
             throw new ArgumentException(
                 $"Question cannot exceed {chatOptions.Value.MaxQuestionLength} characters.",
                 nameof(question));
-        if (selectedDocumentIds is { Count: 0 })
-            throw new ArgumentException("Select at least one available manual.", nameof(selectedDocumentIds));
-
         var selectedIds = selectedDocumentIds?.Distinct().ToArray();
-        if (selectedIds is not null)
+        if (selectedIds is { Length: 0 })
+            selectedIds = null;
+        if (selectedIds is { Length: > 0 })
             await tools.ValidateSelectedManualsAsync(selectedIds, ct);
         var key = currentUser.UserId ?? httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
         rateLimiter.EnsureAllowed(key);
