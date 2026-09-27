@@ -21,6 +21,7 @@ services:
 
   postgres:
     image: pgvector/pgvector:pg17
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-manuals}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -36,6 +37,7 @@ services:
       retries: 12
 
   web:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: HomeApplianceManualRag.Web/Dockerfile

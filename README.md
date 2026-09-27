@@ -160,6 +160,12 @@ docker compose up --build
 
 Open `http://localhost:8500`. The web container waits for PostgreSQL to become healthy and applies EF Core migrations automatically before Identity seeding in every environment. Stop the stack with `docker compose down`; add `-v` if you also want to remove the PostgreSQL data volume.
 
+The Docling, PostgreSQL, and web containers use the `unless-stopped` restart
+policy in both local and production Compose configurations. They restart when
+Docker starts unless they were explicitly stopped; `docker compose down` removes
+the containers, so run `docker compose up` again to recreate them. To start
+Docker Desktop automatically after signing in, enable its startup option.
+
 When source code has changed, rebuild and recreate the web container so it
 contains the current Blazor progress-update implementation:
 
