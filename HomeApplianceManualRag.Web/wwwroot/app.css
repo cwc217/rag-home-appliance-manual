@@ -20,6 +20,29 @@ body {
     min-height: calc(100dvh - 64px);
 }
 
+.skip-link {
+    position: fixed;
+    top: .5rem;
+    left: .5rem;
+    z-index: 2000;
+    padding: .75rem 1rem;
+    border: 2px solid #2563eb;
+    border-radius: .5rem;
+    background: #fff;
+    color: #0f172a;
+    transform: translateY(calc(-100% - 1rem));
+}
+
+.skip-link:focus-visible {
+    outline: 3px solid rgb(37 99 235 / 35%);
+    outline-offset: 2px;
+    transform: translateY(0);
+}
+
+#main-content {
+    scroll-margin-top: 4.5rem;
+}
+
 .auth-card,
 .status-card {
     width: min(100%, 30rem);
@@ -237,6 +260,20 @@ body {
 .manual-chip-list {
     flex-wrap: wrap;
     margin-bottom: .5rem;
+    min-width: 0;
+}
+
+.manual-chip-list .mud-chip {
+    max-width: 100%;
+    min-width: 0;
+    min-height: 32px;
+    height: auto;
+}
+
+.manual-chip-list .mud-chip-content {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
 }
 
 .chat-composer .mud-input-outlined-border {
@@ -276,6 +313,20 @@ body {
     white-space: pre-wrap;
 }
 
+.document-file-field {
+    display: grid;
+    gap: .25rem;
+    min-width: 0;
+}
+
+.document-file-field label {
+    font-weight: 600;
+}
+
+.document-file-field input[type="file"] {
+    max-width: 100%;
+}
+
 @media (max-width: 576px) {
     .chat-shell {
         width: 100%;
@@ -305,5 +356,12 @@ body {
     .document-upload {
         align-items: stretch !important;
         flex-direction: column !important;
+    }
+}
+
+@media (pointer: coarse), (max-width: 576px) {
+    .manual-chip-list .mud-chip,
+    .chat-composer .mud-button-root {
+        min-height: 44px;
     }
 }

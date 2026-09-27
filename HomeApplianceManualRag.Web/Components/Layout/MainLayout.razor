@@ -8,6 +8,8 @@
 <MudDialogProvider />
 <MudSnackbarProvider />
 
+<a class="skip-link" href="#main-content">Skip to main content</a>
+
 <MudLayout Class="app-layout">
     <MudAppBar Elevation="1" Color="Color.Primary">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit"
@@ -25,7 +27,9 @@
     </MudDrawer>
     <MudMainContent Class="app-content">
         <MudContainer MaxWidth="MaxWidth.False" Class="pa-4 pa-md-6 app-content-container">
-            @Body
+            <div id="main-content" tabindex="-1">
+                @Body
+            </div>
         </MudContainer>
     </MudMainContent>
 </MudLayout>

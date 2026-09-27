@@ -13,11 +13,16 @@
 <MudStack Spacing="3">
 <MudText Typo="Typo.h4">@(isAdmin ? "All documents" : "My documents")</MudText>
 <MudText Typo="Typo.body2" Color="Color.Secondary">
-    PDF only, maximum 10 MB. @(isAdmin ? "Administrators have unlimited uploads." : $"Active quota: {activeCount} / 3.")
+    @(isAdmin ? "Administrators have unlimited uploads." : $"Active quota: {activeCount} / 3.")
 </MudText>
 <MudPaper Class="pa-4" Elevation="1">
 <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="document-upload">
-    <InputFile OnChange="SelectFile" accept=".pdf,application/pdf" />
+    <div class="document-file-field">
+        <label for="manual-upload">PDF manual</label>
+        <InputFile id="manual-upload" OnChange="SelectFile" accept=".pdf,application/pdf"
+                   aria-describedby="manual-upload-help" />
+        <span id="manual-upload-help">PDF only, maximum 10 MB.</span>
+    </div>
     <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Upload"
                OnClick="Upload" Disabled="@(selectedFile is null || IsUploadDisabled)">Upload</MudButton>
     @if (busy)

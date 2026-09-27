@@ -16,7 +16,7 @@
 
 <PageTitle>Chat Room</PageTitle>
 <main class="chat-shell">
-    <section class="chat-transcript" aria-label="Conversation" aria-live="polite">
+    <section class="chat-transcript" aria-label="Conversation">
         @if (loadingHistory)
         {
             <MudText Class="chat-state" Color="Color.Secondary">Loading conversation history…</MudText>
@@ -94,8 +94,13 @@
                              OnClick="@(() => ToggleManual(manual.ApplianceId))"
                              Color="@(isSelected ? Color.Primary : Color.Default)"
                              Variant="@(isSelected ? Variant.Filled : Variant.Outlined)"
-                             Disabled="@busy">
-                        @(isSelected ? "✓ " : "")@GetManualLabel(manual)
+                             Disabled="@busy"
+                             UserAttributes="@(new Dictionary<string, object>
+                             {
+                                 ["aria-label"] = ManualLabelFormatter.Format(manual),
+                                 ["aria-pressed"] = isSelected
+                             })">
+                        @(isSelected ? "✓ " : "")@ManualLabelFormatter.Format(manual)
                     </MudChip>
                 }
             }
@@ -136,11 +141,13 @@
         </div>
     </EditForm>
 </main>
+<span class="sr-only" role="status" aria-live="polite" aria-atomic="true">@chatAnnouncement</span>
 
 @code {
     private readonly ChatForm form = new();
     private readonly List<UiMessage> messages = [];
     private string? error;
+    private string chatAnnouncement = string.Empty;
     private bool busy;
     private bool loadingHistory = true;
     private bool initialized;
@@ -276,21 +283,6 @@
             selectedManualIds.Remove(documentId);
     }
 
-    private static string GetManualLabel(ApplianceManualInfo manual)
-    {
-        var productDetails = new[]
-            {
-                manual.Brand,
-                manual.ApplianceCategory,
-                manual.ModelNumber
-            }
-            .Where(value => !string.IsNullOrWhiteSpace(value));
-        var label = string.Join(" · ", productDetails);
-        return string.IsNullOrWhiteSpace(label)
-            ? string.IsNullOrWhiteSpace(manual.ProductName) ? manual.ManualName : manual.ProductName
-            : label;
-    }
-
     private async Task LoadSelected()
     {
         messages.Clear();
@@ -318,6 +310,7 @@
     {
         if (IsComposerDisabled || string.IsNullOrWhiteSpace(form.Question)) return;
         busy = true;
+        chatAnnouncement = "Thinking…";
         error = null;
         var question = form.Question.Trim();
         var isNewConversation = selectedConversationId is null;
@@ -350,6 +343,7 @@
                 RecordPersistedConversation(isNewConversation);
                 ConversationState.NotifyChanged();
                 await SaveAnonymousCache(conversationId);
+                chatAnnouncement = "Answer ready.";
                 return;
             }
 
@@ -371,6 +365,7 @@
             RecordPersistedConversation(isNewConversation);
             ConversationState.NotifyChanged();
             await SaveAnonymousCache(conversationId);
+            chatAnnouncement = "Answer ready.";
         }
         catch (ConversationLimitExceededException ex)
         {
