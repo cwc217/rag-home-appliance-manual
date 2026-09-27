@@ -91,6 +91,8 @@ builder.Services.AddScoped<ManualRetriever>();
 builder.Services.AddScoped<ChatToolsService>();
 builder.Services.AddScoped<ChatService>();
 builder.Services.AddScoped<ChatHistoryService>();
+builder.Services.AddScoped<IChatConversationContext>(services =>
+    services.GetRequiredService<ChatHistoryService>());
 builder.Services.AddScoped<AdminDashboardService>();
 builder.Services.AddScoped<AdminOperationalErrorLogService>();
 builder.Services.AddScoped<IOperationalErrorRecorder, OperationalErrorRecorder>();

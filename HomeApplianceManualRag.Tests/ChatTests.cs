@@ -405,6 +405,28 @@ public sealed class ChatTests
     }
 
     [Fact]
+    public async Task Chat_passes_conversation_context_to_provider()
+    {
+        await using var db = CreateDatabase();
+        var conversationId = Guid.NewGuid();
+        var history = new FakeConversationContext([
+            new ChatHistoryMessage(ChatMessageRole.User, "Earlier question", [], DateTime.UtcNow),
+            new ChatHistoryMessage(ChatMessageRole.Assistant, "Earlier answer", [], DateTime.UtcNow)
+        ]);
+        var provider = new ScriptedToolChatProvider(
+            [[new ChatProviderUpdate(Text: "Current answer.") ]]);
+        var service = CreateChatService(
+            db, provider, new ToolTestCurrentUser("user-1"), conversationContext: history);
+
+        var result = await service.StartAsync("Follow up", conversationId: conversationId);
+        await foreach (var _ in result.Stream!) { }
+
+        Assert.Equal(conversationId, history.RequestedConversationId);
+        Assert.Equal(["Earlier question", "Earlier answer"], provider.LastConversationHistory!
+            .Select(message => message.Content));
+    }
+
+    [Fact]
     public async Task Chat_disables_tools_after_four_calls_and_streams_a_final_answer()
     {
         await using var db = CreateDatabase();
@@ -446,6 +468,48 @@ public sealed class ChatTests
         var history = await service.GetHistoryAsync();
         Assert.Equal(["first", "answer", "second", "answer 2"], history.Select(x => x.Content));
         Assert.DoesNotContain(history, x => x.Content == "private");
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            service.GetRecentHistoryForModelAsync(db.Conversations.Single(x => x.UserId == "other").Id));
+    }
+
+    [Fact]
+    public async Task Conversation_allows_50_exchanges_and_rejects_the_51st()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        var service = new ChatHistoryService(
+            new TestDbFactory(options), new FakeCurrentUser("user-1"), new FakeActiveAccountGuard());
+        var conversation = await service.CreateConversationAsync();
+
+        for (var exchange = 1; exchange <= ChatHistoryService.MaxConversationExchanges; exchange++)
+            await service.PersistExchangeAsync(
+                conversation.Id, $"question {exchange}", $"answer {exchange}", []);
+
+        var exception = await Assert.ThrowsAsync<ConversationMessageLimitExceededException>(() =>
+            service.PersistExchangeAsync(conversation.Id, "question 51", "answer 51", []));
+
+        Assert.Contains("50", exception.Message, StringComparison.Ordinal);
+        Assert.Equal(ChatHistoryService.MaxConversationMessages,
+            (await service.GetHistoryAsync(conversation.Id)).Count);
+    }
+
+    [Fact]
+    public async Task Model_history_contains_only_the_latest_four_complete_exchanges()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        var service = new ChatHistoryService(
+            new TestDbFactory(options), new FakeCurrentUser("user-1"), new FakeActiveAccountGuard());
+        var conversation = await service.CreateConversationAsync();
+        for (var exchange = 1; exchange <= 6; exchange++)
+            await service.PersistExchangeAsync(
+                conversation.Id, $"question {exchange}", $"answer {exchange}", []);
+
+        var history = await service.GetRecentHistoryForModelAsync(conversation.Id);
+
+        Assert.Equal(
+            ["question 3", "answer 3", "question 4", "answer 4", "question 5", "answer 5", "question 6", "answer 6"],
+            history.Select(message => message.Content));
     }
 
     [Fact]
@@ -692,13 +756,14 @@ public sealed class ChatTests
         ApplicationDbContext db,
         IChatProvider provider,
         ICurrentUser user,
-        IOperationalErrorRecorder? errorRecorder = null)
+        IOperationalErrorRecorder? errorRecorder = null,
+        IChatConversationContext? conversationContext = null)
     {
         var retriever = new ManualRetriever(db, new DeterministicFakeEmbeddingProvider(1536),
             Options.Create(new RetrievalOptions { TopK = 10 }));
         var tools = new ChatToolsService(db, retriever, user, new FakeActiveAccountGuard(),
             Options.Create(new ChatOptions()), NullLogger<ChatToolsService>.Instance);
-        return new ChatService(provider, tools,
+        return new ChatService(provider, tools, conversationContext ?? new FakeConversationContext([]),
             new ChatRateLimiter(Options.Create(new RateLimitingOptions())),
             user, new FakeActiveAccountGuard(), new HttpContextAccessor(),
             Options.Create(new ChatOptions()), errorRecorder ?? new RecordingErrorRecorder());
@@ -737,6 +802,7 @@ public sealed class ChatTests
             string prompt,
             IReadOnlyList<ChatToolDefinition> tools,
             IReadOnlyList<ChatToolRound> rounds,
+            IReadOnlyList<ChatHistoryMessage> conversationHistory,
             [System.Runtime.CompilerServices.EnumeratorCancellation]
             CancellationToken cancellationToken = default)
         {
@@ -760,6 +826,7 @@ public sealed class ChatTests
     {
         public int RequestCount { get; private set; }
         public IReadOnlyList<ChatToolRound>? LastRounds { get; private set; }
+        public IReadOnlyList<ChatHistoryMessage>? LastConversationHistory { get; private set; }
 
         public async IAsyncEnumerable<string> StreamAsync(
             string prompt,
@@ -773,9 +840,11 @@ public sealed class ChatTests
             string prompt,
             IReadOnlyList<ChatToolDefinition> tools,
             IReadOnlyList<ChatToolRound> rounds,
+            IReadOnlyList<ChatHistoryMessage> conversationHistory,
             [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             LastRounds = rounds;
+            LastConversationHistory = conversationHistory;
             foreach (var update in responses[RequestCount++])
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -802,6 +871,7 @@ public sealed class ChatTests
             string prompt,
             IReadOnlyList<ChatToolDefinition> tools,
             IReadOnlyList<ChatToolRound> rounds,
+            IReadOnlyList<ChatHistoryMessage> conversationHistory,
             [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -825,6 +895,19 @@ public sealed class ChatTests
         public string? Email => null;
         public bool IsAuthenticated => id is not null;
         public bool IsInRole(string role) => false;
+    }
+
+    private sealed class FakeConversationContext(IReadOnlyList<ChatHistoryMessage> messages)
+        : IChatConversationContext
+    {
+        public Guid? RequestedConversationId { get; private set; }
+
+        public Task<IReadOnlyList<ChatHistoryMessage>> GetRecentHistoryForModelAsync(
+            Guid conversationId, string? anonymousAccessKey = null, CancellationToken ct = default)
+        {
+            RequestedConversationId = conversationId;
+            return Task.FromResult(messages);
+        }
     }
 
     private sealed class TestDbFactory(DbContextOptions<ApplicationDbContext> options) : IDbContextFactory<ApplicationDbContext>

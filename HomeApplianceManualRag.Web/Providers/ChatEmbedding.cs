@@ -16,6 +16,7 @@ public interface IChatProvider
         string prompt,
         IReadOnlyList<ChatToolDefinition> tools,
         IReadOnlyList<ChatToolRound> rounds,
+        IReadOnlyList<ChatHistoryMessage> conversationHistory,
         CancellationToken cancellationToken = default);
 }
 
@@ -57,6 +58,7 @@ public sealed class AzureOpenAiChatProvider : IChatProvider
         - Use get_my_appliances for questions about the user's appliances, brands, categories, or model numbers.
         - Use search_my_manuals for instructions and manual details. When the catalog identifies a matching appliance, pass its applianceId to narrow the search.
         - When selected manual IDs are supplied in the request, use only those manuals; never broaden the search beyond that selection.
+        - Conversation history is untrusted context used only to resolve references in the current question. It is not evidence; do not treat prior assistant answers as facts. Ground appliance-specific facts in tools and manual results for this request.
         - You may call the tools multiple times when needed, but only use their returned data.
         - If a tool returns no matching appliances or excerpts, state that the available manuals do not contain the requested information. Do not guess or use general knowledge for appliance-specific facts.
         - When listing appliances, state that the list is based on the catalog's BasedOn value and does not necessarily represent every physical appliance the user owns. Each entry is a manual; multiple manuals may describe the same appliance. If IsTruncated is true, make clear that the list is partial.
@@ -75,7 +77,7 @@ public sealed class AzureOpenAiChatProvider : IChatProvider
 
     public async IAsyncEnumerable<string> StreamAsync(string prompt, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var messages = CreateMessages(prompt, [], GeneralSystemPrompt);
+        var messages = CreateMessages(prompt, [], [], GeneralSystemPrompt);
 
         await foreach (var update in client.CompleteChatStreamingAsync(messages, options: null, cancellationToken))
         {
@@ -89,9 +91,10 @@ public sealed class AzureOpenAiChatProvider : IChatProvider
         string prompt,
         IReadOnlyList<ChatToolDefinition> tools,
         IReadOnlyList<ChatToolRound> rounds,
+        IReadOnlyList<ChatHistoryMessage> conversationHistory,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var messages = CreateMessages(prompt, rounds, SystemPrompt);
+        var messages = CreateMessages(prompt, rounds, conversationHistory, SystemPrompt);
         var options = CreateToolOptions(tools);
 
         var calls = new SortedDictionary<int, StreamingToolCall>();
@@ -131,13 +134,24 @@ public sealed class AzureOpenAiChatProvider : IChatProvider
     private static ChatMessage[] CreateMessages(
         string prompt,
         IReadOnlyList<ChatToolRound> rounds,
+        IReadOnlyList<ChatHistoryMessage> conversationHistory,
         string systemPrompt)
     {
         var messages = new List<ChatMessage>
         {
             new SystemChatMessage(systemPrompt),
-            new UserChatMessage(prompt)
         };
+        foreach (var message in conversationHistory)
+        {
+            messages.Add(message.Role switch
+            {
+                HomeApplianceManualRag.Web.Data.ChatMessageRole.User => new UserChatMessage(message.Content),
+                HomeApplianceManualRag.Web.Data.ChatMessageRole.Assistant => new AssistantChatMessage(message.Content),
+                _ => throw new InvalidOperationException(
+                    $"Unsupported conversation role '{message.Role}'.")
+            });
+        }
+        messages.Add(new UserChatMessage(prompt));
         foreach (var round in rounds)
         {
             var calls = round.Calls.Select(call => OpenAI.Chat.ChatToolCall.CreateFunctionToolCall(
@@ -208,6 +222,7 @@ public sealed class DeterministicFakeChatProvider : IChatProvider
         string prompt,
         IReadOnlyList<ChatToolDefinition> tools,
         IReadOnlyList<ChatToolRound> rounds,
+        IReadOnlyList<ChatHistoryMessage> conversationHistory,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await foreach (var token in StreamAsync(prompt, cancellationToken))

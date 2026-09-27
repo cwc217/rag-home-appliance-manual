@@ -14,15 +14,24 @@ public sealed record ChatHistoryMessage(
     IReadOnlyList<ChatCitation> Citations,
     DateTime CreatedAtUtc);
 
+public interface IChatConversationContext
+{
+    Task<IReadOnlyList<ChatHistoryMessage>> GetRecentHistoryForModelAsync(
+        Guid conversationId, string? anonymousAccessKey = null, CancellationToken ct = default);
+}
+
 public sealed record ChatConversation(Guid Id, string Title, DateTime CreatedAtUtc, DateTime UpdatedAtUtc);
 
 public sealed class ChatHistoryService(
     IDbContextFactory<ApplicationDbContext> dbFactory,
     ICurrentUser currentUser,
     IActiveAccountGuard accountGuard,
-    ActivityLogService? activityLog = null)
+    ActivityLogService? activityLog = null) : IChatConversationContext
 {
     public const int MaxActiveConversations = 3;
+    public const int MaxConversationExchanges = 50;
+    public const int MaxConversationMessages = MaxConversationExchanges * 2;
+    public const int ContextExchangeCount = 4;
 
     public async Task<IReadOnlyList<ChatConversation>> GetConversationsAsync(
         string? anonymousAccessKey = null, CancellationToken ct = default)
@@ -57,6 +66,43 @@ public sealed class ChatHistoryService(
             .OrderBy(x => x.Sequence).ThenBy(x => x.CreatedAtUtc).ThenBy(x => x.Role).ThenBy(x => x.Id)
             .ToListAsync(ct);
         return messages.Select(ToHistoryMessage).ToArray();
+    }
+
+    public async Task<IReadOnlyList<ChatHistoryMessage>> GetRecentHistoryForModelAsync(
+        Guid conversationId, string? anonymousAccessKey = null, CancellationToken ct = default)
+    {
+        await accountGuard.EnsureEnabledAsync(ct);
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var conversation = await FindOwnedConversation(db, conversationId, anonymousAccessKey, ct)
+            ?? throw new UnauthorizedAccessException("Conversation access denied.");
+        var messageCount = await db.ChatMessages.CountAsync(
+            x => x.ConversationId == conversation.Id, ct);
+        if (messageCount >= MaxConversationMessages)
+            throw new ConversationMessageLimitExceededException();
+
+        var messages = await db.ChatMessages.AsNoTracking()
+            .Where(x => x.ConversationId == conversation.Id)
+            .OrderByDescending(x => x.Sequence)
+            .Take(ContextExchangeCount * 4)
+            .ToListAsync(ct);
+        messages.Reverse();
+        var exchanges = new List<ChatMessage>();
+        for (var index = 0; index + 1 < messages.Count; index++)
+        {
+            var userMessage = messages[index];
+            var assistantMessage = messages[index + 1];
+            if (userMessage.Role != ChatMessageRole.User ||
+                assistantMessage.Role != ChatMessageRole.Assistant ||
+                assistantMessage.Sequence != userMessage.Sequence + 1)
+                continue;
+
+            exchanges.Add(userMessage);
+            exchanges.Add(assistantMessage);
+        }
+
+        return exchanges.TakeLast(ContextExchangeCount * 2)
+            .Select(ToHistoryMessage)
+            .ToArray();
     }
 
     public async Task<ChatConversation> CreateConversationAsync(
@@ -127,7 +173,12 @@ public sealed class ChatHistoryService(
         var conversation = await FindOwnedConversation(db, conversationId, anonymousAccessKey, ct)
             ?? throw new UnauthorizedAccessException("Conversation access denied.");
         var now = DateTime.UtcNow;
-        var hasMessages = await db.ChatMessages.AnyAsync(x => x.ConversationId == conversation.Id, ct);
+        var messageCount = await db.ChatMessages.CountAsync(
+            x => x.ConversationId == conversation.Id, ct);
+        if (messageCount + 2 > MaxConversationMessages)
+            throw new ConversationMessageLimitExceededException();
+
+        var hasMessages = messageCount > 0;
         if (!hasMessages &&
             await CountActiveConversationsAsync(db, anonymousAccessKey, ct) >= MaxActiveConversations)
         {
@@ -241,3 +292,8 @@ public sealed class ConversationLimitExceededException()
     : InvalidOperationException(
         $"You can have up to {ChatHistoryService.MaxActiveConversations} active conversations. " +
         "Delete an existing conversation to start a new one.");
+
+public sealed class ConversationMessageLimitExceededException()
+    : InvalidOperationException(
+        $"This conversation has reached its limit of {ChatHistoryService.MaxConversationExchanges} question-and-answer exchanges. " +
+        "Start a new conversation to continue.");

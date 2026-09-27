@@ -219,6 +219,7 @@ public static class GroundedPrompt
 public sealed class ChatService(
     IChatProvider provider,
     ChatToolsService tools,
+    IChatConversationContext conversationContext,
     ChatRateLimiter rateLimiter,
     ICurrentUser currentUser,
     IActiveAccountGuard accountGuard,
@@ -229,7 +230,9 @@ public sealed class ChatService(
     public async Task<(ChatResponse Response, IAsyncEnumerable<string>? Stream)> StartAsync(
         string question,
         CancellationToken ct = default,
-        IReadOnlyCollection<Guid>? selectedDocumentIds = null)
+        IReadOnlyCollection<Guid>? selectedDocumentIds = null,
+        Guid? conversationId = null,
+        string? anonymousAccessKey = null)
     {
         await accountGuard.EnsureEnabledAsync(ct);
         if (string.IsNullOrWhiteSpace(question))
@@ -244,13 +247,17 @@ public sealed class ChatService(
             selectedIds = null;
         if (selectedIds is { Length: > 0 })
             await tools.ValidateSelectedManualsAsync(selectedIds, ct);
+        var conversationHistory = conversationId is Guid id
+            ? await conversationContext.GetRecentHistoryForModelAsync(id, anonymousAccessKey, ct)
+            : [];
         var key = currentUser.UserId ?? httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
         rateLimiter.EnsureAllowed(key);
         var prompt = GroundedPrompt.Build(normalizedQuestion, [], selectedIds);
         var context = new List<RetrievedChunk>();
         var citations = new List<ChatCitation>();
         var response = new ChatResponse(context, citations);
-        return (response, StreamToolsAsync(prompt, context, citations, selectedIds, ct));
+        return (response, StreamToolsAsync(
+            prompt, context, citations, selectedIds, conversationHistory, ct));
     }
 
     private async IAsyncEnumerable<string> StreamToolsAsync(
@@ -258,6 +265,7 @@ public sealed class ChatService(
         List<RetrievedChunk> context,
         List<ChatCitation> citations,
         IReadOnlyCollection<Guid>? selectedDocumentIds,
+        IReadOnlyList<ChatHistoryMessage> conversationHistory,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
         var rounds = new List<ChatToolRound>();
@@ -266,7 +274,7 @@ public sealed class ChatService(
         {
             IReadOnlyList<ChatToolCall>? requestedCalls = null;
             await foreach (var update in StreamProviderUpdatesAsync(
-                               prompt, ChatToolDefinitions.All, rounds, ct).WithCancellation(ct))
+                               prompt, ChatToolDefinitions.All, rounds, conversationHistory, ct).WithCancellation(ct))
             {
                 if (!string.IsNullOrEmpty(update.Text))
                     yield return update.Text;
@@ -313,7 +321,7 @@ public sealed class ChatService(
             if (callsMade >= 4)
             {
                 await foreach (var update in StreamProviderUpdatesAsync(
-                                   prompt, [], rounds, ct).WithCancellation(ct))
+                                   prompt, [], rounds, conversationHistory, ct).WithCancellation(ct))
                 {
                     if (!string.IsNullOrEmpty(update.Text))
                         yield return update.Text;
@@ -330,12 +338,14 @@ public sealed class ChatService(
         string prompt,
         IReadOnlyList<ChatToolDefinition> definitions,
         IReadOnlyList<ChatToolRound> rounds,
+        IReadOnlyList<ChatHistoryMessage> conversationHistory,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
         IAsyncEnumerable<ChatProviderUpdate> stream;
         try
         {
-            stream = provider.StreamWithToolsAsync(prompt, definitions, rounds, ct);
+            stream = provider.StreamWithToolsAsync(
+                prompt, definitions, rounds, conversationHistory, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

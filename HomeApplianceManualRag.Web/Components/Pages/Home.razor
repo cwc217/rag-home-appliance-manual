@@ -64,6 +64,13 @@
                 Delete an existing conversation to start a new one. Existing conversations remain available.
             </MudAlert>
         }
+        @if (!loadingHistory && IsConversationAtLimit)
+        {
+            <MudAlert Severity="Severity.Warning">
+                This conversation has reached its limit of @ChatHistoryService.MaxConversationExchanges question-and-answer exchanges.
+                Start a new conversation to continue.
+            </MudAlert>
+        }
     </section>
 
     <EditForm Model="form" OnValidSubmit="Ask" class="chat-composer">
@@ -124,6 +131,12 @@
             {
                 <MudText Typo="Typo.caption" Color="Color.Secondary">
                     Active conversations: @activeConversationCount/@ChatHistoryService.MaxActiveConversations
+                </MudText>
+            }
+            else if (selectedConversationId is not null)
+            {
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    Exchanges: @Math.Min(messages.Count / 2, ChatHistoryService.MaxConversationExchanges)/@ChatHistoryService.MaxConversationExchanges
                 </MudText>
             }
             <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary"
@@ -332,7 +345,9 @@
 
             var result = await Chat.StartAsync(
                 question,
-                selectedDocumentIds: selectedManualIds.ToArray());
+                selectedDocumentIds: selectedManualIds.ToArray(),
+                conversationId: conversationId,
+                anonymousAccessKey: IsAuthenticated ? null : anonymousAccessKey);
             if (result.Stream is null)
             {
                 var noContextMessage = ChatMessages.NoContext(CultureInfo.CurrentUICulture.Name);
@@ -377,6 +392,12 @@
             error = ex.Message;
             ConversationState.NotifyChanged();
         }
+        catch (ConversationMessageLimitExceededException ex)
+        {
+            messages.RemoveRange(originalMessageCount, messages.Count - originalMessageCount);
+            form.Question = question;
+            error = ex.Message;
+        }
         catch (ChatRateLimitException ex)
         {
             messages.RemoveAt(messages.Count - 1);
@@ -408,8 +429,11 @@
         conversationCountLoaded &&
         selectedConversationId is null &&
         activeConversationCount >= ChatHistoryService.MaxActiveConversations;
+    private bool IsConversationAtLimit =>
+        selectedConversationId is not null &&
+        messages.Count >= ChatHistoryService.MaxConversationMessages;
     private bool IsComposerDisabled =>
-        busy || loadingHistory || !conversationCountLoaded || IsNewConversationBlocked ||
+        busy || loadingHistory || !conversationCountLoaded || IsNewConversationBlocked || IsConversationAtLimit ||
         manualsLoading || !manualsLoaded || manualsError is not null ||
         availableManuals.Count == 0;
 

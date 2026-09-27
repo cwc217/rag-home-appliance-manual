@@ -588,6 +588,7 @@ public sealed class IndexingTests
             string prompt,
             IReadOnlyList<ChatToolDefinition> tools,
             IReadOnlyList<ChatToolRound> rounds,
+            IReadOnlyList<ChatHistoryMessage> conversationHistory,
             [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             await foreach (var token in StreamAsync(prompt, cancellationToken))
