@@ -88,6 +88,9 @@ project.fragment.lock.json
 artifacts/
 .artifacts/
 
+# Impeccable local reports and state
+.impeccable/
+
 # Runtime-uploaded appliance manuals
 /HomeApplianceManualRag.Web/App_Data/uploads/
 
