@@ -362,6 +362,36 @@ public sealed class DocumentValidationTests
         }
 
         [Fact]
+        public async Task Browser_upload_can_be_cancelled_while_waiting_for_an_instance_slot()
+        {
+            await using var db = CreateDb();
+            using var gate = new DocumentUploadConcurrencyGate();
+            using var first = await gate.AcquireAsync();
+            using var second = await gate.AcquireAsync();
+            using var third = await gate.AcquireAsync();
+            using var cancellation = new CancellationTokenSource();
+            var storage = new CopyingStorage();
+            var service = new DocumentService(
+                db,
+                new TestCurrentUser("admin", true),
+                new PdfValidator(Options.Create(new UploadOptions())),
+                storage,
+                new FakeActiveAccountGuard(),
+                gate);
+            var file = new BrowserFile("manual.pdf", "application/pdf", "%PDF-1.7\ncontent"u8.ToArray());
+
+            var upload = service.UploadAsync(file, cancellation.Token);
+            Assert.False(upload.IsCompleted);
+
+            cancellation.Cancel();
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => upload);
+            Assert.Empty(db.ManualDocuments);
+            Assert.Empty(db.IndexingJobs);
+            Assert.Equal(0, storage.BytesCopied);
+        }
+
+        [Fact]
         public async Task Normal_user_cannot_upload_while_another_document_is_progressing()
         {
             await using var db = CreateDb();
@@ -392,6 +422,59 @@ public sealed class DocumentValidationTests
             Assert.Equal(DocumentProcessingStage.Queued, failed.ProcessingStage);
             Assert.Null(failed.ProgressCompletedUnits);
             Assert.Null(failed.ProgressTotalUnits);
+        }
+
+        [Fact]
+        public async Task Cancel_processing_marks_document_and_job_cancelled_and_keeps_the_pdf()
+        {
+            await using var db = CreateDb();
+            var document = Document("manual", "user-1");
+            document.Status = DocumentStatus.Processing;
+            var job = new IndexingJob
+            {
+                DocumentId = document.Id,
+                DocumentVersion = document.DocumentVersion,
+                Status = IndexingJobStatus.Processing
+            };
+            db.ManualDocuments.Add(document);
+            db.IndexingJobs.Add(job);
+            await db.SaveChangesAsync();
+            var service = Service(db, new TestCurrentUser("user-1", false));
+
+            var cancelled = await service.CancelProcessingAsync(document.Id);
+
+            Assert.True(cancelled);
+            Assert.Equal(DocumentStatus.Cancelled, document.Status);
+            Assert.Equal(DocumentProcessingStage.Cancelled, document.ProcessingStage);
+            Assert.Equal(IndexingJobStatus.Cancelled, job.Status);
+            Assert.Null(document.LastError);
+            Assert.Equal("manual.pdf", document.StorageKey);
+        }
+
+        [Fact]
+        public async Task Cancel_processing_after_completion_does_not_change_ready_document()
+        {
+            await using var db = CreateDb();
+            var document = Document("manual", "user-1");
+            document.Status = DocumentStatus.Ready;
+            document.ProcessingStage = DocumentProcessingStage.Completed;
+            var job = new IndexingJob
+            {
+                DocumentId = document.Id,
+                DocumentVersion = document.DocumentVersion,
+                Status = IndexingJobStatus.Completed
+            };
+            db.ManualDocuments.Add(document);
+            db.IndexingJobs.Add(job);
+            await db.SaveChangesAsync();
+            var service = Service(db, new TestCurrentUser("user-1", false));
+
+            var cancelled = await service.CancelProcessingAsync(document.Id);
+
+            Assert.False(cancelled);
+            Assert.Equal(DocumentStatus.Ready, document.Status);
+            Assert.Equal(DocumentProcessingStage.Completed, document.ProcessingStage);
+            Assert.Equal(IndexingJobStatus.Completed, job.Status);
         }
 
         [Fact]

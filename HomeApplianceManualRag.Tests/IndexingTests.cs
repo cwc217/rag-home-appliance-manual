@@ -15,6 +15,22 @@ namespace HomeApplianceManualRag.Tests;
 public sealed class IndexingTests
 {
     [Fact]
+    public void Cancellation_registry_signals_the_active_job_and_unregisters_it_on_dispose()
+    {
+        var registry = new IndexingCancellationRegistry();
+        var jobId = Guid.NewGuid();
+        using var registration = registry.Register(jobId, CancellationToken.None);
+
+        Assert.False(registration.Token.IsCancellationRequested);
+        Assert.True(registry.Cancel(jobId));
+        Assert.True(registration.Token.IsCancellationRequested);
+
+        registration.Dispose();
+
+        Assert.False(registry.Cancel(jobId));
+    }
+
+    [Fact]
     public void Chunker_preserves_page_and_heading_provenance()
     {
         var chunker = new DocumentChunker(Options.Create(new RetrievalOptions

@@ -84,7 +84,7 @@ public sealed class ChatMessage
     public Conversation? Conversation { get; set; }
 }
 
-public enum DocumentStatus { Pending, Processing, Ready, Failed, Rejected }
+public enum DocumentStatus { Pending, Processing, Ready, Failed, Rejected, Cancelled }
 
 public enum DocumentProcessingStage
 {
@@ -97,12 +97,13 @@ public enum DocumentProcessingStage
     CreatingEmbeddings,
     SavingIndex,
     Completed,
-    Failed
+    Failed,
+    Cancelled
 }
 
 public enum MetadataExtractionStatus { Pending, Completed, NeedsReview, Failed }
 
-public enum IndexingJobStatus { Pending, Processing, Completed, Failed }
+public enum IndexingJobStatus { Pending, Processing, Completed, Failed, Cancelled }
 
 public sealed class IndexingJob
 {

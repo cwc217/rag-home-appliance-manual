@@ -32,6 +32,8 @@
                 ? percent == 100 ? "Finishing upload..." : $"Uploading PDF: {percent}%"
                 : "Validating PDF and preparing upload...")
         </MudText>
+        <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small"
+                   OnClick="ConfirmCancelUpload">Cancel</MudButton>
     }
 </MudStack>
 @if (uploadProgressPercent is int uploadPercent)
@@ -102,7 +104,13 @@
                 @if (document.DeletedAtUtc is null)
                 {
                     <MudButton Variant="Variant.Outlined" Size="Size.Small" Href="@($"/documents/{document.Id}/download")">Download</MudButton>
-                    @if (document.Status == DocumentStatus.Failed) { <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="() => Retry(document.Id)" Disabled="@IsBusy(document.Id)">Retry</MudButton> }
+                    @if (document.Status is DocumentStatus.Failed or DocumentStatus.Cancelled) { <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="() => Retry(document.Id)" Disabled="@IsBusy(document.Id)">Retry</MudButton> }
+                    @if (IsProcessingStatus(document))
+                    {
+                        <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small"
+                                   OnClick="() => ConfirmCancelProcessing(document)"
+                                   Disabled="@IsBusy(document.Id)">Cancel</MudButton>
+                    }
                     @if (isAdmin) { <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="() => Reindex(document.Id)" Disabled="@IsDocumentActionDisabled(document)">Re-index</MudButton> }
                     <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small" OnClick="() => ConfirmDelete(document)" Disabled="@IsDocumentActionDisabled(document)">Delete</MudButton>
                 }
@@ -125,6 +133,8 @@
     private IDisposable? progressSubscription;
     private readonly HashSet<Guid> busyDocuments = [];
     private IBrowserFile? selectedFile;
+    private CancellationTokenSource? uploadCancellation;
+    private Guid? uploadedDocumentId;
     private bool busy;
     private int? uploadProgressPercent;
     private bool refreshStopped;
@@ -153,6 +163,8 @@
             return;
 
         busy = true;
+        uploadCancellation = new CancellationTokenSource();
+        uploadedDocumentId = null;
         uploadProgressPercent = null;
         errorMessage = null;
         try
@@ -168,7 +180,13 @@
                 uploadProgressPercent = percent;
                 StateHasChanged();
             });
-            await Documents.UploadAsync(file, byteProgress: progress);
+            var document = await Documents.UploadAsync(
+                file,
+                uploadCancellation.Token,
+                progress);
+            uploadedDocumentId = document.Id;
+            uploadCancellation.Dispose();
+            uploadCancellation = null;
             selectedFile = null;
             refreshStopped = false;
             await Refresh();
@@ -178,10 +196,71 @@
         {
             errorMessage = ex.Message;
         }
+        catch (OperationCanceledException) when (uploadCancellation?.IsCancellationRequested == true)
+        {
+            errorMessage = "Upload cancelled.";
+        }
         finally
         {
             busy = false;
             uploadProgressPercent = null;
+            uploadCancellation?.Dispose();
+            uploadCancellation = null;
+        }
+    }
+    private async Task ConfirmCancelUpload()
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Cancel upload?",
+            "The upload or indexing process will continue unless you confirm.",
+            yesText: "Cancel upload",
+            cancelText: "Continue",
+            options: new DialogOptions { CloseOnEscapeKey = true });
+        if (confirmed != true)
+            return;
+
+        if (busy && uploadCancellation is not null)
+        {
+            uploadCancellation.Cancel();
+            return;
+        }
+
+        if (uploadedDocumentId is Guid documentId)
+            await ConfirmCancelProcessingById(documentId);
+    }
+    private async Task ConfirmCancelProcessing(ManualDocument document)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Cancel processing?",
+            $"Cancel indexing for \"{document.DisplayName}\"? The uploaded PDF will be kept and can be retried.",
+            yesText: "Cancel processing",
+            cancelText: "Continue processing",
+            options: new DialogOptions { CloseOnEscapeKey = true });
+        if (confirmed == true)
+            await ConfirmCancelProcessingById(document.Id);
+    }
+    private async Task ConfirmCancelProcessingById(Guid documentId)
+    {
+        if (!busyDocuments.Add(documentId))
+            return;
+
+        errorMessage = null;
+        try
+        {
+            var cancelled = await Documents.CancelProcessingAsync(documentId);
+            if (!cancelled)
+                errorMessage = "Processing has already finished and cannot be cancelled.";
+            await Refresh();
+            refreshStopped = false;
+            StartFallbackRefresh();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException or KeyNotFoundException or IOException)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            busyDocuments.Remove(documentId);
         }
     }
     private async Task Retry(Guid id)
@@ -429,6 +508,8 @@
     public async ValueTask DisposeAsync()
     {
         progressSubscription?.Dispose();
+        uploadCancellation?.Cancel();
+        uploadCancellation?.Dispose();
         refreshCancellation.Cancel();
         if (refreshTask is not null)
         {

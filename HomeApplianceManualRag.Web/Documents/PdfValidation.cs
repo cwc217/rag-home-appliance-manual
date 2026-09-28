@@ -5,14 +5,19 @@ using HomeApplianceManualRag.Web.Configuration;
 namespace HomeApplianceManualRag.Web.Documents;
 
 public sealed record PdfValidationResult(bool IsValid, string? Error, long SizeBytes);
-public sealed record PdfUpload(string FileName, string ContentType, long Length, Func<Stream> OpenRead);
+public sealed record PdfUpload(
+    string FileName,
+    string ContentType,
+    long Length,
+    Func<CancellationToken, Stream> OpenRead);
 
 public sealed class PdfValidator(IOptions<UploadOptions> options)
 {
     private static readonly byte[] Signature = "%PDF-"u8.ToArray();
 
     public Task<PdfValidationResult> ValidateAsync(IFormFile file, CancellationToken cancellationToken = default) =>
-        ValidateAsync(new PdfUpload(file.FileName, file.ContentType, file.Length, () => file.OpenReadStream()), cancellationToken);
+        ValidateAsync(new PdfUpload(
+            file.FileName, file.ContentType, file.Length, _ => file.OpenReadStream()), cancellationToken);
 
     public async Task<PdfValidationResult> ValidateAsync(PdfUpload file, CancellationToken cancellationToken = default)
     {
@@ -23,7 +28,8 @@ public sealed class PdfValidator(IOptions<UploadOptions> options)
             return new(false, "Only .pdf files are accepted.", file.Length);
         if (!string.Equals(file.ContentType, "application/pdf", StringComparison.OrdinalIgnoreCase))
             return new(false, "The declared content type must be application/pdf.", file.Length);
-        await using var stream = file.OpenRead();
+        cancellationToken.ThrowIfCancellationRequested();
+        await using var stream = file.OpenRead(cancellationToken);
         var header = new byte[Signature.Length];
         var read = await stream.ReadAsync(header, cancellationToken);
         if (read != Signature.Length || !header.AsSpan().SequenceEqual(Signature))

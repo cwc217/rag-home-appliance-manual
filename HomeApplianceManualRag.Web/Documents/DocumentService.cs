@@ -19,19 +19,23 @@ public sealed class DocumentService(
     IFileStorage storage,
     IActiveAccountGuard accountGuard,
     DocumentUploadConcurrencyGate uploadConcurrencyGate,
+    IndexingCancellationRegistry? indexingCancellationRegistry = null,
+    DocumentProgressNotifier? progressNotifier = null,
     ActivityLogService? activityLog = null)
 {
     private static readonly DocumentStatus[] ActiveStatuses = [DocumentStatus.Pending, DocumentStatus.Processing, DocumentStatus.Ready];
 
     public async Task<ManualDocument> UploadAsync(IFormFile file, CancellationToken cancellationToken = default)
-        => await UploadAsync(new PdfUpload(file.FileName, file.ContentType, file.Length, () => file.OpenReadStream()), cancellationToken);
+        => await UploadAsync(new PdfUpload(
+            file.FileName, file.ContentType, file.Length, _ => file.OpenReadStream()), cancellationToken);
 
     public async Task<ManualDocument> UploadAsync(
         IBrowserFile file,
         CancellationToken cancellationToken = default,
         IProgress<long>? byteProgress = null)
         => await UploadAsync(
-            new PdfUpload(file.Name, file.ContentType, file.Size, () => file.OpenReadStream(file.Size)),
+            new PdfUpload(file.Name, file.ContentType, file.Size,
+                ct => file.OpenReadStream(file.Size, ct)),
             cancellationToken,
             byteProgress);
 
@@ -62,7 +66,7 @@ public sealed class DocumentService(
         try
         {
             storageWriteStarted = true;
-            await using var stream = file.OpenRead();
+            await using var stream = file.OpenRead(cancellationToken);
             if (byteProgress is null)
             {
                 await storage.StoreAsync(key, stream, cancellationToken);
@@ -251,7 +255,8 @@ public sealed class DocumentService(
     public async Task RetryAsync(Guid id, CancellationToken ct = default)
     {
         var document = await GetAuthorizedAsync(id, ct);
-        if (document.Status != DocumentStatus.Failed) throw new InvalidOperationException("Only failed documents can be retried.");
+        if (document.Status is not (DocumentStatus.Failed or DocumentStatus.Cancelled))
+            throw new InvalidOperationException("Only failed or cancelled documents can be retried.");
         if (!currentUser.IsInRole(ApplicationRoles.Admin) &&
             await HasInProgressDocumentAsync(currentUser.UserId!, ct))
             throw new DocumentProcessingInProgressException();
@@ -268,6 +273,71 @@ public sealed class DocumentService(
                 ActivityTypes.DocumentRetried,
                 "ManualDocument",
                 document.Id.ToString());
+    }
+
+    public async Task<bool> CancelProcessingAsync(Guid id, CancellationToken ct = default)
+    {
+        var document = await GetAuthorizedAsync(id, ct);
+        if (document.Status is not (DocumentStatus.Pending or DocumentStatus.Processing))
+            return false;
+
+        var job = await db.IndexingJobs
+            .Where(x => x.DocumentId == document.Id &&
+                        x.DocumentVersion == document.DocumentVersion &&
+                        (x.Status == IndexingJobStatus.Pending || x.Status == IndexingJobStatus.Processing))
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
+        if (job is null)
+            return false;
+
+        var previousStatus = job.Status;
+        await using var transaction = db.Database.IsRelational()
+            ? await db.Database.BeginTransactionAsync(ct)
+            : null;
+        if (db.Database.IsRelational())
+        {
+            var updated = await db.IndexingJobs
+                .Where(x => x.Id == job.Id &&
+                            (x.Status == IndexingJobStatus.Pending ||
+                             x.Status == IndexingJobStatus.Processing))
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(x => x.Status, IndexingJobStatus.Cancelled)
+                    .SetProperty(x => x.NextAttemptAtUtc, (DateTime?)null)
+                    .SetProperty(x => x.CompletedAtUtc, DateTime.UtcNow), ct);
+            if (updated == 0)
+                return false;
+        }
+        else
+        {
+            if (job.Status is not (IndexingJobStatus.Pending or IndexingJobStatus.Processing))
+                return false;
+            job.Status = IndexingJobStatus.Cancelled;
+            job.NextAttemptAtUtc = null;
+            job.CompletedAtUtc = DateTime.UtcNow;
+        }
+
+        document.Status = DocumentStatus.Cancelled;
+        document.ProcessingStage = DocumentProcessingStage.Cancelled;
+        document.ProgressCompletedUnits = null;
+        document.ProgressTotalUnits = null;
+        document.LastError = null;
+        document.UpdatedAtUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        if (transaction is not null)
+            await transaction.CommitAsync(ct);
+
+        if (previousStatus == IndexingJobStatus.Processing)
+            indexingCancellationRegistry?.Cancel(job.Id);
+        if (progressNotifier is not null)
+            await progressNotifier.PublishAsync(new(
+                document.Id,
+                document.OwnerUserId,
+                document.Status,
+                document.LastError,
+                document.ProcessingStage,
+                document.ProgressCompletedUnits,
+                document.ProgressTotalUnits));
+        return true;
     }
 
     public async Task ReindexAsync(Guid id, CancellationToken ct = default)

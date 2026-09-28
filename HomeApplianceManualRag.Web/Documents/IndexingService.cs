@@ -54,6 +54,8 @@ public sealed class IndexingPipeline(
     {
         var job = await db.IndexingJobs.SingleOrDefaultAsync(x => x.Id == jobId, cancellationToken)
             ?? throw new DocumentParseException("Indexing job was deleted.");
+        if (job.Status == IndexingJobStatus.Cancelled)
+            throw new IndexingJobCancelledException();
         var document = await db.ManualDocuments.SingleOrDefaultAsync(x => x.Id == job.DocumentId, cancellationToken)
             ?? throw new DocumentParseException("Document was deleted before indexing.");
         if (document.DeletedAtUtc is not null)
@@ -63,19 +65,19 @@ public sealed class IndexingPipeline(
 
         document.Status = DocumentStatus.Processing;
         document.LastError = null;
-        await ReportProgressAsync(document, DocumentProcessingStage.ExtractingText, cancellationToken);
+        await ReportProgressAsync(job.Id, document, DocumentProcessingStage.ExtractingText, cancellationToken);
 
         await using var content = await storage.OpenReadAsync(document.StorageKey, cancellationToken);
         var parsed = await parser.ParseAsync(new DocumentParseRequest(document.Id, document.DisplayName, content, cancellationToken));
-        await ReportProgressAsync(document, DocumentProcessingStage.VerifyingManual, cancellationToken);
+        await ReportProgressAsync(job.Id, document, DocumentProcessingStage.VerifyingManual, cancellationToken);
         var classification = await classifier.ClassifyAsync(document.DisplayName, parsed, cancellationToken);
         if (!classification.IsManual ||
             classification.Confidence < typeSafeOptions.Value.MinimumConfidence)
             throw new DocumentRejectedException(
                 "This file does not appear to be a household appliance manual.");
-        await ReportProgressAsync(document, DocumentProcessingStage.AnalyzingImages, cancellationToken);
+        await ReportProgressAsync(job.Id, document, DocumentProcessingStage.AnalyzingImages, cancellationToken);
         parsed = await AnalyzeImagesAsync(parsed, cancellationToken);
-        await ReportProgressAsync(document, DocumentProcessingStage.ExtractingMetadata, cancellationToken);
+        await ReportProgressAsync(job.Id, document, DocumentProcessingStage.ExtractingMetadata, cancellationToken);
         var metadata = await metadataExtractor.ExtractAsync(
             document.DisplayName, parsed, cancellationToken);
         document.ProductName = metadata.ProductName;
@@ -86,13 +88,14 @@ public sealed class IndexingPipeline(
         document.MetadataConfidence = metadata.Confidence;
         document.MetadataStatus = metadata.Status;
         document.MetadataExtractedAtUtc = DateTime.UtcNow;
-        await ReportProgressAsync(document, DocumentProcessingStage.PreparingChunks, cancellationToken);
+        await ReportProgressAsync(job.Id, document, DocumentProcessingStage.PreparingChunks, cancellationToken);
         var drafts = chunker.Chunk(parsed);
         if (drafts.Count == 0)
             throw new DocumentParseException("The document has no extractable text.");
 
         var vectors = new List<ManualChunk>(drafts.Count);
         await ReportProgressAsync(
+            job.Id,
             document,
             DocumentProcessingStage.CreatingEmbeddings,
             cancellationToken,
@@ -120,6 +123,7 @@ public sealed class IndexingPipeline(
             if (completedUnits % progressInterval == 0 || completedUnits == drafts.Count)
             {
                 await ReportProgressAsync(
+                    job.Id,
                     document,
                     DocumentProcessingStage.CreatingEmbeddings,
                     cancellationToken,
@@ -129,6 +133,7 @@ public sealed class IndexingPipeline(
         }
 
         await ReportProgressAsync(
+            job.Id,
             document,
             DocumentProcessingStage.SavingIndex,
             cancellationToken,
@@ -153,8 +158,23 @@ public sealed class IndexingPipeline(
         document.IndexedAtUtc = DateTime.UtcNow;
         document.UpdatedAtUtc = DateTime.UtcNow;
         document.LastError = null;
-        job.Status = IndexingJobStatus.Completed;
-        job.CompletedAtUtc = DateTime.UtcNow;
+        if (db.Database.IsRelational())
+        {
+            var completed = await db.IndexingJobs
+                .Where(x => x.Id == job.Id && x.Status == IndexingJobStatus.Processing)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(x => x.Status, IndexingJobStatus.Completed)
+                    .SetProperty(x => x.CompletedAtUtc, DateTime.UtcNow), cancellationToken);
+            if (completed == 0)
+                throw new IndexingJobCancelledException();
+        }
+        else
+        {
+            if (job.Status != IndexingJobStatus.Processing)
+                throw new IndexingJobCancelledException();
+            job.Status = IndexingJobStatus.Completed;
+            job.CompletedAtUtc = DateTime.UtcNow;
+        }
         await db.SaveChangesAsync(cancellationToken);
         if (transaction is not null)
             await transaction.CommitAsync(cancellationToken);
@@ -170,12 +190,19 @@ public sealed class IndexingPipeline(
     }
 
     private async Task ReportProgressAsync(
+        Guid jobId,
         ManualDocument document,
         DocumentProcessingStage stage,
         CancellationToken cancellationToken,
         int? completedUnits = null,
         int? totalUnits = null)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (await db.IndexingJobs
+                .Where(x => x.Id == jobId)
+                .Select(x => x.Status == IndexingJobStatus.Cancelled)
+                .SingleOrDefaultAsync(cancellationToken))
+            throw new IndexingJobCancelledException();
         document.ProcessingStage = stage;
         document.ProgressCompletedUnits = completedUnits;
         document.ProgressTotalUnits = totalUnits;
@@ -237,6 +264,7 @@ public sealed class DocumentRejectedException(string message) : Exception(messag
 public sealed class IndexingWorker(
     IServiceScopeFactory scopeFactory,
     IOptions<DoclingOptions> options,
+    IndexingCancellationRegistry cancellationRegistry,
     DocumentProgressNotifier progressNotifier,
     ILogger<IndexingWorker> logger) : BackgroundService
 {
@@ -281,8 +309,14 @@ public sealed class IndexingWorker(
             {
                 if (!await TryClaimAsync(db, job.Id, ct))
                     continue;
+                using var cancellation = cancellationRegistry.Register(job.Id, ct);
                 var pipeline = scope.ServiceProvider.GetRequiredService<IndexingPipeline>();
-                await pipeline.ProcessAsync(job.Id, ct);
+                await pipeline.ProcessAsync(job.Id, cancellation.Token);
+            }
+            catch (IndexingJobCancelledException)
+            {
+                if (await IsCancelledAsync(job.Id, ct))
+                    await MarkCancelledAsync(job.Id, ct);
             }
             catch (DocumentParseException ex)
             {
@@ -306,7 +340,10 @@ public sealed class IndexingWorker(
             }
             catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
             {
-                await MarkFailureAsync(job.Id, ex, retryable: true, ct);
+                if (await IsCancelledAsync(job.Id, ct))
+                    await MarkCancelledAsync(job.Id, ct);
+                else
+                    await MarkFailureAsync(job.Id, ex, retryable: true, ct);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -357,9 +394,34 @@ public sealed class IndexingWorker(
         await using var db = await factory.CreateDbContextAsync(ct);
         var job = await db.IndexingJobs.Include(x => x.Document).SingleOrDefaultAsync(x => x.Id == jobId, ct);
         if (job is null) return;
-        job.Status = retryable && job.Attempts < 3 ? IndexingJobStatus.Pending : IndexingJobStatus.Failed;
-        job.LastError = exception.Message;
-        job.NextAttemptAtUtc = job.Status == IndexingJobStatus.Pending ? DateTime.UtcNow.AddMinutes(Math.Pow(2, job.Attempts)) : null;
+        if (job.Status == IndexingJobStatus.Cancelled) return;
+        var status = retryable && job.Attempts < 3 ? IndexingJobStatus.Pending : IndexingJobStatus.Failed;
+        var nextAttempt = status == IndexingJobStatus.Pending
+            ? DateTime.UtcNow.AddMinutes(Math.Pow(2, job.Attempts))
+            : (DateTime?)null;
+        await using var transaction = db.Database.IsRelational()
+            ? await db.Database.BeginTransactionAsync(ct)
+            : null;
+        if (db.Database.IsRelational())
+        {
+            var updated = await db.IndexingJobs
+                .Where(x => x.Id == jobId &&
+                            (x.Status == IndexingJobStatus.Pending ||
+                             x.Status == IndexingJobStatus.Processing))
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(x => x.Status, status)
+                    .SetProperty(x => x.LastError, exception.Message)
+                    .SetProperty(x => x.NextAttemptAtUtc, nextAttempt), ct);
+            if (updated == 0)
+                return;
+            db.Entry(job).State = EntityState.Detached;
+        }
+        else
+        {
+            job.Status = status;
+            job.LastError = exception.Message;
+            job.NextAttemptAtUtc = nextAttempt;
+        }
         if (job.Document is not null &&
             job.Document.DeletedAtUtc is null &&
             job.Document.DocumentVersion == job.DocumentVersion)
@@ -372,6 +434,8 @@ public sealed class IndexingWorker(
             job.Document.UpdatedAtUtc = DateTime.UtcNow;
         }
         await db.SaveChangesAsync(ct);
+        if (transaction is not null)
+            await transaction.CommitAsync(ct);
         var service = exception switch
         {
             DocumentParseException => "Docling",
@@ -384,7 +448,7 @@ public sealed class IndexingWorker(
                 service,
                 "Index document",
                 exception,
-                job.Status == IndexingJobStatus.Pending ? "Warning" : "Error",
+                status == IndexingJobStatus.Pending ? "Warning" : "Error",
                 job.DocumentId,
                 job.Id,
                 ct);
@@ -409,9 +473,30 @@ public sealed class IndexingWorker(
         await using var db = await factory.CreateDbContextAsync(ct);
         var job = await db.IndexingJobs.Include(x => x.Document).SingleOrDefaultAsync(x => x.Id == jobId, ct);
         if (job is null) return;
-        job.Status = IndexingJobStatus.Failed;
-        job.LastError = exception.Message;
-        job.NextAttemptAtUtc = null;
+        if (job.Status == IndexingJobStatus.Cancelled) return;
+        await using var transaction = db.Database.IsRelational()
+            ? await db.Database.BeginTransactionAsync(ct)
+            : null;
+        if (db.Database.IsRelational())
+        {
+            var updated = await db.IndexingJobs
+                .Where(x => x.Id == jobId &&
+                            (x.Status == IndexingJobStatus.Pending ||
+                             x.Status == IndexingJobStatus.Processing))
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(x => x.Status, IndexingJobStatus.Failed)
+                    .SetProperty(x => x.LastError, exception.Message)
+                    .SetProperty(x => x.NextAttemptAtUtc, (DateTime?)null), ct);
+            if (updated == 0)
+                return;
+            db.Entry(job).State = EntityState.Detached;
+        }
+        else
+        {
+            job.Status = IndexingJobStatus.Failed;
+            job.LastError = exception.Message;
+            job.NextAttemptAtUtc = null;
+        }
         if (job.Document is not null &&
             job.Document.DeletedAtUtc is null &&
             job.Document.DocumentVersion == job.DocumentVersion)
@@ -424,6 +509,8 @@ public sealed class IndexingWorker(
             job.Document.UpdatedAtUtc = DateTime.UtcNow;
         }
         await db.SaveChangesAsync(ct);
+        if (transaction is not null)
+            await transaction.CommitAsync(ct);
         if (job.Document is not null)
             await progressNotifier.PublishAsync(new(
                 job.Document.Id,
@@ -434,5 +521,53 @@ public sealed class IndexingWorker(
                 job.Document.ProgressCompletedUnits,
                 job.Document.ProgressTotalUnits));
         logger.LogInformation("Indexing job {JobId} rejected because the document is not a supported manual.", jobId);
+    }
+
+    private async Task MarkCancelledAsync(Guid jobId, CancellationToken ct)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var factory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<ApplicationDbContext>>();
+        await using var db = await factory.CreateDbContextAsync(ct);
+        var job = await db.IndexingJobs.Include(x => x.Document)
+            .SingleOrDefaultAsync(x => x.Id == jobId, ct);
+        if (job is null || job.Status == IndexingJobStatus.Completed)
+            return;
+
+        job.Status = IndexingJobStatus.Cancelled;
+        job.NextAttemptAtUtc = null;
+        job.CompletedAtUtc = DateTime.UtcNow;
+        job.LastError = null;
+        if (job.Document is not null &&
+            job.Document.DeletedAtUtc is null &&
+            job.Document.DocumentVersion == job.DocumentVersion)
+        {
+            job.Document.Status = DocumentStatus.Cancelled;
+            job.Document.ProcessingStage = DocumentProcessingStage.Cancelled;
+            job.Document.ProgressCompletedUnits = null;
+            job.Document.ProgressTotalUnits = null;
+            job.Document.LastError = null;
+            job.Document.UpdatedAtUtc = DateTime.UtcNow;
+        }
+        await db.SaveChangesAsync(ct);
+        if (job.Document is not null)
+            await progressNotifier.PublishAsync(new(
+                job.Document.Id,
+                job.Document.OwnerUserId,
+                job.Document.Status,
+                job.Document.LastError,
+                job.Document.ProcessingStage,
+                job.Document.ProgressCompletedUnits,
+                job.Document.ProgressTotalUnits));
+    }
+
+    private async Task<bool> IsCancelledAsync(Guid jobId, CancellationToken ct)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var factory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<ApplicationDbContext>>();
+        await using var db = await factory.CreateDbContextAsync(ct);
+        return await db.IndexingJobs
+            .Where(x => x.Id == jobId)
+            .Select(x => x.Status == IndexingJobStatus.Cancelled)
+            .SingleOrDefaultAsync(ct);
     }
 }

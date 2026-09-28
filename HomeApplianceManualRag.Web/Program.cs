@@ -106,6 +106,7 @@ builder.Services.AddScoped<AdminConversationService>();
 builder.Services.AddScoped<ChatConversationState>();
 builder.Services.AddSingleton<ChatRateLimiter>();
 builder.Services.AddSingleton<DocumentUploadConcurrencyGate>();
+builder.Services.AddSingleton<IndexingCancellationRegistry>();
 builder.Services.AddScoped<PdfValidator>();
 builder.Services.AddScoped<DocumentService>();
 builder.Services.AddScoped<IDocumentParser>(serviceProvider =>
