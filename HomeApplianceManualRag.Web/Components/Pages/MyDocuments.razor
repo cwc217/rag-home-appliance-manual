@@ -21,7 +21,6 @@
         <label for="manual-upload">PDF manual</label>
         <InputFile id="manual-upload" OnChange="SelectFile" accept=".pdf,application/pdf"
                    aria-describedby="manual-upload-help" />
-        <span id="manual-upload-help">PDF only, maximum 10 MB.</span>
     </div>
     <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Upload"
                OnClick="Upload" Disabled="@(selectedFile is null || IsUploadDisabled)">Upload</MudButton>
