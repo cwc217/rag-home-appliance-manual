@@ -327,6 +327,15 @@ body {
     max-width: 100%;
 }
 
+.document-upload-tips ul {
+    margin: .25rem 0 0;
+    padding-left: 1.25rem;
+}
+
+.document-upload-tips li + li {
+    margin-top: .25rem;
+}
+
 @media (max-width: 576px) {
     .chat-shell {
         width: 100%;
