@@ -18,6 +18,7 @@ public sealed class DocumentService(
     PdfValidator validator,
     IFileStorage storage,
     IActiveAccountGuard accountGuard,
+    DocumentUploadConcurrencyGate uploadConcurrencyGate,
     ActivityLogService? activityLog = null)
 {
     private static readonly DocumentStatus[] ActiveStatuses = [DocumentStatus.Pending, DocumentStatus.Processing, DocumentStatus.Ready];
@@ -44,6 +45,7 @@ public sealed class DocumentService(
         if (!validation.IsValid) throw new InvalidDataException(validation.Error);
         var isAdmin = currentUser.IsInRole(ApplicationRoles.Admin);
         var owner = isAdmin ? null : currentUser.UserId ?? throw new DocumentForbiddenException();
+        using var uploadLease = await uploadConcurrencyGate.AcquireAsync(cancellationToken);
         await using var transaction = db.Database.IsRelational()
             ? await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken)
             : null;

@@ -152,7 +152,8 @@ public sealed class DocumentValidationTests
             await db.SaveChangesAsync();
             var storage = new RecordingStorage();
             var service = new DocumentService(db, new TestCurrentUser("user-1", false),
-                new PdfValidator(Options.Create(new UploadOptions())), storage, new FakeActiveAccountGuard());
+                new PdfValidator(Options.Create(new UploadOptions())), storage, new FakeActiveAccountGuard(),
+                new DocumentUploadConcurrencyGate());
 
             await service.DeleteAsync(document.Id);
 
@@ -201,7 +202,8 @@ public sealed class DocumentValidationTests
             await db.SaveChangesAsync();
             var storage = new RecordingStorage();
             var service = new DocumentService(db, new TestCurrentUser("admin", true),
-                new PdfValidator(Options.Create(new UploadOptions())), storage, new FakeActiveAccountGuard());
+                new PdfValidator(Options.Create(new UploadOptions())), storage, new FakeActiveAccountGuard(),
+                new DocumentUploadConcurrencyGate());
 
             await service.RestoreAsync(document.Id);
             Assert.Null((await db.ManualDocuments.FindAsync(document.Id))!.DeletedAtUtc);
@@ -223,7 +225,8 @@ public sealed class DocumentValidationTests
             db.ManualDocuments.Add(document);
             await db.SaveChangesAsync();
             var service = new DocumentService(db, new TestCurrentUser("user-1", false),
-                new PdfValidator(Options.Create(new UploadOptions())), new RecordingStorage(), new FakeActiveAccountGuard());
+                new PdfValidator(Options.Create(new UploadOptions())), new RecordingStorage(), new FakeActiveAccountGuard(),
+                new DocumentUploadConcurrencyGate());
 
             await Assert.ThrowsAsync<DocumentForbiddenException>(() => service.RestoreAsync(document.Id));
             await Assert.ThrowsAsync<DocumentForbiddenException>(() => service.HardDeleteAsync(document.Id));
@@ -316,7 +319,8 @@ public sealed class DocumentValidationTests
                 new TestCurrentUser("admin", true),
                 new PdfValidator(Options.Create(new UploadOptions())),
                 storage,
-                new FakeActiveAccountGuard());
+                new FakeActiveAccountGuard(),
+                new DocumentUploadConcurrencyGate());
             var file = new BrowserFile("manual.pdf", "application/pdf", "%PDF-1.7\ncontent"u8.ToArray());
             var progress = new RecordingProgress();
 
@@ -324,6 +328,36 @@ public sealed class DocumentValidationTests
 
             Assert.NotEmpty(progress.Values);
             Assert.Equal(file.Size, progress.Values[^1]);
+            Assert.Equal(file.Size, storage.BytesCopied);
+        }
+
+        [Fact]
+        public async Task Browser_upload_waits_until_an_instance_upload_slot_is_available()
+        {
+            await using var db = CreateDb();
+            using var gate = new DocumentUploadConcurrencyGate();
+            using var first = await gate.AcquireAsync();
+            using var second = await gate.AcquireAsync();
+            using var third = await gate.AcquireAsync();
+            var storage = new CopyingStorage();
+            var service = new DocumentService(
+                db,
+                new TestCurrentUser("admin", true),
+                new PdfValidator(Options.Create(new UploadOptions())),
+                storage,
+                new FakeActiveAccountGuard(),
+                gate);
+            var file = new BrowserFile("manual.pdf", "application/pdf", "%PDF-1.7\ncontent"u8.ToArray());
+
+            var upload = service.UploadAsync(file);
+
+            Assert.False(upload.IsCompleted);
+            Assert.Equal(1, file.OpenReadStreamCount);
+            Assert.Equal(0, storage.BytesCopied);
+            first.Dispose();
+            var document = await upload;
+
+            Assert.Equal("manual.pdf", document.DisplayName);
             Assert.Equal(file.Size, storage.BytesCopied);
         }
 
@@ -386,7 +420,7 @@ public sealed class DocumentValidationTests
 
         private static DocumentService Service(ApplicationDbContext db, ICurrentUser user) =>
             new(db, user, new PdfValidator(Options.Create(new UploadOptions())), new NoopStorage(),
-                new FakeActiveAccountGuard());
+                new FakeActiveAccountGuard(), new DocumentUploadConcurrencyGate());
 
         private sealed class TestCurrentUser(string? id, bool admin) : ICurrentUser
         {
@@ -435,12 +469,16 @@ public sealed class DocumentValidationTests
 
         private sealed class BrowserFile(string name, string contentType, byte[] content) : IBrowserFile
         {
+            public int OpenReadStreamCount { get; private set; }
             public string Name => name;
             public DateTimeOffset LastModified => DateTimeOffset.UtcNow;
             public long Size => content.LongLength;
             public string ContentType => contentType;
-            public Stream OpenReadStream(long maxAllowedSize = 512000, CancellationToken cancellationToken = default) =>
-                new MemoryStream(content, writable: false);
+            public Stream OpenReadStream(long maxAllowedSize = 512000, CancellationToken cancellationToken = default)
+            {
+                OpenReadStreamCount++;
+                return new MemoryStream(content, writable: false);
+            }
         }
     }
 
