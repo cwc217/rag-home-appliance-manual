@@ -30,6 +30,21 @@ public sealed class ChatTests
     }
 
     [Fact]
+    public void Grounded_prompt_includes_all_pages_and_section_path()
+    {
+        var prompt = GroundedPrompt.Build("What does E18 mean?", [
+            new RetrievedChunk(Guid.NewGuid(), "washer.pdf", 4, "Check the inlet filter.", .9)
+            {
+                PageNumbers = [4, 5],
+                ParentHeaders = ["Troubleshooting", "Water supply"]
+            }
+        ]);
+
+        Assert.Contains("[washer.pdf, p. 4] [washer.pdf, p. 5]", prompt, StringComparison.Ordinal);
+        Assert.Contains("Section: Troubleshooting > Water supply", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Grounded_prompt_includes_selected_manual_ids_and_scope_instruction()
     {
         var selectedId = Guid.NewGuid();
@@ -152,6 +167,91 @@ public sealed class ChatTests
 
         var item = Assert.Single(result);
         Assert.Equal("mine.pdf", item.DocumentName);
+    }
+
+    [Fact]
+    public async Task In_memory_retrieval_uses_lexical_rank_fusion_for_exact_manual_terms()
+    {
+        await using var db = CreateDatabase();
+        var unrelated = ApplianceManual("user-1", "unrelated.pdf");
+        var exact = ApplianceManual("user-1", "exact.pdf");
+        var unrelatedChunk = Chunk(unrelated, "A general maintenance section.");
+        var exactChunk = Chunk(exact, "Error code E18 means check the inlet filter.");
+        exactChunk.SearchText = "error code e18 means check the inlet filter";
+        db.AddRange(unrelated, exact);
+        db.AddRange(unrelatedChunk, exactChunk);
+        await db.SaveChangesAsync();
+
+        var retriever = new ManualRetriever(db, new DeterministicFakeEmbeddingProvider(1536),
+            Options.Create(new RetrievalOptions { TopK = 1, CandidateCount = 10 }));
+
+        var result = await retriever.RetrieveAsync(
+            "What does E18 mean?", RetrievalScope.UserOwn, "user-1");
+
+        Assert.Equal("exact.pdf", Assert.Single(result).DocumentName);
+    }
+
+    [Fact]
+    public async Task Retrieval_expands_child_to_parent_and_preserves_multi_page_citations()
+    {
+        await using var db = CreateDatabase();
+        var document = ApplianceManual("user-1", "washer.pdf");
+        var parent = new ManualChunk
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = document.Id,
+            Document = document,
+            ChunkOrdinal = 2,
+            PageNumbers = [4, 5],
+            Content = "Complete water-supply troubleshooting section.",
+            ParentHeaders = ["Troubleshooting", "Water supply"],
+            ChunkType = ManualChunkType.SectionParent,
+            TokenCount = 20
+        };
+        var child = Chunk(document, "Check the inlet filter.");
+        child.ParentChunkId = parent.Id;
+        db.Add(document);
+        db.AddRange(parent, child);
+        await db.SaveChangesAsync();
+
+        var retriever = new ManualRetriever(db, new DeterministicFakeEmbeddingProvider(1536),
+            Options.Create(new RetrievalOptions { TopK = 1, MaxExpandedParentTokens = 100 }));
+
+        var result = Assert.Single(await retriever.RetrieveAsync(
+            "How do I clean the water filter?", RetrievalScope.UserOwn, "user-1"));
+
+        Assert.Equal(parent.Content, result.Text);
+        Assert.Equal([4, 5], result.PageNumbers);
+        Assert.Equal(parent.ParentHeaders, result.ParentHeaders);
+    }
+
+    [Fact]
+    public async Task Retrieval_uses_configured_reranker_only_when_enabled()
+    {
+        await using var db = CreateDatabase();
+        var first = ApplianceManual("user-1", "first.pdf");
+        var second = ApplianceManual("user-1", "second.pdf");
+        db.AddRange(first, second);
+        db.AddRange(Chunk(first, "First manual excerpt."), Chunk(second, "Second manual excerpt."));
+        await db.SaveChangesAsync();
+        var reranker = new ReversingManualReranker();
+        var retriever = new ManualRetriever(
+            db,
+            new DeterministicFakeEmbeddingProvider(1536),
+            Options.Create(new RetrievalOptions
+            {
+                TopK = 1,
+                CandidateCount = 10,
+                RerankerCandidateCount = 10,
+                EnableReranking = true
+            }),
+            reranker: reranker);
+
+        var result = Assert.Single(await retriever.RetrieveAsync(
+            "Which manual applies?", RetrievalScope.UserOwn, "user-1"));
+
+        Assert.Equal(1, reranker.CallCount);
+        Assert.Equal(reranker.Candidates[^1].DocumentId, result.DocumentId);
     }
 
     [Fact]
@@ -784,6 +884,24 @@ public sealed class ChatTests
         {
             Events.Add((service, operation, exception));
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class ReversingManualReranker : IManualReranker
+    {
+        public int CallCount { get; private set; }
+        public IReadOnlyList<RetrievedChunk> Candidates { get; private set; } = [];
+
+        public Task<IReadOnlyList<Guid>> RerankAsync(
+            string question,
+            IReadOnlyList<RetrievedChunk> candidates,
+            int resultCount,
+            CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            Candidates = candidates;
+            return Task.FromResult<IReadOnlyList<Guid>>(
+                candidates.Reverse().Take(resultCount).Select(candidate => candidate.ChunkId).ToArray());
         }
     }
 

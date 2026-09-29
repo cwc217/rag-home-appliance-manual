@@ -111,14 +111,20 @@ Pending -> Processing -> Ready
    process does not load Python packages.
 2. Preserve page number, document id, block order, block type, heading path,
    table/image markers, and source references on every parsed block.
-3. Reject empty/textless output with an actionable `Failed` error.
-4. Normalize whitespace without destroying meaningful line breaks.
-5. Split blocks into deterministic, overlapping chunks owned by the
-   application, not by the parser.
-6. Store chunk text, page number, chunk ordinal, parser version, and document
-   version.
-7. Generate an embedding for each chunk using the configured Azure OpenAI
-   embedding deployment.
+3. If the first pass is text-poor on the configured share of pages, retry the
+   conversion once with Docling OCR enabled; reject still-empty output with an
+   actionable `Failed` error.
+4. Remove page furniture and exact same-page heading prefixes without
+   destroying meaningful line breaks.
+5. Chunk by heading and block structure, using the multilingual token estimate
+   as a safety ceiling. Preserve table rows and repeat table headers if a table
+   must be split; keep image descriptions in their own chunk type.
+6. Store source content separately from enriched embedding text, normalized
+   search text, page-number arrays, parent headings, content type, token
+   estimate, and parser/chunker/embedding provenance. Link bounded section
+   parents to their searchable child chunks.
+7. Generate an embedding for each searchable chunk using the configured Azure
+   OpenAI embedding deployment; parent context rows are not embedded.
 8. Verify the returned dimension equals `AzureOpenAI__EmbeddingDimensions`
    before persistence.
 9. Replace a document's chunks atomically only after all embeddings succeed.
@@ -127,25 +133,34 @@ Pending -> Processing -> Ready
 
 Phase 3 remains PDF-only. The parser requests Docling embedded picture
 artifacts and keeps bounded image bytes in memory alongside page provenance;
-the bytes are not persisted. When explicitly enabled, each bounded picture is
-sent to Azure OpenAI multimodal chat for exact visible text and a semantic
-description; the two results are merged into the page-aware chunk before
-embedding. The analyzer has a per-document image cap and timeout, and a
-failed analysis preserves the normal indexing failure/retry behavior. Docling's
-DOCX and other image input adapters remain reserved for later work.
+the bytes are not persisted. When enabled, bounded pictures are sent to Azure
+OpenAI multimodal chat for visible text and a semantic description; results are
+indexed as distinct image-description chunks. The analyzer has a per-document
+image cap and timeout, and a failed analysis preserves the normal indexing
+failure/retry behavior. Docling's DOCX and other image input adapters remain
+reserved for later work.
 
-The exact chunk size and overlap may be tuned during implementation, but must be configuration values and covered by unit tests. A chunk must never lose its source page metadata.
+The default maximum chunk size is a configurable estimated-token ceiling, not
+fixed-length chunking. An exact model-tokenizer guarantee is not claimed. A
+chunk must never lose its source page metadata.
 
 ### Retrieval
 
-Use PostgreSQL `pgvector` cosine distance. Retrieval must:
+Use PostgreSQL `pgvector` cosine distance and a generated `tsvector` built with
+the `simple` configuration. The application normalizes multilingual text and
+adds CJK bigrams before indexing; this is not English-only stemming and
+`ts_rank_cd` is not BM25. Retrieval must:
 
 - Filter by `Status = Ready` first.
 - For anonymous requests, include only admin documents.
 - For a normal user, include only documents owned by the current user.
 - For admin requests, use an explicit admin scope; do not accidentally broaden normal user queries.
 - Apply the scope in the database query, not after fetching vectors.
-- Return top-k chunks with document display name, page number, chunk text, and similarity score.
+- Search vector and lexical candidates under identical visibility filters,
+  fuse ranks, and optionally rerank only when measured evaluation justifies the
+  extra latency and cost.
+- Expand a selected child to its bounded section parent when available, and
+  return all source pages and the ordered heading path with the excerpt.
 - Use a vector index when supported by the selected PostgreSQL/pgvector version.
 
 ### Grounded generation
@@ -230,12 +245,24 @@ ASP.NET Core Identity user plus normal audit fields as needed.
 - `Id`
 - `DocumentId`
 - `ChunkOrdinal`
-- `PageNumber`
-- `Text`
+- `Content`
+- `EmbeddingText`
+- `SearchText`
+- `SearchVector` (generated `tsvector`)
 - `Embedding` (`vector(N)`)
+- `PageNumbers` (`integer[]`)
+- `ParentHeaders` (`text[]`)
+- `ParentChunkId` (nullable self-reference)
+- `ChunkType`, `LanguageCode`, `TokenCount`
+- `ParserVersion`, `ChunkerVersion`, `EmbeddingModel`
+- `MetadataJson` (nullable JSONB for Docling provenance)
 - `CreatedAtUtc`
 
-Add indexes for document status/owner and chunk document id. Add the pgvector index after the extension and vector column migration are available. The dimension `N` is configured consistently with the Azure deployment.
+Add indexes for document status/owner, document/ordinal, parent id, GIN
+`SearchVector`, and HNSW cosine `Embedding`. `N` remains configured consistently
+with the Azure deployment. The migration preserves the old text and page
+columns as legacy values to support recovery while the full PDF re-index is
+validated; they can be removed in a later cleanup migration.
 
 ## 10. Background processing
 

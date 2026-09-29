@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
+using NpgsqlTypes;
 using Pgvector;
 
 #nullable disable
@@ -273,6 +274,19 @@ namespace HomeApplianceManualRag.Web.Data.Migrations
                     b.Property<int>("ChunkOrdinal")
                         .HasColumnType("integer");
 
+                    b.Property<string>("ChunkType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("ChunkerVersion")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -282,16 +296,64 @@ namespace HomeApplianceManualRag.Web.Data.Migrations
                     b.Property<Vector>("Embedding")
                         .HasColumnType("vector(1536)");
 
-                    b.Property<int>("PageNumber")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Text")
+                    b.Property<string>("EmbeddingModel")
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("EmbeddingText")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("LanguageCode")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("MetadataJson")
+                        .HasColumnType("jsonb");
+
+                    b.PrimitiveCollection<int[]>("PageNumbers")
+                        .IsRequired()
+                        .HasColumnType("integer[]");
+
+                    b.Property<Guid?>("ParentChunkId")
+                        .HasColumnType("uuid");
+
+                    b.PrimitiveCollection<string[]>("ParentHeaders")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.Property<string>("ParserVersion")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("SearchText")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<NpgsqlTsVector>("SearchVector")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("tsvector")
+                        .HasComputedColumnSql("to_tsvector('simple'::regconfig, \"SearchText\")", true);
+
+                    b.Property<int>("TokenCount")
+                        .HasColumnType("integer");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("DocumentId");
+                    b.HasIndex("Embedding")
+                        .HasFilter("\"Embedding\" IS NOT NULL");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Embedding"), "hnsw");
+                    NpgsqlIndexBuilderExtensions.HasOperators(b.HasIndex("Embedding"), new[] { "vector_cosine_ops" });
+
+                    b.HasIndex("ParentChunkId");
+
+                    b.HasIndex("SearchVector");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("SearchVector"), "gin");
+
+                    b.HasIndex("DocumentId", "ChunkOrdinal")
+                        .IsUnique();
 
                     b.ToTable("ManualChunks");
                 });
@@ -652,7 +714,14 @@ namespace HomeApplianceManualRag.Web.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("HomeApplianceManualRag.Web.Data.ManualChunk", "ParentChunk")
+                        .WithMany("Children")
+                        .HasForeignKey("ParentChunkId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("Document");
+
+                    b.Navigation("ParentChunk");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
@@ -709,6 +778,11 @@ namespace HomeApplianceManualRag.Web.Data.Migrations
             modelBuilder.Entity("HomeApplianceManualRag.Web.Data.Conversation", b =>
                 {
                     b.Navigation("Messages");
+                });
+
+            modelBuilder.Entity("HomeApplianceManualRag.Web.Data.ManualChunk", b =>
+                {
+                    b.Navigation("Children");
                 });
 
             modelBuilder.Entity("HomeApplianceManualRag.Web.Data.ManualDocument", b =>

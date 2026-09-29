@@ -24,7 +24,10 @@ public sealed record ParsedBlock(
     string? HeadingPath = null,
     string? SourceReference = null,
     ParsedImage? Image = null,
-    ParsedTable? Table = null);
+    ParsedTable? Table = null,
+    int? HeadingLevel = null,
+    string? ItemReference = null,
+    string? BoundingBoxJson = null);
 
 public sealed record ParsedTable(
     int RowCount,
@@ -64,27 +67,48 @@ public sealed class DoclingHttpParser(
 
     public async Task<ParsedDocument> ParseAsync(DocumentParseRequest request)
     {
+        using var pdf = new MemoryStream();
+        await request.Content.CopyToAsync(pdf, request.CancellationToken);
+        var pdfBytes = pdf.ToArray();
+        var parsed = await ConvertAsync(pdfBytes, request.DisplayName, doOcr: false, request.CancellationToken);
+        if (options.Value.EnableOcrFallback && ShouldUseOcrFallback(parsed))
+        {
+            parsed = await ConvertAsync(pdfBytes, request.DisplayName, doOcr: true, request.CancellationToken);
+            parsed = parsed with { ParserVersion = $"{parsed.ParserVersion}-ocr" };
+        }
+        if (parsed.Pages.Count == 0 ||
+            parsed.Pages.All(page => page.Blocks.All(block => string.IsNullOrWhiteSpace(block.Text))))
+            throw new DocumentParseException("The document has no extractable text.");
+        return parsed;
+    }
+
+    private async Task<ParsedDocument> ConvertAsync(
+        byte[] pdfBytes,
+        string displayName,
+        bool doOcr,
+        CancellationToken cancellationToken)
+    {
         using var form = new MultipartFormDataContent();
-        using var file = new StreamContent(request.Content);
+        using var file = new ByteArrayContent(pdfBytes);
         file.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
-        form.Add(file, "files", Path.GetFileName(request.DisplayName));
+        form.Add(file, "files", Path.GetFileName(displayName));
         form.Add(new StringContent("pdf"), "from_formats");
         form.Add(new StringContent("json"), "to_formats");
-        form.Add(new StringContent("false"), "do_ocr");
+        form.Add(new StringContent(doOcr ? "true" : "false"), "do_ocr");
         form.Add(new StringContent("true"), "do_table_structure");
         form.Add(new StringContent("true"), "do_pdf_heading_hierarchy");
         form.Add(new StringContent("embedded"), "image_export_mode");
         form.Add(new StringContent(options.Value.IncludeImages ? "true" : "false"), "include_images");
         form.Add(new StringContent(options.Value.ImagesScale.ToString(System.Globalization.CultureInfo.InvariantCulture)), "images_scale");
 
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(request.CancellationToken);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(options.Value.TimeoutSeconds));
         HttpResponseMessage response;
         try
         {
             response = await httpClient.PostAsync("v1/convert/file", form, timeout.Token);
         }
-        catch (OperationCanceledException) when (!request.CancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             throw new DocumentParseException("Docling parsing timed out.", retryable: true);
         }
@@ -109,10 +133,22 @@ public sealed class DoclingHttpParser(
                     $"Docling failed to parse the document: {TrimError(parsed.Errors)}");
 
             var result = ToParsedDocument(parsed.Document, options.Value.MaxEmbeddedImageBytes);
-            if (result.Pages.Count == 0 || result.Pages.All(x => x.Blocks.All(block => string.IsNullOrWhiteSpace(block.Text))))
-                throw new DocumentParseException("The document has no extractable text.");
             return result;
         }
+    }
+
+    private bool ShouldUseOcrFallback(ParsedDocument document)
+    {
+        if (document.Pages.Count == 0)
+            return true;
+        var sparsePages = document.Pages.Count(page =>
+        {
+            var textLength = page.Blocks
+                .Where(block => !string.Equals(block.BlockType, "picture", StringComparison.OrdinalIgnoreCase))
+                .Sum(block => block.Text.Trim().Length);
+            return textLength < options.Value.MinTextCharactersPerPage;
+        });
+        return (double)sparsePages / document.Pages.Count >= options.Value.OcrFallbackPageRatio;
     }
 
     private static DoclingResponse DeserializeResponse(string json)
@@ -135,12 +171,16 @@ public sealed class DoclingHttpParser(
             content.ValueKind != JsonValueKind.Object)
             throw new DocumentParseException("Docling returned no structured JSON document.");
 
+        var itemOrder = GetDocumentItemOrder(content);
         var blocksByPage = new SortedDictionary<int, List<ParsedBlock>>();
-        AddItems(content, "texts", blocksByPage, "text");
-        AddItems(content, "tables", blocksByPage, "table");
-        AddItems(content, "pictures", blocksByPage, "picture", maxEmbeddedImageBytes);
+        AddItems(content, "texts", blocksByPage, "text", itemOrder);
+        AddItems(content, "tables", blocksByPage, "table", itemOrder);
+        AddItems(content, "pictures", blocksByPage, "picture", itemOrder, maxEmbeddedImageBytes);
         foreach (var page in blocksByPage.Values)
+        {
+            RemovePageFurnitureAndPrefixes(page);
             RemoveDuplicateBlocks(page);
+        }
         return new ParsedDocument(
             blocksByPage.Select(page => new ParsedPage(page.Key, page.Value)).ToArray(),
             content.TryGetProperty("version", out var version) && version.ValueKind == JsonValueKind.String
@@ -148,21 +188,51 @@ public sealed class DoclingHttpParser(
                 : "docling");
     }
 
+    private static Dictionary<string, int> GetDocumentItemOrder(JsonElement content)
+    {
+        var order = new Dictionary<string, int>(StringComparer.Ordinal);
+        if (!content.TryGetProperty("body", out var body) ||
+            body.ValueKind != JsonValueKind.Object ||
+            !body.TryGetProperty("children", out var children) ||
+            children.ValueKind != JsonValueKind.Array)
+            return order;
+
+        var index = 0;
+        foreach (var child in children.EnumerateArray())
+        {
+            if (child.ValueKind == JsonValueKind.Object &&
+                child.TryGetProperty("$ref", out var reference) &&
+                reference.ValueKind == JsonValueKind.String &&
+                !string.IsNullOrWhiteSpace(reference.GetString()))
+                order.TryAdd(reference.GetString()!, index);
+            index++;
+        }
+        return order;
+    }
+
     private static void AddItems(
         JsonElement content,
         string propertyName,
         SortedDictionary<int, List<ParsedBlock>> blocksByPage,
         string defaultBlockType,
+        IReadOnlyDictionary<string, int> itemOrder,
         int maxEmbeddedImageBytes = 0)
     {
         if (!content.TryGetProperty(propertyName, out var items) || items.ValueKind != JsonValueKind.Array)
             return;
 
-        var order = 0;
+        var fallbackOrder = itemOrder.Count;
         foreach (var item in items.EnumerateArray())
         {
             if (!item.TryGetProperty("prov", out var provenance) || provenance.ValueKind != JsonValueKind.Array)
                 continue;
+            var itemReference = item.TryGetProperty("self_ref", out var selfRef) &&
+                                selfRef.ValueKind == JsonValueKind.String
+                ? selfRef.GetString()
+                : null;
+            var order = itemReference is not null && itemOrder.TryGetValue(itemReference, out var documentOrder)
+                ? documentOrder
+                : fallbackOrder++;
             var table = string.Equals(defaultBlockType, "table", StringComparison.OrdinalIgnoreCase)
                 ? GetStructuredTable(item)
                 : null;
@@ -184,7 +254,21 @@ public sealed class DoclingHttpParser(
                                   blockType.Contains("title", StringComparison.OrdinalIgnoreCase)
                     ? text
                     : null;
-                blocks.Add(new ParsedBlock(text, blockType, order++, headingPath, $"page:{pageNumber}", image, table));
+                var boundingBox = proof.TryGetProperty("bbox", out var bbox) &&
+                                  bbox.ValueKind == JsonValueKind.Object
+                    ? bbox.GetRawText()
+                    : null;
+                blocks.Add(new ParsedBlock(
+                    text,
+                    blockType,
+                    order,
+                    headingPath,
+                    $"page:{pageNumber}",
+                    image,
+                    table,
+                    GetInteger(item, "level"),
+                    itemReference,
+                    boundingBox));
             }
         }
     }
@@ -371,6 +455,55 @@ public sealed class DoclingHttpParser(
             return string.IsNullOrWhiteSpace(normalized) || !seen.Add(key);
         });
     }
+
+    private static void RemovePageFurnitureAndPrefixes(List<ParsedBlock> blocks)
+    {
+        var pageHeaders = blocks
+            .Where(block => IsBlockType(block, "page_header"))
+            .Select(block => NormalizeWhitespace(block.Text))
+            .Where(header => !string.IsNullOrWhiteSpace(header))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(header => header.Length)
+            .ToArray();
+
+        blocks.RemoveAll(block =>
+            IsBlockType(block, "page_header") ||
+            IsBlockType(block, "page_footer"));
+
+        for (var index = 0; index < blocks.Count; index++)
+        {
+            var block = blocks[index];
+            if (block.Table is not null || IsBlockType(block, "picture"))
+                continue;
+
+            var text = StripPageHeaderPrefix(block.Text, pageHeaders);
+            var headingPath = block.HeadingPath is null
+                ? null
+                : StripPageHeaderPrefix(block.HeadingPath, pageHeaders);
+            blocks[index] = block with { Text = text, HeadingPath = headingPath };
+        }
+    }
+
+    private static string StripPageHeaderPrefix(string value, IReadOnlyList<string> pageHeaders)
+    {
+        var text = value.TrimStart();
+        foreach (var header in pageHeaders)
+        {
+            if (text.Length <= header.Length ||
+                !text.StartsWith(header, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var next = text[header.Length];
+            if (!char.IsWhiteSpace(next) && !char.IsPunctuation(next))
+                continue;
+
+            text = text[header.Length..].TrimStart();
+        }
+        return text;
+    }
+
+    private static bool IsBlockType(ParsedBlock block, string type) =>
+        string.Equals(block.BlockType, type, StringComparison.OrdinalIgnoreCase);
 
     private static string NormalizeWhitespace(string? value) =>
         string.Join(' ', (value ?? string.Empty)

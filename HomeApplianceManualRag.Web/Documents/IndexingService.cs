@@ -5,151 +5,434 @@ using HomeApplianceManualRag.Web.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Pgvector;
+using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace HomeApplianceManualRag.Web.Documents;
 
-public sealed class DocumentChunker(IOptions<RetrievalOptions> options)
+public sealed class DocumentChunker(
+    IOptions<RetrievalOptions> options,
+    IChunkTextAnalyzer? textAnalyzer = null)
 {
+    private const string ChunkerVersion = "structure-v2";
+    private readonly IChunkTextAnalyzer analyzer = textAnalyzer ?? new MultilingualTextAnalyzer();
+    private static readonly Regex SentenceBoundaries = new(
+        """(?<=[.!?。！？；;])\s+|[\r\n]+""",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     public IReadOnlyList<ChunkDraft> Chunk(ParsedDocument document)
     {
-        var size = options.Value.ChunkSize;
-        var overlap = Math.Min(options.Value.ChunkOverlap, size - 1);
+        return Chunk(document, null);
+    }
+
+    public IReadOnlyList<ChunkDraft> Chunk(ParsedDocument document, string? documentLanguage)
+    {
+        var maxTokens = options.Value.MaxChunkTokens;
         var drafts = new List<ChunkDraft>();
         var ordinal = 0;
+        var headings = new List<(int Level, string Text)>();
+        var pending = new List<PendingPart>();
+        Guid? currentParentGroupId = null;
+
         foreach (var page in document.Pages)
         {
-            var textBlocks = new List<string>();
             foreach (var block in page.Blocks.OrderBy(x => x.Order))
             {
-                if (block.Table is null &&
-                    !block.BlockType.Contains("table", StringComparison.OrdinalIgnoreCase))
+                if (IsHeading(block))
                 {
-                    if (!string.IsNullOrWhiteSpace(block.Text))
-                        textBlocks.Add(string.IsNullOrWhiteSpace(block.HeadingPath)
-                            ? block.Text.Trim()
-                            : $"{block.HeadingPath}\n{block.Text.Trim()}");
+                    FlushPending();
+                    AddHeading(block);
                     continue;
                 }
 
-                AddTextChunks();
+                var parentHeaders = GetParentHeaders(block);
                 if (block.Table is not null)
-                    AddTableChunks(block.Table, block.Text, page.PageNumber);
-                else if (!string.IsNullOrWhiteSpace(block.Text))
-                    AddTextChunks(block.Text);
-            }
-
-            AddTextChunks();
-
-            void AddTextChunks(string? additionalText = null)
-            {
-                if (additionalText is not null)
-                    textBlocks.Add(additionalText.Trim());
-                if (textBlocks.Count == 0)
-                    return;
-
-                var text = string.Join("\n\n", textBlocks);
-                textBlocks.Clear();
-                for (var start = 0; start < text.Length; start += Math.Max(1, size - overlap))
                 {
-                    var length = Math.Min(size, text.Length - start);
-                    if (length == 0)
-                        break;
-                    drafts.Add(new ChunkDraft(
-                        ordinal++,
-                        page.PageNumber,
-                        text.Substring(start, length),
-                        document.ParserVersion));
-                    if (start + length >= text.Length)
-                        break;
-                }
-            }
-
-            void AddTableChunks(ParsedTable table, string fallbackText, int pageNumber)
-            {
-                var rows = BuildTableRows(table);
-                if (rows.Count == 0)
-                {
-                    AddTextChunks(fallbackText);
-                    return;
+                    FlushPending();
+                    AddTableChunks(block, page.PageNumber, parentHeaders);
+                    continue;
                 }
 
-                var headerRows = rows
-                    .Where(row => row.IsHeader)
-                    .Select(row => row.Text)
-                    .ToArray();
-                var dataRows = rows.Where(row => !row.IsHeader).Select(row => row.Text).ToArray();
-                var currentLines = new List<string> { "[Table]" };
-                currentLines.AddRange(headerRows);
-                var currentDataRowCount = 0;
-
-                foreach (var row in dataRows)
+                if (IsBlockType(block, "picture"))
                 {
-                    var currentLength = currentLines.Sum(line => line.Length + 1);
-                    if (currentDataRowCount > 0 && currentLength + row.Length + 1 > size)
+                    FlushPending();
+                    if (HasUsefulImageText(block.Text))
                     {
-                        AddTableDraft();
-                        currentLines = ["[Table]", .. headerRows];
-                        currentDataRowCount = 0;
+                        foreach (var piece in SplitIntoPieces(block.Text.Trim(), maxTokens, parentHeaders))
+                            AddDraft(piece, [page.PageNumber], parentHeaders,
+                                ManualChunkType.ImageDescription, [block], document.ParserVersion);
                     }
-
-                    currentLines.Add(row);
-                    currentDataRowCount++;
+                    continue;
                 }
 
-                if (currentDataRowCount > 0 || headerRows.Length > 0)
-                    AddTableDraft();
-
-                void AddTableDraft() =>
-                    drafts.Add(new ChunkDraft(
-                        ordinal++,
-                        pageNumber,
-                        string.Join('\n', currentLines),
-                        document.ParserVersion));
-            }
-
-            static List<(string Text, bool IsHeader)> BuildTableRows(ParsedTable table)
-            {
-                var rowCount = Math.Max(
-                    table.RowCount,
-                    table.Cells.Count == 0 ? 0 : table.Cells.Max(cell => cell.Row + cell.RowSpan));
-                var columnCount = Math.Max(
-                    table.ColumnCount,
-                    table.Cells.Count == 0 ? 0 : table.Cells.Max(cell => cell.Column + cell.ColumnSpan));
-                if (rowCount <= 0 || columnCount <= 0)
-                    return [];
-
-                var values = new string?[rowCount, columnCount];
-                var headerRows = new HashSet<int>();
-                foreach (var cell in table.Cells.OrderBy(cell => cell.Row).ThenBy(cell => cell.Column))
-                {
-                    if (cell.Row < 0 || cell.Row >= rowCount ||
-                        cell.Column < 0 || cell.Column >= columnCount)
-                        continue;
-                    if (cell.IsColumnHeader)
-                        headerRows.Add(cell.Row);
-
-                    var lastRow = Math.Min(rowCount, cell.Row + cell.RowSpan);
-                    for (var row = cell.Row; row < lastRow; row++)
-                        values[row, cell.Column] ??= cell.Text;
-                }
-
-                var rows = new List<(string Text, bool IsHeader)>(rowCount);
-                for (var row = 0; row < rowCount; row++)
-                {
-                    var cells = Enumerable.Range(0, columnCount)
-                        .Select(column => values[row, column] ?? string.Empty);
-                    var text = string.Join(" | ", cells);
-                    if (!string.IsNullOrWhiteSpace(text.Replace("|", string.Empty, StringComparison.Ordinal)))
-                        rows.Add((text, headerRows.Contains(row)));
-                }
-                return rows;
+                if (!string.IsNullOrWhiteSpace(block.Text))
+                    AppendText(block, page.PageNumber, parentHeaders);
             }
         }
+
+        FlushPending();
+        BuildParentChunks();
         return drafts;
+
+        void AddHeading(ParsedBlock block)
+        {
+            var text = block.Text.Trim();
+            if (string.IsNullOrWhiteSpace(text))
+                return;
+            var level = Math.Max(1, block.HeadingLevel ?? (headings.Count == 0 ? 1 : headings[^1].Level + 1));
+            while (headings.Count > 0 && headings[^1].Level >= level)
+                headings.RemoveAt(headings.Count - 1);
+            headings.Add((level, text));
+            currentParentGroupId = Guid.NewGuid();
+        }
+
+        string[] GetParentHeaders(ParsedBlock block)
+        {
+            if (headings.Count > 0)
+                return headings.Select(heading => heading.Text).ToArray();
+            return string.IsNullOrWhiteSpace(block.HeadingPath) ||
+                   string.Equals(block.HeadingPath.Trim(), block.Text.Trim(), StringComparison.Ordinal)
+                ? []
+                : [block.HeadingPath.Trim()];
+        }
+
+        void AppendText(ParsedBlock block, int pageNumber, string[] parentHeaders)
+        {
+            var text = block.Text.Trim();
+            foreach (var piece in SplitIntoPieces(text, maxTokens, parentHeaders))
+            {
+                var part = new PendingPart(piece, pageNumber, parentHeaders, block, currentParentGroupId);
+                if (pending.Count > 0 &&
+                    (!pending[^1].ParentHeaders.SequenceEqual(parentHeaders, StringComparer.Ordinal) ||
+                     EstimateChunkTokens(
+                         string.Join("\n\n", pending.Select(x => x.Text).Append(piece)), parentHeaders) > maxTokens))
+                    FlushPending();
+                pending.Add(part);
+            }
+        }
+
+        void FlushPending()
+        {
+            if (pending.Count == 0)
+                return;
+            var content = string.Join("\n\n", pending.Select(part => part.Text));
+            var pages = pending.Select(part => part.PageNumber).Distinct().Order().ToArray();
+            var sourceBlocks = pending.Select(part => part.Block).Distinct().ToArray();
+            AddDraft(content, pages, pending[0].ParentHeaders, ManualChunkType.Text, sourceBlocks,
+                document.ParserVersion, pending[0].ParentGroupId);
+            pending.Clear();
+        }
+
+        void AddTableChunks(ParsedBlock block, int pageNumber, string[] parentHeaders)
+        {
+            var table = block.Table!;
+            var rows = BuildTableRows(table);
+            if (rows.Count == 0)
+            {
+                if (!string.IsNullOrWhiteSpace(block.Text))
+                    AppendText(block, pageNumber, parentHeaders);
+                return;
+            }
+
+            var headerRows = rows.Where(row => row.IsHeader).Select(row => row.Text).ToArray();
+            var dataRows = rows.Where(row => !row.IsHeader).Select(row => row.Text).ToArray();
+            var currentLines = new List<string> { "[Table]" };
+            currentLines.AddRange(headerRows);
+            var rowCount = 0;
+
+            foreach (var row in dataRows)
+            {
+                if (rowCount > 0 &&
+                    EstimateChunkTokens(string.Join('\n', currentLines.Append(row)), parentHeaders) > maxTokens)
+                {
+                    AddTableDraft();
+                    currentLines = ["[Table]", .. headerRows];
+                    rowCount = 0;
+                }
+
+                currentLines.Add(row);
+                rowCount++;
+            }
+
+            if (rowCount > 0 || headerRows.Length > 0)
+                AddTableDraft();
+
+            void AddTableDraft() =>
+                AddDraft(string.Join('\n', currentLines), [pageNumber], parentHeaders,
+                    ManualChunkType.Table, [block], document.ParserVersion);
+        }
+
+        void AddDraft(
+            string content,
+            int[] pageNumbers,
+            string[] parentHeaders,
+            ManualChunkType chunkType,
+            IReadOnlyList<ParsedBlock> sourceBlocks,
+            string parserVersion,
+            Guid? parentGroupId = null)
+        {
+            var embeddingText = BuildEmbeddingText(parentHeaders, content);
+            var analysis = analyzer.Analyze(embeddingText, documentLanguage);
+            var metadataJson = BuildMetadata(sourceBlocks);
+            drafts.Add(new ChunkDraft(
+                ordinal++,
+                content,
+                embeddingText,
+                analysis.SearchText,
+                pageNumbers,
+                parentHeaders,
+                chunkType,
+                analysis.LanguageCode,
+                analysis.EstimatedTokenCount,
+                parserVersion,
+                ChunkerVersion,
+                metadataJson,
+                parentGroupId ?? currentParentGroupId));
+        }
+
+        void BuildParentChunks()
+        {
+            var children = drafts.ToArray();
+            foreach (var group in children
+                         .Where(draft => draft.ParentGroupId is not null)
+                         .GroupBy(draft => draft.ParentGroupId!.Value))
+            {
+                var batch = new List<ChunkDraft>();
+                var batchTokens = 0;
+                foreach (var child in group)
+                {
+                    if (batch.Count > 0 &&
+                        batchTokens + child.TokenCount > options.Value.MaxParentChunkTokens)
+                        AddParent(batch);
+                    batch.Add(child);
+                    batchTokens += child.TokenCount;
+                }
+                AddParent(batch);
+
+                void AddParent(List<ChunkDraft> batchChildren)
+                {
+                    if (batchChildren.Count == 0)
+                        return;
+                    if (batchChildren.Count < 2)
+                    {
+                        var onlyChild = batchChildren[0];
+                        var index = drafts.FindIndex(draft => draft.Ordinal == onlyChild.Ordinal);
+                        drafts[index] = onlyChild with { ParentGroupId = null };
+                        batchChildren.Clear();
+                        batchTokens = 0;
+                        return;
+                    }
+
+                    var groupId = Guid.NewGuid();
+                    foreach (var child in batchChildren)
+                    {
+                        var index = drafts.FindIndex(draft => draft.Ordinal == child.Ordinal);
+                        drafts[index] = child with { ParentGroupId = groupId };
+                    }
+                    var first = batchChildren[0];
+                    var content = string.Join("\n\n", batchChildren.Select(child => child.Content));
+                    var pages = batchChildren.SelectMany(child => child.PageNumbers).Distinct().Order().ToArray();
+                    var tokenCount = EstimateChunkTokens(content, first.ParentHeaders);
+                    drafts.Add(new ChunkDraft(
+                        ordinal++,
+                        content,
+                        content,
+                        string.Empty,
+                        pages,
+                        first.ParentHeaders,
+                        ManualChunkType.SectionParent,
+                        first.LanguageCode,
+                        tokenCount,
+                        first.ParserVersion,
+                        ChunkerVersion,
+                        null,
+                        groupId));
+                    batchChildren.Clear();
+                    batchTokens = 0;
+                }
+            }
+        }
     }
+
+    private int EstimateChunkTokens(string content, string[] parentHeaders) =>
+        analyzer.Analyze(BuildEmbeddingText(parentHeaders, content)).EstimatedTokenCount;
+
+    private static string BuildEmbeddingText(string[] parentHeaders, string content) =>
+        parentHeaders.Length == 0
+            ? content
+            : $"Section: {string.Join(" > ", parentHeaders)}\nContent:\n{content}";
+
+    private static bool IsHeading(ParsedBlock block) =>
+        block.BlockType.Contains("heading", StringComparison.OrdinalIgnoreCase) ||
+        block.BlockType.Contains("section_header", StringComparison.OrdinalIgnoreCase) ||
+        block.BlockType.Contains("title", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsBlockType(ParsedBlock block, string blockType) =>
+        string.Equals(block.BlockType, blockType, StringComparison.OrdinalIgnoreCase);
+
+    private static bool HasUsefulImageText(string text) =>
+        !string.IsNullOrWhiteSpace(text) &&
+        !string.Equals(text.Trim(), "[picture]", StringComparison.OrdinalIgnoreCase);
+
+    private IEnumerable<string> SplitIntoPieces(string text, int maxTokens, string[] parentHeaders)
+    {
+        var pieces = SentenceBoundaries.Split(text)
+            .Select(piece => piece.Trim())
+            .Where(piece => !string.IsNullOrWhiteSpace(piece))
+            .ToArray();
+        var current = new List<string>();
+
+        foreach (var piece in pieces)
+        {
+            if (EstimateChunkTokens(piece, parentHeaders) > maxTokens)
+            {
+                foreach (var boundedPiece in SplitOversizedPiece(piece, maxTokens, parentHeaders))
+                {
+                    if (current.Count > 0)
+                    {
+                        yield return string.Join(' ', current);
+                        current.Clear();
+                    }
+                    yield return boundedPiece;
+                }
+                continue;
+            }
+
+            if (current.Count > 0 &&
+                EstimateChunkTokens(string.Join(' ', current.Append(piece)), parentHeaders) > maxTokens)
+            {
+                yield return string.Join(' ', current);
+                current.Clear();
+            }
+            current.Add(piece);
+        }
+
+        if (current.Count > 0)
+            yield return string.Join(' ', current);
+    }
+
+    private IEnumerable<string> SplitOversizedPiece(string piece, int maxTokens, string[] parentHeaders)
+    {
+        var words = piece.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var current = new List<string>();
+        foreach (var word in words)
+        {
+            if (EstimateChunkTokens(word, parentHeaders) > maxTokens)
+            {
+                if (current.Count > 0)
+                {
+                    yield return string.Join(' ', current);
+                    current.Clear();
+                }
+                var runeChunk = new StringBuilder();
+                foreach (var rune in word.EnumerateRunes())
+                {
+                    var candidate = runeChunk.ToString() + rune;
+                    if (runeChunk.Length > 0 && EstimateChunkTokens(candidate, parentHeaders) > maxTokens)
+                    {
+                        yield return runeChunk.ToString();
+                        runeChunk.Clear();
+                    }
+                    runeChunk.Append(rune);
+                }
+                if (runeChunk.Length > 0)
+                    yield return runeChunk.ToString();
+                continue;
+            }
+
+            if (current.Count > 0 &&
+                EstimateChunkTokens(string.Join(' ', current.Append(word)), parentHeaders) > maxTokens)
+            {
+                yield return string.Join(' ', current);
+                current.Clear();
+            }
+            current.Add(word);
+        }
+        if (current.Count > 0)
+            yield return string.Join(' ', current);
+    }
+
+    private static List<(string Text, bool IsHeader)> BuildTableRows(ParsedTable table)
+    {
+        var rowCount = Math.Max(
+            table.RowCount,
+            table.Cells.Count == 0 ? 0 : table.Cells.Max(cell => cell.Row + cell.RowSpan));
+        var columnCount = Math.Max(
+            table.ColumnCount,
+            table.Cells.Count == 0 ? 0 : table.Cells.Max(cell => cell.Column + cell.ColumnSpan));
+        if (rowCount <= 0 || columnCount <= 0)
+            return [];
+
+        var values = new string?[rowCount, columnCount];
+        var headerRows = new HashSet<int>();
+        foreach (var cell in table.Cells.OrderBy(cell => cell.Row).ThenBy(cell => cell.Column))
+        {
+            if (cell.Row < 0 || cell.Row >= rowCount ||
+                cell.Column < 0 || cell.Column >= columnCount)
+                continue;
+            if (cell.IsColumnHeader)
+                headerRows.Add(cell.Row);
+
+            var lastRow = Math.Min(rowCount, cell.Row + cell.RowSpan);
+            for (var row = cell.Row; row < lastRow; row++)
+                values[row, cell.Column] ??= cell.Text;
+        }
+
+        var rows = new List<(string Text, bool IsHeader)>(rowCount);
+        for (var row = 0; row < rowCount; row++)
+        {
+            var cells = Enumerable.Range(0, columnCount)
+                .Select(column => values[row, column] ?? string.Empty);
+            var text = string.Join(" | ", cells);
+            if (!string.IsNullOrWhiteSpace(text.Replace("|", string.Empty, StringComparison.Ordinal)))
+                rows.Add((text, headerRows.Contains(row)));
+        }
+        return rows;
+    }
+
+    private static string? BuildMetadata(IReadOnlyList<ParsedBlock> blocks)
+    {
+        var sources = blocks
+            .Where(block => block.ItemReference is not null || block.BoundingBoxJson is not null)
+            .Select(block => new
+            {
+                item = block.ItemReference,
+                page = block.SourceReference,
+                bbox = block.BoundingBoxJson
+            })
+            .ToArray();
+        return sources.Length == 0
+            ? null
+            : JsonSerializer.Serialize(new { schemaVersion = 1, sources });
+    }
+
+    private sealed record PendingPart(
+        string Text,
+        int PageNumber,
+        string[] ParentHeaders,
+        ParsedBlock Block,
+        Guid? ParentGroupId);
 }
 
-public sealed record ChunkDraft(int Ordinal, int PageNumber, string Text, string ParserVersion);
+public sealed record ChunkDraft(
+    int Ordinal,
+    string Content,
+    string EmbeddingText,
+    string SearchText,
+    int[] PageNumbers,
+    string[] ParentHeaders,
+    ManualChunkType ChunkType,
+    string LanguageCode,
+    int TokenCount,
+    string ParserVersion,
+    string ChunkerVersion,
+    string? MetadataJson,
+    Guid? ParentGroupId = null)
+{
+    public int PageNumber => PageNumbers.FirstOrDefault();
+    public string Text => Content;
+}
 
 public sealed class IndexingPipeline(
     ApplicationDbContext db,
@@ -204,38 +487,59 @@ public sealed class IndexingPipeline(
         document.MetadataStatus = metadata.Status;
         document.MetadataExtractedAtUtc = DateTime.UtcNow;
         await ReportProgressAsync(job.Id, document, DocumentProcessingStage.PreparingChunks, cancellationToken);
-        var drafts = chunker.Chunk(parsed);
+        var drafts = chunker.Chunk(parsed, document.Language);
         if (drafts.Count == 0)
             throw new DocumentParseException("The document has no extractable text.");
 
-        var vectors = new List<ManualChunk>(drafts.Count);
+        var searchableDrafts = drafts
+            .Where(draft => draft.ChunkType != ManualChunkType.SectionParent)
+            .ToArray();
+        var parentIds = drafts
+            .Where(draft => draft.ChunkType == ManualChunkType.SectionParent)
+            .Where(draft => draft.ParentGroupId is not null)
+            .ToDictionary(draft => draft.ParentGroupId!.Value, _ => Guid.NewGuid());
+        var chunks = new List<ManualChunk>(drafts.Count);
         await ReportProgressAsync(
             job.Id,
             document,
             DocumentProcessingStage.CreatingEmbeddings,
             cancellationToken,
             completedUnits: 0,
-            totalUnits: drafts.Count);
-        var progressInterval = Math.Max(1, (drafts.Count + 19) / 20);
-        for (var index = 0; index < drafts.Count; index++)
+            totalUnits: searchableDrafts.Length);
+        var progressInterval = Math.Max(1, (searchableDrafts.Length + 19) / 20);
+        for (var index = 0; index < searchableDrafts.Length; index++)
         {
-            var draft = drafts[index];
-            var values = await embedding.EmbedAsync(draft.Text, cancellationToken);
+            var draft = searchableDrafts[index];
+            var values = await embedding.EmbedAsync(draft.EmbeddingText, cancellationToken);
             if (values.Length != ApplicationDbContext.EmbeddingDimensions)
                 throw new DocumentParseException(
                     $"Embedding dimension {values.Length} does not match {ApplicationDbContext.EmbeddingDimensions}.");
-            vectors.Add(new ManualChunk
+            chunks.Add(new ManualChunk
             {
                 Id = Guid.NewGuid(),
                 DocumentId = document.Id,
                 ChunkOrdinal = draft.Ordinal,
-                PageNumber = draft.PageNumber,
-                Text = draft.Text,
+                PageNumbers = draft.PageNumbers,
+                Content = draft.Content,
+                EmbeddingText = draft.EmbeddingText,
+                SearchText = draft.SearchText,
+                ParentHeaders = draft.ParentHeaders,
+                ChunkType = draft.ChunkType,
+                LanguageCode = draft.LanguageCode,
+                TokenCount = draft.TokenCount,
+                ParserVersion = draft.ParserVersion,
+                ChunkerVersion = draft.ChunkerVersion,
+                EmbeddingModel = embedding.ModelId,
+                MetadataJson = draft.MetadataJson,
                 Embedding = new Vector(values.ToArray()),
+                ParentChunkId = draft.ParentGroupId is Guid parentGroupId &&
+                                parentIds.TryGetValue(parentGroupId, out var parentId)
+                    ? parentId
+                    : null,
                 CreatedAtUtc = DateTime.UtcNow
             });
             var completedUnits = index + 1;
-            if (completedUnits % progressInterval == 0 || completedUnits == drafts.Count)
+            if (completedUnits % progressInterval == 0 || completedUnits == searchableDrafts.Length)
             {
                 await ReportProgressAsync(
                     job.Id,
@@ -243,8 +547,33 @@ public sealed class IndexingPipeline(
                     DocumentProcessingStage.CreatingEmbeddings,
                     cancellationToken,
                     completedUnits,
-                    drafts.Count);
+                    searchableDrafts.Length);
             }
+        }
+        foreach (var parent in drafts.Where(draft => draft.ChunkType == ManualChunkType.SectionParent))
+        {
+            if (parent.ParentGroupId is not Guid parentGroupId ||
+                !parentIds.TryGetValue(parentGroupId, out var parentId))
+                continue;
+            chunks.Add(new ManualChunk
+            {
+                Id = parentId,
+                DocumentId = document.Id,
+                ChunkOrdinal = parent.Ordinal,
+                PageNumbers = parent.PageNumbers,
+                Content = parent.Content,
+                EmbeddingText = parent.EmbeddingText,
+                SearchText = string.Empty,
+                ParentHeaders = parent.ParentHeaders,
+                ChunkType = parent.ChunkType,
+                LanguageCode = parent.LanguageCode,
+                TokenCount = parent.TokenCount,
+                ParserVersion = parent.ParserVersion,
+                ChunkerVersion = parent.ChunkerVersion,
+                EmbeddingModel = embedding.ModelId,
+                MetadataJson = parent.MetadataJson,
+                CreatedAtUtc = DateTime.UtcNow
+            });
         }
 
         await ReportProgressAsync(
@@ -252,8 +581,8 @@ public sealed class IndexingPipeline(
             document,
             DocumentProcessingStage.SavingIndex,
             cancellationToken,
-            drafts.Count,
-            drafts.Count);
+            searchableDrafts.Length,
+            searchableDrafts.Length);
         await using var transaction = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(cancellationToken) : null;
         if (!await db.ManualDocuments.AnyAsync(
                 x => x.Id == job.DocumentId &&
@@ -265,11 +594,11 @@ public sealed class IndexingPipeline(
             .Where(x => x.DocumentId == document.Id)
             .ToListAsync(cancellationToken);
         db.ManualChunks.RemoveRange(existingChunks);
-        db.ManualChunks.AddRange(vectors);
+        db.ManualChunks.AddRange(chunks);
         document.Status = DocumentStatus.Ready;
         document.ProcessingStage = DocumentProcessingStage.Completed;
-        document.ProgressCompletedUnits = drafts.Count;
-        document.ProgressTotalUnits = drafts.Count;
+        document.ProgressCompletedUnits = searchableDrafts.Length;
+        document.ProgressTotalUnits = searchableDrafts.Length;
         document.IndexedAtUtc = DateTime.UtcNow;
         document.UpdatedAtUtc = DateTime.UtcNow;
         document.LastError = null;
@@ -301,7 +630,8 @@ public sealed class IndexingPipeline(
             document.ProcessingStage,
             document.ProgressCompletedUnits,
             document.ProgressTotalUnits));
-        logger.LogInformation("Indexed document {DocumentId} with {ChunkCount} chunks.", document.Id, vectors.Count);
+        logger.LogInformation("Indexed document {DocumentId} with {ChunkCount} searchable chunks and {ParentCount} parent chunks.",
+            document.Id, searchableDrafts.Length, chunks.Count - searchableDrafts.Length);
     }
 
     private async Task ReportProgressAsync(

@@ -51,7 +51,9 @@ public sealed class IndexingTests
 
         Assert.NotEmpty(chunks);
         Assert.All(chunks, chunk => Assert.Equal(3, chunk.PageNumber));
-        Assert.Contains(chunks, chunk => chunk.Text.Contains("Safety", StringComparison.Ordinal));
+        Assert.Contains(chunks, chunk => chunk.ParentHeaders.Contains("Safety"));
+        Assert.Contains(chunks, chunk => chunk.EmbeddingText.Contains("Section: Safety", StringComparison.Ordinal));
+        Assert.Contains(chunks, chunk => chunk.Content.Contains("Disconnect power", StringComparison.Ordinal));
         Assert.All(chunks, chunk => Assert.Equal("fixture", chunk.ParserVersion));
     }
 
@@ -72,8 +74,8 @@ public sealed class IndexingTests
     {
         var chunker = new DocumentChunker(Options.Create(new RetrievalOptions
         {
-            ChunkSize = 42,
-            ChunkOverlap = 0
+            MaxChunkTokens = 12,
+            MaxParentChunkTokens = 32
         }));
         var table = new ParsedTable(
             4,
@@ -120,6 +122,60 @@ public sealed class IndexingTests
     }
 
     [Fact]
+    public void Chunker_creates_bounded_section_parents_for_children_across_pages()
+    {
+        var chunker = new DocumentChunker(Options.Create(new RetrievalOptions
+        {
+            MaxChunkTokens = 12,
+            MaxParentChunkTokens = 1000
+        }));
+        var parsed = new ParsedDocument(
+        [
+            new ParsedPage(3,
+            [
+                new ParsedBlock("Troubleshooting", "heading", 0, HeadingLevel: 1),
+                new ParsedBlock("Check the water supply.", "paragraph", 1)
+            ]),
+            new ParsedPage(4,
+            [
+                new ParsedBlock("Clean the inlet filter.", "paragraph", 0)
+            ])
+        ], "fixture");
+
+        var chunks = chunker.Chunk(parsed);
+        var parent = Assert.Single(chunks, chunk => chunk.ChunkType == ManualChunkType.SectionParent);
+        var children = chunks.Where(chunk => chunk.ChunkType != ManualChunkType.SectionParent).ToArray();
+
+        Assert.True(children.Length >= 2);
+        Assert.All(children, child => Assert.True(child.TokenCount <= 12));
+        Assert.All(children, child => Assert.Equal(parent.ParentGroupId, child.ParentGroupId));
+        Assert.Equal([3, 4], parent.PageNumbers);
+        Assert.Contains("Troubleshooting", parent.ParentHeaders);
+        Assert.Contains("water", parent.Content, StringComparison.Ordinal);
+        Assert.Contains("supply", parent.Content, StringComparison.Ordinal);
+        Assert.Contains("inlet", parent.Content, StringComparison.Ordinal);
+        Assert.Contains("filter", parent.Content, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Multilingual_analyzer_creates_searchable_cjk_bigrams_and_preserves_model_codes()
+    {
+        var analyzer = new MultilingualTextAnalyzer();
+
+        var result = analyzer.Analyze("故障代碼 型號", "zh-TW");
+
+        Assert.Equal("zh-TW", result.LanguageCode);
+        Assert.Contains("故障", result.SearchText, StringComparison.Ordinal);
+        Assert.Contains("代碼", result.SearchText, StringComparison.Ordinal);
+
+        var mixed = analyzer.Analyze("故障代碼 H11 型號 ABC-123", "zh-TW");
+        Assert.Equal("mul", mixed.LanguageCode);
+        Assert.Contains("h11", mixed.SearchText, StringComparison.Ordinal);
+        Assert.Contains("abc123", mixed.SearchText, StringComparison.Ordinal);
+        Assert.True(mixed.EstimatedTokenCount > 0);
+    }
+
+    [Fact]
     public async Task Docling_parser_maps_page_and_block_provenance()
     {
         using var client = new HttpClient(new StubHandler("""
@@ -156,7 +212,7 @@ public sealed class IndexingTests
         };
         var parser = new DoclingHttpParser(
             client,
-            Options.Create(new DoclingOptions { ServiceUrl = "http://docling:5001" }));
+            Options.Create(new DoclingOptions { ServiceUrl = "http://docling:5001", EnableOcrFallback = false }));
 
         var result = await parser.ParseAsync(new(
             Guid.NewGuid(), "manual.pdf", new MemoryStream([1, 2, 3])));
@@ -166,6 +222,46 @@ public sealed class IndexingTests
         Assert.Equal("Safety", result.Pages[0].Blocks[0].HeadingPath);
         Assert.Equal("page:2", result.Pages[0].Blocks[1].SourceReference);
         Assert.Equal("[table]", result.Pages[1].Blocks[0].Text);
+    }
+
+    [Fact]
+    public async Task Docling_parser_removes_page_furniture_and_header_prefixes()
+    {
+        using var client = new HttpClient(new StubHandler("""
+            {
+              "status": "success",
+              "document": {
+                "json_content": {
+                  "texts": [
+                    { "label": "page_header", "text": "Appliance Guide", "prov": [{ "page_no": 1 }] },
+                    { "label": "section_header", "text": "Appliance Guide 1. Safety", "level": 1, "prov": [{ "page_no": 1 }] },
+                    { "label": "text", "text": "Appliance Guide\nUnplug before service.", "prov": [{ "page_no": 1 }] },
+                    { "label": "page_footer", "text": "Appliance Guide | 1", "prov": [{ "page_no": 1 }] }
+                  ]
+                }
+              },
+              "errors": []
+            }
+            """))
+        {
+            BaseAddress = new Uri("http://docling:5001/")
+        };
+        var parser = new DoclingHttpParser(
+            client,
+            Options.Create(new DoclingOptions
+            {
+                ServiceUrl = "http://docling:5001",
+                EnableOcrFallback = false
+            }));
+
+        var result = await parser.ParseAsync(new(
+            Guid.NewGuid(), "manual.pdf", new MemoryStream([1, 2, 3])));
+        var blocks = result.Pages.Single().Blocks;
+
+        Assert.Equal(2, blocks.Count);
+        Assert.Equal("1. Safety", blocks[0].Text);
+        Assert.Equal("1. Safety", blocks[0].HeadingPath);
+        Assert.Equal("Unplug before service.", blocks[1].Text);
     }
 
     [Fact]
@@ -183,13 +279,49 @@ public sealed class IndexingTests
         };
         var parser = new DoclingHttpParser(
             client,
-            Options.Create(new DoclingOptions { ServiceUrl = "http://docling:5001" }));
+            Options.Create(new DoclingOptions { ServiceUrl = "http://docling:5001", EnableOcrFallback = false }));
 
         var exception = await Assert.ThrowsAsync<DocumentParseException>(() =>
             parser.ParseAsync(new(Guid.NewGuid(), "manual.pdf", new MemoryStream([1]))));
 
         Assert.Contains("unsupported PDF", exception.Message, StringComparison.Ordinal);
         Assert.False(exception.Retryable);
+    }
+
+    [Fact]
+    public async Task Docling_parser_retries_text_poor_pdfs_with_ocr()
+    {
+        var handler = new OcrFallbackStubHandler(
+        [
+            """
+            {"status":"success","document":{"json_content":{"version":"1.8.0","texts":[]}},"errors":[]}
+            """,
+            """
+            {"status":"success","document":{"json_content":{"version":"1.8.0","texts":[
+              {"label":"text","text":"OCR extracted operating instructions","prov":[{"page_no":1}]}
+            ]}},"errors":[]}
+            """
+        ]);
+        using var client = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("http://docling:5001/")
+        };
+        var parser = new DoclingHttpParser(
+            client,
+            Options.Create(new DoclingOptions
+            {
+                ServiceUrl = "http://docling:5001",
+                MinTextCharactersPerPage = 40,
+                OcrFallbackPageRatio = 0.5
+            }));
+
+        var result = await parser.ParseAsync(new(
+            Guid.NewGuid(), "scanned-manual.pdf", new MemoryStream([1, 2, 3])));
+
+        Assert.Equal([false, true], handler.OcrFlags);
+        Assert.EndsWith("-ocr", result.ParserVersion, StringComparison.Ordinal);
+        Assert.Contains("OCR extracted operating instructions", result.Pages.Single().Blocks.Single().Text,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -231,7 +363,7 @@ public sealed class IndexingTests
         };
         var parser = new DoclingHttpParser(
             client,
-            Options.Create(new DoclingOptions { ServiceUrl = "http://docling:5001" }));
+            Options.Create(new DoclingOptions { ServiceUrl = "http://docling:5001", EnableOcrFallback = false }));
 
         var result = await parser.ParseAsync(new(
             Guid.NewGuid(), "manual.pdf", new MemoryStream([1, 2, 3])));
@@ -272,7 +404,7 @@ public sealed class IndexingTests
         };
         var parser = new DoclingHttpParser(
             client,
-            Options.Create(new DoclingOptions { ServiceUrl = "http://docling:5001" }));
+            Options.Create(new DoclingOptions { ServiceUrl = "http://docling:5001", EnableOcrFallback = false }));
 
         var result = await parser.ParseAsync(new(
             Guid.NewGuid(), "manual.pdf", new MemoryStream([1, 2, 3])));
@@ -314,7 +446,7 @@ public sealed class IndexingTests
         };
         var parser = new DoclingHttpParser(
             client,
-            Options.Create(new DoclingOptions { ServiceUrl = "http://docling:5001" }));
+            Options.Create(new DoclingOptions { ServiceUrl = "http://docling:5001", EnableOcrFallback = false }));
 
         var result = await parser.ParseAsync(new(
             Guid.NewGuid(), "manual.pdf", new MemoryStream([1, 2, 3])));
@@ -403,7 +535,12 @@ public sealed class IndexingTests
 
         Assert.Equal(DocumentStatus.Ready, document.Status);
         Assert.Equal(IndexingJobStatus.Completed, job.Status);
-        Assert.Single(db.ManualChunks);
+        var chunk = Assert.Single(db.ManualChunks);
+        Assert.Equal("Keep this text.", chunk.Content);
+        Assert.Contains("Section: Instructions", chunk.EmbeddingText, StringComparison.Ordinal);
+        Assert.Equal("test-embedding", chunk.EmbeddingModel);
+        Assert.Equal([2], chunk.PageNumbers);
+        Assert.Equal("en", chunk.LanguageCode);
     }
 
     [Fact]
@@ -608,12 +745,15 @@ public sealed class IndexingTests
 
     private sealed class FixedEmbedding(int dimensions) : IEmbeddingProvider
     {
+        public string ModelId => "test-embedding";
+
         public Task<ReadOnlyMemory<float>> EmbedAsync(string text, CancellationToken cancellationToken = default) =>
             Task.FromResult<ReadOnlyMemory<float>>(Enumerable.Repeat(0.1f, dimensions).ToArray());
     }
 
     private sealed class RecordingEmbedding(int dimensions) : IEmbeddingProvider
     {
+        public string ModelId => "test-embedding";
         public int CallCount { get; private set; }
 
         public Task<ReadOnlyMemory<float>> EmbedAsync(string text, CancellationToken cancellationToken = default)
@@ -700,6 +840,28 @@ public sealed class IndexingTests
             });
         }
 
+    }
+
+    private sealed class OcrFallbackStubHandler(IReadOnlyList<string> responses) : HttpMessageHandler
+    {
+        private int responseIndex;
+        public List<bool> OcrFlags { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            var body = await request.Content!.ReadAsStringAsync(cancellationToken);
+            OcrFlags.Add(
+                body.Contains("name=\"do_ocr\"\r\n\r\ntrue", StringComparison.Ordinal) ||
+                body.Contains("name=do_ocr\r\n\r\ntrue", StringComparison.Ordinal));
+            var response = responses[responseIndex++];
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(JsonDocument.Parse(response).RootElement)
+            };
+        }
     }
 
     private sealed class TypeSafeStubHandler(string response) : HttpMessageHandler

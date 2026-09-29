@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Pgvector;
+using NpgsqlTypes;
 using System.ComponentModel.DataAnnotations.Schema;
 using HomeApplianceManualRag.Web.Activity;
 
@@ -27,10 +28,35 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
         {
             builder.HasPostgresExtension("vector");
             builder.Entity<ManualChunk>().Property(x => x.Embedding).HasColumnType($"vector({EmbeddingDimensions})");
+            builder.Entity<ManualChunk>()
+                .Property(x => x.SearchVector)
+                .HasColumnType("tsvector")
+                .HasComputedColumnSql("""to_tsvector('simple'::regconfig, "SearchText")""", stored: true);
+            builder.Entity<ManualChunk>().Property(x => x.ParentHeaders).HasColumnType("text[]");
+            builder.Entity<ManualChunk>().Property(x => x.PageNumbers).HasColumnType("integer[]");
+            builder.Entity<ManualChunk>().Property(x => x.MetadataJson).HasColumnType("jsonb");
         }
         builder.Entity<ManualDocument>().HasIndex(x => new { x.Status, x.OwnerUserId });
         builder.Entity<ManualDocument>().HasIndex(x => x.DeletedAtUtc);
-        builder.Entity<ManualChunk>().HasIndex(x => x.DocumentId);
+        builder.Entity<ManualChunk>().HasIndex(x => new { x.DocumentId, x.ChunkOrdinal }).IsUnique();
+        builder.Entity<ManualChunk>().HasIndex(x => x.ParentChunkId);
+        if (Database.IsNpgsql())
+        {
+            builder.Entity<ManualChunk>()
+                .HasIndex(x => x.SearchVector)
+                .HasMethod("gin");
+            builder.Entity<ManualChunk>()
+                .HasIndex(x => x.Embedding)
+                .HasMethod("hnsw")
+                .HasOperators("vector_cosine_ops")
+                .HasFilter("\"Embedding\" IS NOT NULL");
+        }
+        builder.Entity<ManualChunk>().Property(x => x.ChunkType).HasConversion<string>().HasMaxLength(32);
+        builder.Entity<ManualChunk>()
+            .HasOne(x => x.ParentChunk)
+            .WithMany(x => x.Children)
+            .HasForeignKey(x => x.ParentChunkId)
+            .OnDelete(DeleteBehavior.SetNull);
         builder.Entity<IndexingJob>().HasIndex(x => new { x.Status, x.NextAttemptAtUtc });
         builder.Entity<Conversation>().HasIndex(x => x.UserId);
         builder.Entity<Conversation>().HasIndex(x => x.AnonymousAccessKeyHash);
@@ -53,7 +79,10 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
             .HasForeignKey(x => x.DocumentId)
             .OnDelete(DeleteBehavior.Cascade);
         if (!Database.IsNpgsql())
+        {
             builder.Entity<ManualChunk>().Ignore(x => x.Embedding);
+            builder.Entity<ManualChunk>().Ignore(x => x.SearchVector);
+        }
     }
 
 }
@@ -102,6 +131,7 @@ public enum DocumentProcessingStage
 }
 
 public enum MetadataExtractionStatus { Pending, Completed, NeedsReview, Failed }
+public enum ManualChunkType { Text, Table, TableSummary, ImageDescription, SectionParent }
 
 public enum IndexingJobStatus { Pending, Processing, Completed, Failed, Cancelled }
 
@@ -172,11 +202,39 @@ public sealed class ManualChunk
     public Guid Id { get; set; }
     public Guid DocumentId { get; set; }
     public int ChunkOrdinal { get; set; }
-    public int PageNumber { get; set; }
-    public string Text { get; set; } = string.Empty;
+    public int[] PageNumbers { get; set; } = [];
+    public string Content { get; set; } = string.Empty;
+    public string EmbeddingText { get; set; } = string.Empty;
+    public string SearchText { get; set; } = string.Empty;
+    public NpgsqlTsVector? SearchVector { get; set; }
     public Vector? Embedding { get; set; }
+    public string[] ParentHeaders { get; set; } = [];
+    public Guid? ParentChunkId { get; set; }
+    public ManualChunkType ChunkType { get; set; } = ManualChunkType.Text;
+    public string LanguageCode { get; set; } = "und";
+    public int TokenCount { get; set; }
+    public string ParserVersion { get; set; } = string.Empty;
+    public string ChunkerVersion { get; set; } = string.Empty;
+    public string EmbeddingModel { get; set; } = string.Empty;
+    public string? MetadataJson { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public ManualDocument? Document { get; set; }
+    public ManualChunk? ParentChunk { get; set; }
+    public ICollection<ManualChunk> Children { get; set; } = [];
+
+    [NotMapped]
+    public int PageNumber
+    {
+        get => PageNumbers.FirstOrDefault();
+        set => PageNumbers = value > 0 ? [value] : [];
+    }
+
+    [NotMapped]
+    public string Text
+    {
+        get => Content;
+        set => Content = value;
+    }
 }
 
 public sealed class OperationalErrorEvent

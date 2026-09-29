@@ -22,9 +22,11 @@
   使用者可在 navbar 的 conversation title 後按 delete；刪除採 soft delete，資料庫保留
   conversation/messages 供管理及稽核，使用者列表不再顯示。載入 conversation 後會自動捲到最新訊息。
   兩個管理頁面都可按 `Detail` 在 modal 查看完整 messages 及每個 message 的時間。
-- Retrieval applies the authorized scope and `Ready` status in the PostgreSQL query
-  before pgvector cosine ranking. Anonymous visitors use admin/public documents;
-  normal users use their own documents; admins use an explicit all-documents scope.
+- Retrieval applies the authorized scope and `Ready` status before PostgreSQL
+  pgvector and multilingual lexical candidate search, then fuses ranks. Optional
+  Azure chat reranking is disabled unless retrieval evaluation justifies enabling it.
+  Anonymous visitors use admin/public documents; normal users use their own
+  documents; admins use an explicit all-documents scope.
 - Chat uses a grounded prompt and streams Azure OpenAI output behind `IChatProvider`;
   tests can use the deterministic fake provider and do not need Azure credentials.
 - Identity routes: `/register` creates a normal User account, `/login` signs in, and
@@ -259,8 +261,11 @@ The Docker Compose PostgreSQL service creates the `manuals` database on first in
 Phase 3 keeps the upload MVP PDF-only. A durable indexing job is created with
 each new, retried, or re-indexed document. The hosted worker uploads the PDF
 to the pinned Docling Serve container, reads its structured JSON result with
-page/block provenance, creates deterministic page-aware chunks, and validates
-`AzureOpenAI:EmbeddingDimensions` before storing vectors atomically.
+page/block provenance, and creates structure-aware chunks with section paths,
+row-preserving tables, multi-page provenance, and bounded section parents. It
+stores source content separately from enriched embedding text and multilingual
+normalized search text, then validates `AzureOpenAI:EmbeddingDimensions` before
+atomically replacing the document index.
 
 The Compose file pins the official image
 `quay.io/docling-project/docling-serve:v1.34.0`. Do not change it to `latest`;
@@ -280,12 +285,15 @@ Docling:ImagesScale = 2
 ```
 
 The service exposes `/v1/convert/file`; the web parser requests JSON output
-with PDF OCR disabled and `image_export_mode=embedded`. Picture elements are
-decoded from their `data:` URI into bounded, in-memory `ParsedImage` values;
+without OCR on the first pass and `image_export_mode=embedded`. If at least the
+configured share of pages is text-poor, it retries conversion with OCR enabled.
+By default, a page is text-poor below 40 characters and fallback triggers when
+at least half of the pages are text-poor; configure these with
+`Docling:MinTextCharactersPerPage` and `Docling:OcrFallbackPageRatio`.
+`Docling:EnableOcrFallback` disables the one-retry fallback. Picture elements
+are decoded from their `data:` URI into bounded, in-memory `ParsedImage` values;
 image bytes are not persisted in PostgreSQL. Oversized or malformed image
-payloads are ignored while the page/block provenance remains available. If
-scanned-document OCR is required later, add it as an explicit parser
-configuration and validate its resource and failure behavior.
+payloads are ignored while the page/block provenance remains available.
 
 When enabled, `ImageAnalysis` sends up to the configured number of picture
 bytes to the configured Azure OpenAI chat deployment as multimodal input. The
@@ -296,11 +304,27 @@ optional network call; configure a vision-capable Azure OpenAI deployment and
 valid credentials before indexing documents with pictures.
 
 The JSON contract is intentionally application-owned: each page contains
-ordered blocks with `text`, `blockType`, `headingPath`, and optional
-`sourceReference`. Markdown export can be used for diagnostics, but indexing
-must consume structured output so citations never have to be reconstructed from
-rendered Markdown. Image analysis/OCR is not yet part of indexing; the retained
-in-memory image contract is the input boundary for the next analyzer adapter.
+ordered blocks with `text`, `blockType`, heading level/path, and optional
+Docling item references and bounding boxes. Markdown export can be used for
+diagnostics, but indexing consumes structured output so citations never have
+to be reconstructed from rendered Markdown. Image descriptions are indexed as
+distinct image-description chunks with page provenance.
+
+### Structure-aware chunks and retrieval
+
+`ManualChunks` stores `Content`, `EmbeddingText`, normalized `SearchText`,
+generated PostgreSQL `SearchVector`, page-number arrays, parent headings,
+content type, token estimate, and parser/chunker/embedding provenance. CJK text
+uses overlapping bigrams and appliance identifiers are normalized for exact
+lexical matching; PostgreSQL uses the `simple` text configuration, not an
+English-only dictionary. Vector and lexical candidates are fused with
+reciprocal-rank fusion; this PostgreSQL rank is not BM25.
+
+The schema migration backfills existing rows while retaining the old text and
+page columns as `LegacyText` and `LegacyPageNumber`. Re-index retained manuals
+from their original PDFs after applying the migration so all rows receive
+structure-aware chunks and normalized multilingual search text. The migration
+does not call Azure OpenAI; normal re-indexing regenerates embeddings.
 
 ## Repository conventions
 

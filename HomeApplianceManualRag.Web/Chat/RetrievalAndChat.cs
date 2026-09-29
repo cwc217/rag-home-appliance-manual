@@ -1,6 +1,7 @@
 using HomeApplianceManualRag.Web.Configuration;
 using HomeApplianceManualRag.Web.Data;
 using HomeApplianceManualRag.Web.Diagnostics;
+using HomeApplianceManualRag.Web.Documents;
 using HomeApplianceManualRag.Web.Providers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -13,7 +14,22 @@ namespace HomeApplianceManualRag.Web.Chat;
 public enum RetrievalScope { AnonymousAdminPublic, UserOwn, AdminAll }
 
 public sealed record RetrievedChunk(
-    Guid DocumentId, string DocumentName, int PageNumber, string Text, double Similarity);
+    Guid DocumentId, string DocumentName, int PageNumber, string Text, double Similarity)
+{
+    public Guid ChunkId { get; init; }
+    public int[] PageNumbers { get; init; } = PageNumber > 0 ? [PageNumber] : [];
+    public string[] ParentHeaders { get; init; } = [];
+    public ManualChunkType? ChunkType { get; init; }
+}
+
+public interface IManualReranker
+{
+    Task<IReadOnlyList<Guid>> RerankAsync(
+        string question,
+        IReadOnlyList<RetrievedChunk> candidates,
+        int resultCount,
+        CancellationToken cancellationToken = default);
+}
 
 public sealed record ChatCitation(Guid DocumentId, string DocumentName, int PageNumber)
 {
@@ -82,8 +98,12 @@ public sealed class ChatRateLimiter(IOptions<RateLimitingOptions> options)
 public sealed class ManualRetriever(
     ApplicationDbContext db,
     IEmbeddingProvider embeddings,
-    IOptions<RetrievalOptions> options)
+    IOptions<RetrievalOptions> options,
+    IChunkTextAnalyzer? textAnalyzer = null,
+    IManualReranker? reranker = null)
 {
+    private readonly IChunkTextAnalyzer analyzer = textAnalyzer ?? new MultilingualTextAnalyzer();
+
     public async Task<IReadOnlyList<RetrievedChunk>> RetrieveAsync(
         string question,
         RetrievalScope scope,
@@ -95,39 +115,32 @@ public sealed class ManualRetriever(
         if (selectedIds is { Length: 0 })
             selectedIds = null;
 
-        var query = db.ManualChunks.AsNoTracking()
-            .Where(x => x.Document != null &&
-                        x.Document.DeletedAtUtc == null &&
-                        x.Document.Status == DocumentStatus.Ready);
-        if (selectedIds is not null)
-            query = query.Where(x => selectedIds.Contains(x.DocumentId));
-        query = scope switch
-        {
-            RetrievalScope.AnonymousAdminPublic => query.Where(x => x.Document!.OwnerUserId == null),
-            RetrievalScope.UserOwn when !string.IsNullOrWhiteSpace(userId) => query.Where(x => x.Document!.OwnerUserId == userId),
-            RetrievalScope.AdminAll => query,
-            _ => query.Where(_ => false)
-        };
+        var query = ApplyVisibilityFilters(
+            db.ManualChunks.AsNoTracking(), scope, userId, selectedIds);
         if (!await query.AnyAsync(ct))
             return [];
 
+        var analyzedQuery = analyzer.Analyze(question);
         var queryVector = await embeddings.EmbedAsync(question, ct);
         if (queryVector.Length != ApplicationDbContext.EmbeddingDimensions)
             throw new InvalidOperationException("The query embedding has an invalid dimension.");
 
+        List<ManualChunk> vectorCandidates;
+        List<ManualChunk> lexicalCandidates;
         if (db.Database.IsNpgsql())
         {
             var vector = new Vector(queryVector.ToArray());
             var restrictToSelected = selectedIds is not null;
             var selectedDocumentIds = selectedIds ?? [];
-            // Keep the visibility predicate in SQL before pgvector's cosine operator.
-            var chunks = scope == RetrievalScope.UserOwn
+            // Visibility and manual-selection filters are applied before candidate ranking.
+            vectorCandidates = scope == RetrievalScope.UserOwn
                 ? await db.ManualChunks.FromSqlInterpolated($"""
                     SELECT c.* FROM "ManualChunks" c
                     INNER JOIN "ManualDocuments" d ON d."Id" = c."DocumentId"
                     WHERE d."Status" = {(int)DocumentStatus.Ready} AND d."DeletedAtUtc" IS NULL AND d."OwnerUserId" = {userId}
                     AND (NOT {restrictToSelected} OR c."DocumentId" = ANY({selectedDocumentIds}))
-                    ORDER BY c."Embedding" <=> {vector} LIMIT {options.Value.TopK}
+                    AND c."Embedding" IS NOT NULL
+                    ORDER BY c."Embedding" <=> {vector} LIMIT {options.Value.CandidateCount}
                     """).AsNoTracking().Include(x => x.Document).ToListAsync(ct)
                 : scope == RetrievalScope.AnonymousAdminPublic
                 ? await db.ManualChunks.FromSqlInterpolated($"""
@@ -135,28 +148,192 @@ public sealed class ManualRetriever(
                     INNER JOIN "ManualDocuments" d ON d."Id" = c."DocumentId"
                     WHERE d."Status" = {(int)DocumentStatus.Ready} AND d."DeletedAtUtc" IS NULL AND d."OwnerUserId" IS NULL
                     AND (NOT {restrictToSelected} OR c."DocumentId" = ANY({selectedDocumentIds}))
-                    ORDER BY c."Embedding" <=> {vector} LIMIT {options.Value.TopK}
+                    AND c."Embedding" IS NOT NULL
+                    ORDER BY c."Embedding" <=> {vector} LIMIT {options.Value.CandidateCount}
                     """).AsNoTracking().Include(x => x.Document).ToListAsync(ct)
                 : await db.ManualChunks.FromSqlInterpolated($"""
                     SELECT c.* FROM "ManualChunks" c
                     INNER JOIN "ManualDocuments" d ON d."Id" = c."DocumentId"
                     WHERE d."Status" = {(int)DocumentStatus.Ready} AND d."DeletedAtUtc" IS NULL
                     AND (NOT {restrictToSelected} OR c."DocumentId" = ANY({selectedDocumentIds}))
-                    ORDER BY c."Embedding" <=> {vector} LIMIT {options.Value.TopK}
+                    AND c."Embedding" IS NOT NULL
+                    ORDER BY c."Embedding" <=> {vector} LIMIT {options.Value.CandidateCount}
                     """).AsNoTracking().Include(x => x.Document).ToListAsync(ct);
-            return chunks.Select(x => new RetrievedChunk(
-                x.DocumentId, x.Document!.DisplayName, x.PageNumber, x.Text,
-                1d - CosineDistance(x.Embedding, queryVector))).ToArray();
+
+            var tsQuery = analyzer.BuildTsQuery(question);
+            lexicalCandidates = string.IsNullOrWhiteSpace(tsQuery)
+                ? []
+                : scope == RetrievalScope.UserOwn
+                ? await db.ManualChunks.FromSqlInterpolated($"""
+                    SELECT c.* FROM "ManualChunks" c
+                    INNER JOIN "ManualDocuments" d ON d."Id" = c."DocumentId"
+                    WHERE d."Status" = {(int)DocumentStatus.Ready} AND d."DeletedAtUtc" IS NULL AND d."OwnerUserId" = {userId}
+                    AND (NOT {restrictToSelected} OR c."DocumentId" = ANY({selectedDocumentIds}))
+                    AND c."Embedding" IS NOT NULL
+                    AND c."SearchVector" @@ to_tsquery('simple', {tsQuery})
+                    ORDER BY ts_rank_cd(c."SearchVector", to_tsquery('simple', {tsQuery})) DESC
+                    LIMIT {options.Value.CandidateCount}
+                    """).AsNoTracking().Include(x => x.Document).ToListAsync(ct)
+                : scope == RetrievalScope.AnonymousAdminPublic
+                ? await db.ManualChunks.FromSqlInterpolated($"""
+                    SELECT c.* FROM "ManualChunks" c
+                    INNER JOIN "ManualDocuments" d ON d."Id" = c."DocumentId"
+                    WHERE d."Status" = {(int)DocumentStatus.Ready} AND d."DeletedAtUtc" IS NULL AND d."OwnerUserId" IS NULL
+                    AND (NOT {restrictToSelected} OR c."DocumentId" = ANY({selectedDocumentIds}))
+                    AND c."Embedding" IS NOT NULL
+                    AND c."SearchVector" @@ to_tsquery('simple', {tsQuery})
+                    ORDER BY ts_rank_cd(c."SearchVector", to_tsquery('simple', {tsQuery})) DESC
+                    LIMIT {options.Value.CandidateCount}
+                    """).AsNoTracking().Include(x => x.Document).ToListAsync(ct)
+                : await db.ManualChunks.FromSqlInterpolated($"""
+                    SELECT c.* FROM "ManualChunks" c
+                    INNER JOIN "ManualDocuments" d ON d."Id" = c."DocumentId"
+                    WHERE d."Status" = {(int)DocumentStatus.Ready} AND d."DeletedAtUtc" IS NULL
+                    AND (NOT {restrictToSelected} OR c."DocumentId" = ANY({selectedDocumentIds}))
+                    AND c."Embedding" IS NOT NULL
+                    AND c."SearchVector" @@ to_tsquery('simple', {tsQuery})
+                    ORDER BY ts_rank_cd(c."SearchVector", to_tsquery('simple', {tsQuery})) DESC
+                    LIMIT {options.Value.CandidateCount}
+                    """).AsNoTracking().Include(x => x.Document).ToListAsync(ct);
+        }
+        else
+        {
+            // In-memory providers are used by unit tests; production uses PostgreSQL ranking.
+            var candidates = await query.Include(x => x.Document).ToListAsync(ct);
+            vectorCandidates = candidates
+                .Where(chunk => chunk.ChunkType != ManualChunkType.SectionParent)
+                .OrderByDescending(chunk => CosineSimilarity(chunk.Embedding, queryVector))
+                .Take(options.Value.CandidateCount)
+                .ToList();
+            var terms = analyzedQuery.SearchText.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .ToHashSet(StringComparer.Ordinal);
+            lexicalCandidates = terms.Count == 0
+                ? []
+                : candidates
+                    .Where(chunk => chunk.ChunkType != ManualChunkType.SectionParent &&
+                                    chunk.SearchText.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                                        .Any(terms.Contains))
+                    .OrderByDescending(chunk => chunk.SearchText.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                        .Distinct(StringComparer.Ordinal).Count(terms.Contains))
+                    .Take(options.Value.CandidateCount)
+                    .ToList();
         }
 
-        // In-memory providers are used by unit tests; production always takes the SQL path above.
-        var candidates = await query.Include(x => x.Document).ToListAsync(ct);
-        return candidates
-            .Select(x => new RetrievedChunk(x.DocumentId, x.Document!.DisplayName, x.PageNumber, x.Text,
-                CosineSimilarity(x.Embedding, queryVector)))
-            .OrderByDescending(x => x.Similarity)
+        var ranked = FuseRanks(vectorCandidates, lexicalCandidates)
+            .Take(options.Value.EnableReranking
+                ? options.Value.RerankerCandidateCount
+                : options.Value.TopK)
+            .ToArray();
+        if (ranked.Length == 0)
+            return [];
+
+        var rankedById = ranked.ToDictionary(candidate => candidate.Chunk.Id);
+        var rerankInputs = ranked.Select(candidate => ToRetrievedChunk(candidate.Chunk, candidate.Score))
+            .ToArray();
+        var selectedChunkIds = options.Value.EnableReranking
+            ? reranker is null
+                ? throw new InvalidOperationException("Reranking is enabled but no reranker is registered.")
+                : await reranker.RerankAsync(question, rerankInputs, options.Value.TopK, ct)
+            : rerankInputs.Take(options.Value.TopK).Select(candidate => candidate.ChunkId).ToArray();
+        if (selectedChunkIds.Count == 0)
+            throw new InvalidOperationException("The reranker returned no ranked candidates.");
+        if (selectedChunkIds.Distinct().Count() != selectedChunkIds.Count)
+            throw new InvalidOperationException("The reranker returned duplicate chunk IDs.");
+        var selected = selectedChunkIds
+            .Select(id => rankedById.TryGetValue(id, out var candidate)
+                ? candidate
+                : throw new InvalidOperationException("The reranker returned an unknown chunk ID."))
             .Take(options.Value.TopK)
             .ToArray();
+        var parentIds = selected
+            .Where(candidate => candidate.Chunk.ParentChunkId is not null)
+            .Select(candidate => candidate.Chunk.ParentChunkId!.Value)
+            .Distinct()
+            .ToArray();
+        var parents = parentIds.Length == 0
+            ? []
+            : await ApplyVisibilityFilters(
+                    db.ManualChunks.AsNoTracking(), scope, userId, selectedIds)
+                .Where(chunk => parentIds.Contains(chunk.Id) &&
+                                chunk.ChunkType == ManualChunkType.SectionParent)
+                .ToDictionaryAsync(chunk => chunk.Id, ct);
+
+        return selected.Select(candidate =>
+        {
+            var chunk = candidate.Chunk;
+            var result = ToRetrievedChunk(chunk, candidate.Score);
+            if (chunk.ParentChunkId is not Guid parentId ||
+                !parents.TryGetValue(parentId, out var parent) ||
+                parent.TokenCount > options.Value.MaxExpandedParentTokens)
+                return result;
+
+            return result with
+            {
+                Text = parent.Content,
+                PageNumber = parent.PageNumber,
+                PageNumbers = parent.PageNumbers,
+                ParentHeaders = parent.ParentHeaders,
+                ChunkType = parent.ChunkType
+            };
+        }).DistinctBy(chunk => (
+            chunk.DocumentId,
+            string.Join(',', chunk.PageNumbers),
+            chunk.Text)).ToArray();
+    }
+
+    private static RetrievedChunk ToRetrievedChunk(ManualChunk chunk, double score) =>
+        new(chunk.DocumentId, chunk.Document!.DisplayName, chunk.PageNumber, chunk.Content, score)
+        {
+            ChunkId = chunk.Id,
+            PageNumbers = chunk.PageNumbers,
+            ParentHeaders = chunk.ParentHeaders,
+            ChunkType = chunk.ChunkType
+        };
+
+    private IQueryable<ManualChunk> ApplyVisibilityFilters(
+        IQueryable<ManualChunk> query,
+        RetrievalScope scope,
+        string? userId,
+        Guid[]? selectedIds)
+    {
+        query = query.Where(chunk => chunk.Document != null &&
+                                     chunk.Document.DeletedAtUtc == null &&
+                                     chunk.Document.Status == DocumentStatus.Ready);
+        if (selectedIds is not null)
+            query = query.Where(chunk => selectedIds.Contains(chunk.DocumentId));
+        return scope switch
+        {
+            RetrievalScope.AnonymousAdminPublic =>
+                query.Where(chunk => chunk.Document!.OwnerUserId == null),
+            RetrievalScope.UserOwn when !string.IsNullOrWhiteSpace(userId) =>
+                query.Where(chunk => chunk.Document!.OwnerUserId == userId),
+            RetrievalScope.AdminAll => query,
+            _ => query.Where(_ => false)
+        };
+    }
+
+    private static IReadOnlyList<(ManualChunk Chunk, double Score)> FuseRanks(
+        IReadOnlyList<ManualChunk> vectorCandidates,
+        IReadOnlyList<ManualChunk> lexicalCandidates)
+    {
+        const double rankConstant = 60;
+        var scores = new Dictionary<Guid, (ManualChunk Chunk, double Score)>();
+        AddRankedCandidates(vectorCandidates);
+        AddRankedCandidates(lexicalCandidates);
+        return scores.Values
+            .OrderByDescending(candidate => candidate.Score)
+            .ThenBy(candidate => candidate.Chunk.ChunkOrdinal)
+            .ToArray();
+
+        void AddRankedCandidates(IReadOnlyList<ManualChunk> candidates)
+        {
+            for (var index = 0; index < candidates.Count; index++)
+            {
+                var chunk = candidates[index];
+                scores.TryGetValue(chunk.Id, out var current);
+                scores[chunk.Id] = (chunk, current.Score + 1d / (rankConstant + index + 1));
+            }
+        }
     }
 
     private static double CosineSimilarity(Vector? left, ReadOnlyMemory<float> right)
@@ -174,8 +351,6 @@ public sealed class ManualRetriever(
         return leftLength == 0 || rightLength == 0 ? 0 : dot / Math.Sqrt(leftLength * rightLength);
     }
 
-    private static double CosineDistance(Vector? left, ReadOnlyMemory<float> right) =>
-        1d - CosineSimilarity(left, right);
 }
 
 public static class GroundedPrompt
@@ -190,7 +365,17 @@ public static class GroundedPrompt
 
         var context = new StringBuilder();
         foreach (var chunk in chunks)
-            context.AppendLine($"[{chunk.DocumentName}, p. {chunk.PageNumber}] {chunk.Text}");
+        {
+            var sourcePages = chunk.PageNumbers.Length == 0
+                ? [chunk.PageNumber]
+                : chunk.PageNumbers;
+            var sourceLabels = sourcePages.Distinct().Order()
+                .Select(page => $"[{chunk.DocumentName}, p. {page}]");
+            context.Append(string.Join(' ', sourceLabels));
+            if (chunk.ParentHeaders.Length > 0)
+                context.Append($" Section: {string.Join(" > ", chunk.ParentHeaders)}");
+            context.AppendLine($" {chunk.Text}");
+        }
         var selectedManuals = selectedDocumentIds is null
             ? string.Empty
             : selectedDocumentIds.Count == 0
@@ -301,15 +486,23 @@ public sealed class ChatService(
                 results.Add(new ChatToolResult(call.Id, execution.Content));
                 foreach (var chunk in execution.Chunks)
                 {
-                    if (!context.Any(existing => existing.DocumentId == chunk.DocumentId &&
-                                                 existing.PageNumber == chunk.PageNumber))
+                    if (!context.Any(existing =>
+                            chunk.ChunkId != Guid.Empty
+                                ? existing.ChunkId == chunk.ChunkId
+                                : existing.DocumentId == chunk.DocumentId &&
+                                  existing.PageNumbers.SequenceEqual(chunk.PageNumbers) &&
+                                  existing.Text == chunk.Text))
                         context.Add(chunk);
                 }
             }
 
             rounds.Add(new ChatToolRound(requestedCalls, results));
             var citationsForContext = context
-                .Select(x => new ChatCitation(x.DocumentId, x.DocumentName, x.PageNumber))
+                .SelectMany(chunk => (chunk.PageNumbers.Length == 0
+                        ? [chunk.PageNumber]
+                        : chunk.PageNumbers)
+                    .Where(page => page > 0)
+                    .Select(page => new ChatCitation(chunk.DocumentId, chunk.DocumentName, page)))
                 .DistinctBy(x => (x.DocumentId, x.PageNumber));
             foreach (var citation in citationsForContext)
             {

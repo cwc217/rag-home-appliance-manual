@@ -87,6 +87,7 @@ builder.Services.AddScoped<IChatProvider, AzureOpenAiChatProvider>();
 builder.Services.AddScoped<IManualMetadataExtractor, AzureOpenAiManualMetadataExtractor>();
 builder.Services.AddScoped<IImageAnalyzer, AzureOpenAiImageAnalyzer>();
 builder.Services.AddScoped<IEmbeddingProvider, AzureOpenAiEmbeddingProvider>();
+builder.Services.AddScoped<IManualReranker, AzureOpenAiManualReranker>();
 builder.Services.AddScoped<ManualRetriever>();
 builder.Services.AddScoped<ChatToolsService>();
 builder.Services.AddScoped<ChatService>();
@@ -113,6 +114,7 @@ builder.Services.AddScoped<IDocumentParser>(serviceProvider =>
     serviceProvider.GetRequiredService<DoclingHttpParser>());
 builder.Services.AddScoped<IManualClassifier>(serviceProvider =>
     serviceProvider.GetRequiredService<TypeSafeManualClassifier>());
+builder.Services.AddSingleton<IChunkTextAnalyzer, MultilingualTextAnalyzer>();
 builder.Services.AddScoped<DocumentChunker>();
 builder.Services.AddScoped<IndexingPipeline>();
 builder.Services.AddSingleton<DocumentProgressNotifier>();

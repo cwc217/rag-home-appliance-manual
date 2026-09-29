@@ -31,6 +31,12 @@ public sealed class RetrievalOptions
     [Range(1, 100)] public int TopK { get; init; } = 5;
     [Range(1, 10000)] public int ChunkSize { get; init; } = 1200;
     [Range(0, 10000)] public int ChunkOverlap { get; init; } = 200;
+    [Range(32, 8192)] public int MaxChunkTokens { get; init; } = 400;
+    [Range(32, 32768)] public int MaxParentChunkTokens { get; init; } = 1200;
+    [Range(1, 200)] public int CandidateCount { get; init; } = 30;
+    [Range(1, 100)] public int MaxExpandedParentTokens { get; init; } = 1200;
+    public bool EnableReranking { get; init; }
+    [Range(1, 200)] public int RerankerCandidateCount { get; init; } = 20;
 }
 
 public sealed class DoclingOptions
@@ -40,6 +46,9 @@ public sealed class DoclingOptions
     [Range(1, 3600)] public int TimeoutSeconds { get; init; } = 300;
     [Range(1, 4)] public int MaxConcurrentJobs { get; init; } = 1;
     public bool IncludeImages { get; init; } = true;
+    public bool EnableOcrFallback { get; init; } = true;
+    [Range(1, 1000)] public int MinTextCharactersPerPage { get; init; } = 40;
+    [Range(0.1, 1)] public double OcrFallbackPageRatio { get; init; } = 0.5;
     [Range(1, 50 * 1024 * 1024)] public int MaxEmbeddedImageBytes { get; init; } = 5 * 1024 * 1024;
     [Range(0.1, 10)] public double ImagesScale { get; init; } = 2;
 }
