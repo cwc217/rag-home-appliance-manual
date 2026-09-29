@@ -23,7 +23,22 @@ public sealed record ParsedBlock(
     int Order,
     string? HeadingPath = null,
     string? SourceReference = null,
-    ParsedImage? Image = null);
+    ParsedImage? Image = null,
+    ParsedTable? Table = null);
+
+public sealed record ParsedTable(
+    int RowCount,
+    int ColumnCount,
+    IReadOnlyList<ParsedTableCell> Cells);
+
+public sealed record ParsedTableCell(
+    int Row,
+    int Column,
+    string Text,
+    int RowSpan = 1,
+    int ColumnSpan = 1,
+    bool IsColumnHeader = false,
+    bool IsRowHeader = false);
 
 public sealed class DocumentParseException(
     string message,
@@ -148,7 +163,10 @@ public sealed class DoclingHttpParser(
         {
             if (!item.TryGetProperty("prov", out var provenance) || provenance.ValueKind != JsonValueKind.Array)
                 continue;
-            var text = GetText(item, defaultBlockType);
+            var table = string.Equals(defaultBlockType, "table", StringComparison.OrdinalIgnoreCase)
+                ? GetStructuredTable(item)
+                : null;
+            var text = GetText(item, defaultBlockType, table);
             var image = string.Equals(defaultBlockType, "picture", StringComparison.OrdinalIgnoreCase)
                 ? GetEmbeddedImage(item, maxEmbeddedImageBytes)
                 : null;
@@ -166,28 +184,25 @@ public sealed class DoclingHttpParser(
                                   blockType.Contains("title", StringComparison.OrdinalIgnoreCase)
                     ? text
                     : null;
-                blocks.Add(new ParsedBlock(text, blockType, order++, headingPath, $"page:{pageNumber}", image));
+                blocks.Add(new ParsedBlock(text, blockType, order++, headingPath, $"page:{pageNumber}", image, table));
             }
         }
     }
 
-    private static string GetText(JsonElement item, string blockType)
+    private static string GetText(JsonElement item, string blockType, ParsedTable? table)
     {
+        if (table is not null)
+            return FormatTable(table);
+
         foreach (var name in new[] { "text", "orig", "exported" })
             if (item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String &&
                 !string.IsNullOrWhiteSpace(value.GetString()) &&
                 !string.Equals(value.GetString(), $"[{blockType}]", StringComparison.OrdinalIgnoreCase))
                 return RemoveConsecutiveDuplicateLines(value.GetString());
-        if (string.Equals(blockType, "table", StringComparison.OrdinalIgnoreCase))
-        {
-            var tableText = GetStructuredTableText(item);
-            if (!string.IsNullOrWhiteSpace(tableText))
-                return tableText;
-        }
         return $"[{blockType}]";
     }
 
-    private static string? GetStructuredTableText(JsonElement item)
+    private static ParsedTable? GetStructuredTable(JsonElement item)
     {
         if (!item.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object)
             data = item;
@@ -196,32 +211,48 @@ public sealed class DoclingHttpParser(
         {
             if (data.TryGetProperty(propertyName, out var cells) && cells.ValueKind == JsonValueKind.Array)
             {
-                var rows = ReadTableCells(cells);
-                if (rows.Count > 0)
-                    return FormatTable(rows);
+                var parsedCells = ReadTableCells(cells);
+                if (parsedCells.Count > 0)
+                    return CreateTable(data, parsedCells);
             }
         }
 
         if (data.TryGetProperty("grid", out var grid) && grid.ValueKind == JsonValueKind.Array)
         {
-            var rows = new List<IReadOnlyList<string>>();
+            var parsedCells = new List<ParsedTableCell>();
+            var rowIndex = 0;
             foreach (var row in grid.EnumerateArray())
             {
                 if (row.ValueKind != JsonValueKind.Array)
+                {
+                    rowIndex++;
                     continue;
-                var values = row.EnumerateArray()
-                    .Select(cell => GetCellText(cell))
-                    .Where(text => !string.IsNullOrWhiteSpace(text))
-                    .Select(text => text!)
-                    .ToArray();
-                if (values.Length > 0)
-                    rows.Add(values);
+                }
+
+                var columnIndex = 0;
+                foreach (var cell in row.EnumerateArray())
+                {
+                    var text = GetCellText(cell);
+                    if (!string.IsNullOrWhiteSpace(text))
+                        parsedCells.Add(new ParsedTableCell(rowIndex, columnIndex, text));
+                    columnIndex++;
+                }
+                rowIndex++;
             }
-            if (rows.Count > 0)
-                return FormatTable(rows);
+            if (parsedCells.Count > 0)
+                return new ParsedTable(rowIndex, parsedCells.Max(cell => cell.Column) + 1, parsedCells);
         }
 
         return null;
+    }
+
+    private static ParsedTable CreateTable(JsonElement data, List<ParsedTableCell> cells)
+    {
+        var rowCount = GetInteger(data, "num_rows") ??
+                       cells.Max(cell => cell.Row + cell.RowSpan);
+        var columnCount = GetInteger(data, "num_cols") ??
+                          cells.Max(cell => cell.Column + cell.ColumnSpan);
+        return new ParsedTable(rowCount, columnCount, cells);
     }
 
     private static ParsedImage? GetEmbeddedImage(JsonElement item, int maxBytes)
@@ -260,9 +291,9 @@ public sealed class DoclingHttpParser(
         }
     }
 
-    private static List<IReadOnlyList<string>> ReadTableCells(JsonElement cells)
+    private static List<ParsedTableCell> ReadTableCells(JsonElement cells)
     {
-        var positioned = new List<(int Row, int Column, string Text)>();
+        var positioned = new List<ParsedTableCell>();
         var fallbackRow = 0;
         foreach (var cell in cells.EnumerateArray())
         {
@@ -278,19 +309,27 @@ public sealed class DoclingHttpParser(
                 ?? GetInteger(cell, "col_idx")
                 ?? GetInteger(cell, "column")
                 ?? 0;
-            positioned.Add((row, column, text));
+            positioned.Add(new ParsedTableCell(
+                row,
+                column,
+                text,
+                Math.Max(1, GetInteger(cell, "row_span") ?? 1),
+                Math.Max(1, GetInteger(cell, "col_span") ?? 1),
+                GetBoolean(cell, "column_header"),
+                GetBoolean(cell, "row_header")));
             fallbackRow = row;
         }
 
         return positioned
-            .GroupBy(cell => cell.Row)
-            .OrderBy(row => row.Key)
-            .Select(row => (IReadOnlyList<string>)row
-                .OrderBy(cell => cell.Column)
-                .Select(cell => cell.Text)
-                .ToArray())
+            .OrderBy(cell => cell.Row)
+            .ThenBy(cell => cell.Column)
             .ToList();
     }
+
+    private static bool GetBoolean(JsonElement element, string propertyName) =>
+        element.ValueKind == JsonValueKind.Object &&
+        element.TryGetProperty(propertyName, out var value) &&
+        value.ValueKind == JsonValueKind.True;
 
     private static string? GetCellText(JsonElement cell)
     {
@@ -308,12 +347,19 @@ public sealed class DoclingHttpParser(
     }
 
     private static int? GetInteger(JsonElement element, string propertyName) =>
+        element.ValueKind == JsonValueKind.Object &&
         element.TryGetProperty(propertyName, out var value) && value.TryGetInt32(out var result)
             ? result
             : null;
 
-    private static string FormatTable(IEnumerable<IReadOnlyList<string>> rows) =>
-        "[Table]\n" + string.Join('\n', rows.Select(row => string.Join(" | ", row)));
+    private static string FormatTable(ParsedTable table)
+    {
+        var rows = table.Cells
+            .GroupBy(cell => cell.Row)
+            .OrderBy(row => row.Key)
+            .Select(row => string.Join(" | ", row.OrderBy(cell => cell.Column).Select(cell => cell.Text)));
+        return "[Table]\n" + string.Join('\n', rows);
+    }
 
     private static void RemoveDuplicateBlocks(List<ParsedBlock> blocks)
     {

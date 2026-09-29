@@ -18,16 +18,131 @@ public sealed class DocumentChunker(IOptions<RetrievalOptions> options)
         var ordinal = 0;
         foreach (var page in document.Pages)
         {
-            var text = string.Join("\n\n", page.Blocks
-                .OrderBy(x => x.Order)
-                .Where(x => !string.IsNullOrWhiteSpace(x.Text))
-                .Select(x => string.IsNullOrWhiteSpace(x.HeadingPath) ? x.Text.Trim() : $"{x.HeadingPath}\n{x.Text.Trim()}"));
-            for (var start = 0; start < text.Length; start += Math.Max(1, size - overlap))
+            var textBlocks = new List<string>();
+            foreach (var block in page.Blocks.OrderBy(x => x.Order))
             {
-                var length = Math.Min(size, text.Length - start);
-                if (length == 0) break;
-                drafts.Add(new ChunkDraft(ordinal++, page.PageNumber, text.Substring(start, length), document.ParserVersion));
-                if (start + length >= text.Length) break;
+                if (block.Table is null &&
+                    !block.BlockType.Contains("table", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!string.IsNullOrWhiteSpace(block.Text))
+                        textBlocks.Add(string.IsNullOrWhiteSpace(block.HeadingPath)
+                            ? block.Text.Trim()
+                            : $"{block.HeadingPath}\n{block.Text.Trim()}");
+                    continue;
+                }
+
+                AddTextChunks();
+                if (block.Table is not null)
+                    AddTableChunks(block.Table, block.Text, page.PageNumber);
+                else if (!string.IsNullOrWhiteSpace(block.Text))
+                    AddTextChunks(block.Text);
+            }
+
+            AddTextChunks();
+
+            void AddTextChunks(string? additionalText = null)
+            {
+                if (additionalText is not null)
+                    textBlocks.Add(additionalText.Trim());
+                if (textBlocks.Count == 0)
+                    return;
+
+                var text = string.Join("\n\n", textBlocks);
+                textBlocks.Clear();
+                for (var start = 0; start < text.Length; start += Math.Max(1, size - overlap))
+                {
+                    var length = Math.Min(size, text.Length - start);
+                    if (length == 0)
+                        break;
+                    drafts.Add(new ChunkDraft(
+                        ordinal++,
+                        page.PageNumber,
+                        text.Substring(start, length),
+                        document.ParserVersion));
+                    if (start + length >= text.Length)
+                        break;
+                }
+            }
+
+            void AddTableChunks(ParsedTable table, string fallbackText, int pageNumber)
+            {
+                var rows = BuildTableRows(table);
+                if (rows.Count == 0)
+                {
+                    AddTextChunks(fallbackText);
+                    return;
+                }
+
+                var headerRows = rows
+                    .Where(row => row.IsHeader)
+                    .Select(row => row.Text)
+                    .ToArray();
+                var dataRows = rows.Where(row => !row.IsHeader).Select(row => row.Text).ToArray();
+                var currentLines = new List<string> { "[Table]" };
+                currentLines.AddRange(headerRows);
+                var currentDataRowCount = 0;
+
+                foreach (var row in dataRows)
+                {
+                    var currentLength = currentLines.Sum(line => line.Length + 1);
+                    if (currentDataRowCount > 0 && currentLength + row.Length + 1 > size)
+                    {
+                        AddTableDraft();
+                        currentLines = ["[Table]", .. headerRows];
+                        currentDataRowCount = 0;
+                    }
+
+                    currentLines.Add(row);
+                    currentDataRowCount++;
+                }
+
+                if (currentDataRowCount > 0 || headerRows.Length > 0)
+                    AddTableDraft();
+
+                void AddTableDraft() =>
+                    drafts.Add(new ChunkDraft(
+                        ordinal++,
+                        pageNumber,
+                        string.Join('\n', currentLines),
+                        document.ParserVersion));
+            }
+
+            static List<(string Text, bool IsHeader)> BuildTableRows(ParsedTable table)
+            {
+                var rowCount = Math.Max(
+                    table.RowCount,
+                    table.Cells.Count == 0 ? 0 : table.Cells.Max(cell => cell.Row + cell.RowSpan));
+                var columnCount = Math.Max(
+                    table.ColumnCount,
+                    table.Cells.Count == 0 ? 0 : table.Cells.Max(cell => cell.Column + cell.ColumnSpan));
+                if (rowCount <= 0 || columnCount <= 0)
+                    return [];
+
+                var values = new string?[rowCount, columnCount];
+                var headerRows = new HashSet<int>();
+                foreach (var cell in table.Cells.OrderBy(cell => cell.Row).ThenBy(cell => cell.Column))
+                {
+                    if (cell.Row < 0 || cell.Row >= rowCount ||
+                        cell.Column < 0 || cell.Column >= columnCount)
+                        continue;
+                    if (cell.IsColumnHeader)
+                        headerRows.Add(cell.Row);
+
+                    var lastRow = Math.Min(rowCount, cell.Row + cell.RowSpan);
+                    for (var row = cell.Row; row < lastRow; row++)
+                        values[row, cell.Column] ??= cell.Text;
+                }
+
+                var rows = new List<(string Text, bool IsHeader)>(rowCount);
+                for (var row = 0; row < rowCount; row++)
+                {
+                    var cells = Enumerable.Range(0, columnCount)
+                        .Select(column => values[row, column] ?? string.Empty);
+                    var text = string.Join(" | ", cells);
+                    if (!string.IsNullOrWhiteSpace(text.Replace("|", string.Empty, StringComparison.Ordinal)))
+                        rows.Add((text, headerRows.Contains(row)));
+                }
+                return rows;
             }
         }
         return drafts;

@@ -68,6 +68,58 @@ public sealed class IndexingTests
     }
 
     [Fact]
+    public void Chunker_keeps_table_rows_together_repeats_headers_and_preserves_row_spans()
+    {
+        var chunker = new DocumentChunker(Options.Create(new RetrievalOptions
+        {
+            ChunkSize = 42,
+            ChunkOverlap = 0
+        }));
+        var table = new ParsedTable(
+            4,
+            2,
+            [
+                new ParsedTableCell(0, 0, "Code", IsColumnHeader: true),
+                new ParsedTableCell(0, 1, "Cause", IsColumnHeader: true),
+                new ParsedTableCell(1, 0, "E:24", RowSpan: 2),
+                new ParsedTableCell(1, 1, "Drain pipe blocked"),
+                new ParsedTableCell(2, 1, "Drain pipe bent"),
+                new ParsedTableCell(3, 0, "E:25"),
+                new ParsedTableCell(3, 1, "Pump cover stuck")
+            ]);
+        var parsed = new ParsedDocument(
+        [
+            new ParsedPage(31,
+            [
+                new ParsedBlock("E:18 inlet hose issue", "text", 0),
+                new ParsedBlock("[Table]", "table", 1, Table: table)
+            ])
+        ], "fixture");
+
+        var chunks = chunker.Chunk(parsed);
+        var tableChunks = chunks.Where(chunk => chunk.Text.StartsWith("[Table]", StringComparison.Ordinal)).ToArray();
+
+        Assert.Contains(chunks, chunk => chunk.Text.Contains("E:18 inlet hose issue", StringComparison.Ordinal));
+        Assert.NotEmpty(tableChunks);
+        Assert.All(tableChunks, chunk =>
+        {
+            Assert.Equal(31, chunk.PageNumber);
+            Assert.Contains("Code | Cause", chunk.Text, StringComparison.Ordinal);
+            Assert.DoesNotContain("E:18", chunk.Text, StringComparison.Ordinal);
+        });
+        Assert.Contains(tableChunks, chunk =>
+            chunk.Text.Contains("E:24 | Drain pipe blocked", StringComparison.Ordinal));
+        Assert.Contains(tableChunks, chunk =>
+            chunk.Text.Contains("E:24 | Drain pipe bent", StringComparison.Ordinal));
+        Assert.Contains(tableChunks, chunk =>
+            chunk.Text.Contains("E:25 | Pump cover stuck", StringComparison.Ordinal));
+        Assert.All(tableChunks, chunk =>
+            Assert.False(
+                chunk.Text.Contains("Drain pipe blocked", StringComparison.Ordinal) &&
+                chunk.Text.Contains("Drain pipe bent", StringComparison.Ordinal)));
+    }
+
+    [Fact]
     public async Task Docling_parser_maps_page_and_block_provenance()
     {
         using var client = new HttpClient(new StubHandler("""
@@ -157,10 +209,12 @@ public sealed class IndexingTests
                     {
                       "label": "table",
                       "data": {
+                        "num_rows": 3,
+                        "num_cols": 2,
                         "table_cells": [
-                          { "text": "診斷顯示", "start_row_offset_idx": 0, "start_col_offset_idx": 0 },
-                          { "text": "異常/保護控制", "start_row_offset_idx": 0, "start_col_offset_idx": 1 },
-                          { "text": "H 11", "start_row_offset_idx": 1, "start_col_offset_idx": 0 },
+                          { "text": "診斷顯示", "start_row_offset_idx": 0, "start_col_offset_idx": 0, "column_header": true },
+                          { "text": "異常/保護控制", "start_row_offset_idx": 0, "start_col_offset_idx": 1, "column_header": true },
+                          { "text": "H 11", "start_row_offset_idx": 1, "start_col_offset_idx": 0, "row_span": 2 },
                           { "text": "室內/室外異常通訊", "start_row_offset_idx": 1, "start_col_offset_idx": 1 }
                         ]
                       },
@@ -187,6 +241,11 @@ public sealed class IndexingTests
         Assert.Single(blocks, block => block.Text == "故障檢修");
         Assert.Contains("[Table]", blocks[1].Text, StringComparison.Ordinal);
         Assert.Contains("H 11 | 室內/室外異常通訊", blocks[1].Text, StringComparison.Ordinal);
+        var table = Assert.IsType<ParsedTable>(blocks[1].Table);
+        Assert.Equal(3, table.RowCount);
+        Assert.Equal(2, table.ColumnCount);
+        Assert.Equal(2, Assert.Single(table.Cells, cell => cell.Text == "H 11").RowSpan);
+        Assert.Equal(2, table.Cells.Count(cell => cell.IsColumnHeader));
     }
 
     [Fact]
