@@ -14,6 +14,19 @@ namespace HomeApplianceManualRag.Tests;
 
 public sealed class ConfigurationValidationTests
 {
+    [Theory]
+    [InlineData(1200)]
+    [InlineData(32768)]
+    public void Retrieval_options_accept_parent_expansion_token_budget(int tokenBudget)
+    {
+        var options = new RetrievalOptions { MaxExpandedParentTokens = tokenBudget };
+        var validationResults = new List<ValidationResult>();
+
+        Assert.True(
+            Validator.TryValidateObject(options, new ValidationContext(options), validationResults, validateAllProperties: true),
+            string.Join("; ", validationResults.Select(result => result.ErrorMessage)));
+    }
+
     [Fact]
     public void Date_time_display_uses_fixed_utc_plus_eight_offset()
     {

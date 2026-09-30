@@ -34,7 +34,7 @@ public sealed class RetrievalOptions
     [Range(32, 8192)] public int MaxChunkTokens { get; init; } = 400;
     [Range(32, 32768)] public int MaxParentChunkTokens { get; init; } = 1200;
     [Range(1, 200)] public int CandidateCount { get; init; } = 30;
-    [Range(1, 100)] public int MaxExpandedParentTokens { get; init; } = 1200;
+    [Range(1, 32768)] public int MaxExpandedParentTokens { get; init; } = 1200;
     public bool EnableReranking { get; init; }
     [Range(1, 200)] public int RerankerCandidateCount { get; init; } = 20;
 }
