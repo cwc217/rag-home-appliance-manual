@@ -308,6 +308,12 @@ namespace HomeApplianceManualRag.Web.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<int?>("LegacyPageNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("LegacyText")
+                        .HasColumnType("text");
+
                     b.Property<string>("MetadataJson")
                         .HasColumnType("jsonb");
 

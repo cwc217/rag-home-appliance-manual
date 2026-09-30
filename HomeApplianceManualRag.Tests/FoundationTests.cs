@@ -6,6 +6,7 @@ using HomeApplianceManualRag.Web.Resources;
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -14,6 +15,19 @@ namespace HomeApplianceManualRag.Tests;
 
 public sealed class ConfigurationValidationTests
 {
+    [Fact]
+    public void Legacy_chunk_columns_are_optional_for_new_chunks()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        using var db = new ApplicationDbContext(options);
+        var chunk = db.Model.FindEntityType(typeof(ManualChunk))!;
+
+        Assert.True(chunk.FindProperty(nameof(ManualChunk.LegacyText))!.IsNullable);
+        Assert.True(chunk.FindProperty(nameof(ManualChunk.LegacyPageNumber))!.IsNullable);
+    }
+
     [Theory]
     [InlineData(1200)]
     [InlineData(32768)]
