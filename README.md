@@ -29,6 +29,11 @@
   documents; admins use an explicit all-documents scope.
 - Chat uses a grounded prompt and streams Azure OpenAI output behind `IChatProvider`;
   tests can use the deterministic fake provider and do not need Azure credentials.
+  Before starting the chat stream, a separate TypeSafe JEv preflight classifies
+  only the current question with the configured three `noul` checks. Questions
+  classified as out of scope or unsafe are blocked before model/tool calls;
+  JEv errors fail closed and are recorded. The existing document-ingestion
+  classifier and chat system prompts are unchanged.
 - Identity routes: `/register` creates a normal User account, `/login` signs in, and
   `POST /account/logout` signs out. The configured `SeedAdmin` account is idempotently
   assigned the Admin role at startup. Validation errors support English and Traditional

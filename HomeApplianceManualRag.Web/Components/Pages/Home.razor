@@ -350,7 +350,8 @@
                 anonymousAccessKey: IsAuthenticated ? null : anonymousAccessKey);
             if (result.Stream is null)
             {
-                var noContextMessage = ChatMessages.NoContext(CultureInfo.CurrentUICulture.Name);
+                var noContextMessage = result.Response.NoContextMessage
+                    ?? ChatMessages.NoContext(CultureInfo.CurrentUICulture.Name);
                 var noContextCitations = CitationSelector.SelectReferenced(noContextMessage, result.Response.Citations);
                 messages.Add(new UiMessage(ChatMessageRole.Assistant, noContextMessage, noContextCitations, DateTime.UtcNow));
                 await History.PersistExchangeAsync(conversationId, question, noContextMessage, noContextCitations,

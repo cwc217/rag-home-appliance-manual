@@ -48,6 +48,12 @@ builder.Services.AddHttpClient<TypeSafeManualClassifier>((serviceProvider, clien
     client.BaseAddress = new Uri(options.Endpoint.TrimEnd('/') + "/");
     client.Timeout = TimeSpan.FromSeconds(60);
 });
+builder.Services.AddHttpClient<TypeSafeChatRiskClassifier>((serviceProvider, client) =>
+{
+    var options = serviceProvider.GetRequiredService<IOptions<TypeSafeOptions>>().Value;
+    client.BaseAddress = new Uri(options.Endpoint.TrimEnd('/') + "/");
+    client.Timeout = TimeSpan.FromSeconds(15);
+});
 builder.Services.AddOptions<RateLimitingOptions>().BindConfiguration(RateLimitingOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<ChatOptions>().BindConfiguration(ChatOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<SeedAdminOptions>().BindConfiguration(SeedAdminOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
@@ -84,6 +90,8 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy(ApplicationPolicies.RegisteredUser, policy => policy.RequireAuthenticatedUser());
 });
 builder.Services.AddScoped<IChatProvider, AzureOpenAiChatProvider>();
+builder.Services.AddScoped<IChatRiskClassifier>(serviceProvider =>
+    serviceProvider.GetRequiredService<TypeSafeChatRiskClassifier>());
 builder.Services.AddScoped<IManualMetadataExtractor, AzureOpenAiManualMetadataExtractor>();
 builder.Services.AddScoped<IImageAnalyzer, AzureOpenAiImageAnalyzer>();
 builder.Services.AddScoped<IEmbeddingProvider, AzureOpenAiEmbeddingProvider>();

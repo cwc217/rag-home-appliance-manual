@@ -3,6 +3,7 @@ using HomeApplianceManualRag.Web.Data;
 using HomeApplianceManualRag.Web.Diagnostics;
 using HomeApplianceManualRag.Web.Documents;
 using HomeApplianceManualRag.Web.Providers;
+using HomeApplianceManualRag.Web.Resources;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Pgvector;
@@ -403,6 +404,7 @@ public static class GroundedPrompt
 
 public sealed class ChatService(
     IChatProvider provider,
+    IChatRiskClassifier riskClassifier,
     ChatToolsService tools,
     IChatConversationContext conversationContext,
     ChatRateLimiter rateLimiter,
@@ -432,11 +434,39 @@ public sealed class ChatService(
             selectedIds = null;
         if (selectedIds is { Length: > 0 })
             await tools.ValidateSelectedManualsAsync(selectedIds, ct);
+        var key = currentUser.UserId ?? httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
+        rateLimiter.EnsureAllowed(key);
+        ChatRiskClassificationResult risk;
+        try
+        {
+            risk = await riskClassifier.ClassifyAsync(normalizedQuestion, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            await errorRecorder.RecordAsync(
+                "Chat risk classifier", "Classify user question", ex, cancellationToken: ct);
+            return (
+                new ChatResponse([], [], ChatMessages.RiskCheckUnavailable(
+                    System.Globalization.CultureInfo.CurrentUICulture.Name)),
+                null);
+        }
+
+        var culture = System.Globalization.CultureInfo.CurrentUICulture.Name;
+        if (!risk.IsAllowed)
+        {
+            var message = risk.IsPromptInjection
+                ? ChatMessages.PromptInjectionBlocked(culture)
+                : ChatMessages.QuestionOutOfScope(culture);
+            return (new ChatResponse([], [], message), null);
+        }
+
         var conversationHistory = conversationId is Guid id
             ? await conversationContext.GetRecentHistoryForModelAsync(id, anonymousAccessKey, ct)
             : [];
-        var key = currentUser.UserId ?? httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
-        rateLimiter.EnsureAllowed(key);
         var prompt = GroundedPrompt.Build(normalizedQuestion, [], selectedIds);
         var context = new List<RetrievedChunk>();
         var citations = new List<ChatCitation>();

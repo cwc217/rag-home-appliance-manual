@@ -177,6 +177,18 @@ The application must not claim that an answer is grounded when no chunk was retr
 
 ## 6. Chat Room
 
+- Before invoking the chat model or any tool, classify only the current user
+  question with the configured TypeSafe JEv `noul` checks for appliance
+  relevance, jailbreak/off-topic intent, and prompt injection. Accept only when
+  appliance relevance is at least 0.5 and both risk probabilities are below
+  0.5. A blocked question receives a fixed localized response without model or
+  tool calls. A classifier timeout, service failure, or invalid response fails
+  closed with a localized temporary-unavailable response and an operational
+  error record. This is an additional gate; it does not replace the existing
+  system prompt, authorization, tool validation, or manual visibility filters.
+- Send only the current question to this preflight. Do not classify conversation
+  history or manual excerpts in this step. Keep the existing document-ingestion
+  classifier unchanged.
 - Route: `/`.
 - Anonymous users see the public/admin scope.
 - Authenticated normal users see their own scope.
