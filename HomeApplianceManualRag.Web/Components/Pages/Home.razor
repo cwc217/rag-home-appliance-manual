@@ -112,16 +112,6 @@
                 }
             }
         </MudStack>
-        <MudSelect T="int" @bind-Value="contextExchangeCount" Label="Prior Q&amp;A pairs"
-                   Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="@busy">
-            @for (var count = ChatHistoryService.MinContextExchangeCount;
-                 count <= ChatHistoryService.MaxContextExchangeCount;
-                 count++)
-            {
-                var exchangeCount = count;
-                <MudSelectItem T="int" Value="@exchangeCount">@exchangeCount</MudSelectItem>
-            }
-        </MudSelect>
         <MudTextField T="string" @bind-Value="form.Question" Label="Question" Variant="Variant.Outlined"
                       Placeholder="How do I clean the filter?" Lines="2" Disabled="@IsComposerDisabled"
                       FullWidth="true" />
@@ -149,6 +139,16 @@
                     Exchanges: @Math.Min(messages.Count / 2, ChatHistoryService.MaxConversationExchanges)/@ChatHistoryService.MaxConversationExchanges
                 </MudText>
             }
+            <MudSelect T="int" @bind-Value="contextExchangeCount" Label="Prior Q&amp;A pairs"
+                       Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="@busy">
+                @for (var count = ChatHistoryService.MinContextExchangeCount;
+                     count <= ChatHistoryService.MaxContextExchangeCount;
+                     count++)
+                {
+                    var exchangeCount = count;
+                    <MudSelectItem T="int" Value="@exchangeCount">@exchangeCount</MudSelectItem>
+                }
+            </MudSelect>
             <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary"
                        Disabled="@IsComposerDisabled">
                 @if (busy)
