@@ -419,9 +419,17 @@ public sealed class ChatService(
         CancellationToken ct = default,
         IReadOnlyCollection<Guid>? selectedDocumentIds = null,
         Guid? conversationId = null,
-        string? anonymousAccessKey = null)
+        string? anonymousAccessKey = null,
+        int contextExchangeCount = ChatHistoryService.DefaultContextExchangeCount)
     {
         await accountGuard.EnsureEnabledAsync(ct);
+        if (contextExchangeCount is < ChatHistoryService.MinContextExchangeCount or
+            > ChatHistoryService.MaxContextExchangeCount)
+            throw new ArgumentOutOfRangeException(
+                nameof(contextExchangeCount),
+                $"Context exchange count must be between {ChatHistoryService.MinContextExchangeCount} and " +
+                $"{ChatHistoryService.MaxContextExchangeCount}.");
+
         if (string.IsNullOrWhiteSpace(question))
             throw new ArgumentException("Ask a question first.", nameof(question));
         var normalizedQuestion = question.Trim();
@@ -465,7 +473,8 @@ public sealed class ChatService(
         }
 
         var conversationHistory = conversationId is Guid id
-            ? await conversationContext.GetRecentHistoryForModelAsync(id, anonymousAccessKey, ct)
+            ? await conversationContext.GetRecentHistoryForModelAsync(
+                id, anonymousAccessKey, ct, contextExchangeCount)
             : [];
         var prompt = GroundedPrompt.Build(normalizedQuestion, [], selectedIds);
         var context = new List<RetrievedChunk>();

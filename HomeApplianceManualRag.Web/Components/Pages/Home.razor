@@ -139,6 +139,16 @@
                     Exchanges: @Math.Min(messages.Count / 2, ChatHistoryService.MaxConversationExchanges)/@ChatHistoryService.MaxConversationExchanges
                 </MudText>
             }
+            <MudSelect T="int" @bind-Value="contextExchangeCount" Label="Prior Q&amp;A pairs"
+                       Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="@busy">
+                @for (var count = ChatHistoryService.MinContextExchangeCount;
+                     count <= ChatHistoryService.MaxContextExchangeCount;
+                     count++)
+                {
+                    var exchangeCount = count;
+                    <MudSelectItem T="int" Value="@exchangeCount">@exchangeCount</MudSelectItem>
+                }
+            </MudSelect>
             <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary"
                        Disabled="@IsComposerDisabled">
                 @if (busy)
@@ -167,6 +177,7 @@
     private bool scrollToLatest;
     private int activeConversationCount;
     private bool conversationCountLoaded;
+    private int contextExchangeCount = ChatHistoryService.DefaultContextExchangeCount;
     private Guid? selectedConversationId;
     private string? anonymousAccessKey;
     private readonly List<ChatConversation> rooms = [];
@@ -322,6 +333,14 @@
     private async Task Ask()
     {
         if (IsComposerDisabled || string.IsNullOrWhiteSpace(form.Question)) return;
+        if (contextExchangeCount is < ChatHistoryService.MinContextExchangeCount or
+            > ChatHistoryService.MaxContextExchangeCount)
+        {
+            error = $"Choose between {ChatHistoryService.MinContextExchangeCount} and " +
+                    $"{ChatHistoryService.MaxContextExchangeCount} prior Q&A pairs.";
+            return;
+        }
+
         busy = true;
         chatAnnouncement = "Thinking…";
         error = null;
@@ -347,7 +366,8 @@
                 question,
                 selectedDocumentIds: selectedManualIds.ToArray(),
                 conversationId: conversationId,
-                anonymousAccessKey: IsAuthenticated ? null : anonymousAccessKey);
+                anonymousAccessKey: IsAuthenticated ? null : anonymousAccessKey,
+                contextExchangeCount: contextExchangeCount);
             if (result.Stream is null)
             {
                 var noContextMessage = result.Response.NoContextMessage
