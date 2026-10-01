@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -37,6 +38,18 @@ public sealed class ChatHistoryService(
     public const int MinContextExchangeCount = 1;
     public const int MaxContextExchangeCount = 4;
     public const int DefaultContextExchangeCount = 1;
+
+    public static bool TryParseContextExchangeCount(string? value, out int count)
+    {
+        if (!int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out count) ||
+            count is < MinContextExchangeCount or > MaxContextExchangeCount)
+        {
+            count = default;
+            return false;
+        }
+
+        return true;
+    }
 
     public async Task<IReadOnlyList<ChatConversation>> GetConversationsAsync(
         string? anonymousAccessKey = null, CancellationToken ct = default)

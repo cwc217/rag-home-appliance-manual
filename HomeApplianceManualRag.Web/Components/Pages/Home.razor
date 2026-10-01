@@ -139,8 +139,9 @@
                     Exchanges: @Math.Min(messages.Count / 2, ChatHistoryService.MaxConversationExchanges)/@ChatHistoryService.MaxConversationExchanges
                 </MudText>
             }
-            <MudSelect T="int" @bind-Value="contextExchangeCount" Label="Prior Q&amp;A pairs"
-                       Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="@busy">
+            <MudSelect T="int" Value="@contextExchangeCount" ValueChanged="OnContextExchangeCountChangedAsync"
+                       Label="Prior Q&amp;A pairs" Variant="Variant.Outlined" Margin="Margin.Dense"
+                       Disabled="@(busy || !contextExchangeCountLoaded)">
                 @for (var count = ChatHistoryService.MinContextExchangeCount;
                      count <= ChatHistoryService.MaxContextExchangeCount;
                      count++)
@@ -166,6 +167,8 @@
 </main>
 
 @code {
+    private const string ContextExchangeCountStorageKey = "chat-prior-exchange-count";
+
     private readonly ChatForm form = new();
     private readonly List<UiMessage> messages = [];
     private string? error;
@@ -176,6 +179,7 @@
     private int activeConversationCount;
     private bool conversationCountLoaded;
     private int contextExchangeCount = ChatHistoryService.DefaultContextExchangeCount;
+    private bool contextExchangeCountLoaded;
     private Guid? selectedConversationId;
     private string? anonymousAccessKey;
     private readonly List<ChatConversation> rooms = [];
@@ -226,6 +230,7 @@
         initialized = true;
         try
         {
+            await LoadContextExchangeCountPreferenceAsync();
             if (!OperatingSystem.IsBrowser())
                 anonymousAccessKey = await JS.InvokeAsync<string?>("localStorage.getItem", "chat-anonymous-access-key");
             if (string.IsNullOrWhiteSpace(anonymousAccessKey) && !IsAuthenticated)
@@ -286,6 +291,55 @@
         finally
         {
             manualsLoading = false;
+        }
+    }
+
+    private async Task LoadContextExchangeCountPreferenceAsync()
+    {
+        try
+        {
+            var storedValue = await JS.InvokeAsync<string?>(
+                "localStorage.getItem", ContextExchangeCountStorageKey);
+            if (storedValue is null)
+                return;
+
+            if (ChatHistoryService.TryParseContextExchangeCount(storedValue, out var storedCount))
+                contextExchangeCount = storedCount;
+            else
+                Logger.LogWarning("Ignoring invalid Prior Q&A pairs preference in localStorage.");
+        }
+        catch (JSException ex)
+        {
+            Logger.LogWarning(ex, "Unable to load Prior Q&A pairs preference from localStorage.");
+        }
+        finally
+        {
+            contextExchangeCountLoaded = true;
+        }
+    }
+
+    private async Task OnContextExchangeCountChangedAsync(int count)
+    {
+        if (count is < ChatHistoryService.MinContextExchangeCount or
+            > ChatHistoryService.MaxContextExchangeCount)
+        {
+            error = $"Choose between {ChatHistoryService.MinContextExchangeCount} and " +
+                    $"{ChatHistoryService.MaxContextExchangeCount} prior Q&A pairs.";
+            return;
+        }
+
+        contextExchangeCount = count;
+        try
+        {
+            await JS.InvokeVoidAsync(
+                "localStorage.setItem",
+                ContextExchangeCountStorageKey,
+                count.ToString(CultureInfo.InvariantCulture));
+        }
+        catch (JSException ex)
+        {
+            Logger.LogWarning(ex, "Unable to save Prior Q&A pairs preference to localStorage.");
+            error = "The Prior Q&A pairs setting could not be saved in this browser.";
         }
     }
 

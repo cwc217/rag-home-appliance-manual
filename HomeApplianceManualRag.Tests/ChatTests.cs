@@ -65,6 +65,29 @@ public sealed class ChatTests
         Assert.DoesNotContain("Do not search manuals", prompt, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("1", 1)]
+    [InlineData("2", 2)]
+    [InlineData("4", 4)]
+    public void Context_exchange_preference_parses_valid_values(string value, int expected)
+    {
+        Assert.True(ChatHistoryService.TryParseContextExchangeCount(value, out var count));
+        Assert.Equal(expected, count);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("0")]
+    [InlineData("5")]
+    [InlineData("-1")]
+    [InlineData("1.5")]
+    public void Context_exchange_preference_rejects_invalid_values(string? value)
+    {
+        Assert.False(ChatHistoryService.TryParseContextExchangeCount(value, out var count));
+        Assert.Equal(0, count);
+    }
+
     [Fact]
     public void Citation_selector_keeps_only_valid_citations_referenced_by_answer()
     {
