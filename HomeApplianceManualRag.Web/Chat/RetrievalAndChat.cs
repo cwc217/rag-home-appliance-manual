@@ -8,7 +8,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Pgvector;
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace HomeApplianceManualRag.Web.Chat;
 
@@ -39,20 +41,91 @@ public sealed record ChatCitation(Guid DocumentId, string DocumentName, int Page
 
 public static class CitationSelector
 {
+    private static readonly Regex PageReferencePattern = new(
+        @"(?<first>\d+)(?:\s*[-–—]\s*(?<last>\d+))?",
+        RegexOptions.CultureInvariant);
+
     public static IReadOnlyList<ChatCitation> SelectReferenced(
         string answer,
-        IReadOnlyList<ChatCitation> candidates) =>
-        candidates
-            .Where(citation => answer.Contains(citation.Label, StringComparison.OrdinalIgnoreCase))
+        IReadOnlyList<ChatCitation> candidates)
+    {
+        var references = FindReferences(answer, candidates.Select(citation => citation.DocumentName));
+        return candidates
+            .Where(citation => references.Any(reference =>
+                string.Equals(reference.DocumentName, citation.DocumentName, StringComparison.OrdinalIgnoreCase) &&
+                reference.PageRanges.Any(range => range.Contains(citation.PageNumber))))
             .DistinctBy(citation => (citation.DocumentId, citation.PageNumber))
             .ToArray();
+    }
 
     public static string RemoveMarkers(string answer, IReadOnlyList<ChatCitation> citations)
     {
-        foreach (var citation in citations)
-            answer = answer.Replace(citation.Label, string.Empty, StringComparison.OrdinalIgnoreCase);
+        foreach (var documentName in citations
+                     .Select(citation => citation.DocumentName)
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var pattern = CreateCitationPattern(documentName);
+            answer = pattern.Replace(answer, match =>
+            {
+                var pageRanges = ParsePageRanges(match.Groups["pages"].Value);
+                return citations.Any(citation =>
+                           string.Equals(citation.DocumentName, documentName, StringComparison.OrdinalIgnoreCase) &&
+                           pageRanges.Any(range => range.Contains(citation.PageNumber)))
+                    ? string.Empty
+                    : match.Value;
+            });
+        }
 
         return answer;
+    }
+
+    private static IReadOnlyList<CitationReference> FindReferences(
+        string answer,
+        IEnumerable<string> documentNames)
+    {
+        var references = new List<CitationReference>();
+        foreach (var documentName in documentNames.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var pattern = CreateCitationPattern(documentName);
+            references.AddRange(pattern.Matches(answer)
+                .Select(match => new CitationReference(
+                    documentName,
+                    ParsePageRanges(match.Groups["pages"].Value))));
+        }
+
+        return references;
+    }
+
+    private static Regex CreateCitationPattern(string documentName) => new(
+        $@"\[\s*{Regex.Escape(documentName)}\s*,\s*pp?\.?\s*(?<pages>\d+(?:\s*[-–—]\s*\d+)?(?:\s*[,;]\s*\d+(?:\s*[-–—]\s*\d+)?)*)\s*\]",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private static IReadOnlyList<PageRange> ParsePageRanges(string pages)
+    {
+        var ranges = new List<PageRange>();
+        foreach (Match match in PageReferencePattern.Matches(pages))
+        {
+            if (!int.TryParse(match.Groups["first"].Value, NumberStyles.None,
+                    CultureInfo.InvariantCulture, out var first))
+                continue;
+
+            var last = first;
+            if (match.Groups["last"].Success &&
+                !int.TryParse(match.Groups["last"].Value, NumberStyles.None,
+                    CultureInfo.InvariantCulture, out last))
+                continue;
+
+            ranges.Add(new PageRange(Math.Min(first, last), Math.Max(first, last)));
+        }
+
+        return ranges;
+    }
+
+    private sealed record CitationReference(string DocumentName, IReadOnlyList<PageRange> PageRanges);
+
+    private readonly record struct PageRange(int First, int Last)
+    {
+        public bool Contains(int page) => page >= First && page <= Last;
     }
 }
 

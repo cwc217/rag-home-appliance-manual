@@ -97,6 +97,26 @@ public sealed class ChatTests
     }
 
     [Fact]
+    public void Citation_selector_supports_page_ranges_and_multiple_pages()
+    {
+        var documentId = Guid.NewGuid();
+        var candidates = new[]
+        {
+            new ChatCitation(documentId, "manual.pdf", 33),
+            new ChatCitation(documentId, "manual.pdf", 34),
+            new ChatCitation(documentId, "manual.pdf", 38),
+            new ChatCitation(documentId, "manual.pdf", 40),
+            new ChatCitation(Guid.NewGuid(), "other.pdf", 16)
+        };
+
+        var selected = CitationSelector.SelectReferenced(
+            "Drain the water [manual.pdf, p. 33–38]. Check the filter [manual.pdf, p. 38, 40].",
+            candidates);
+
+        Assert.Equal([33, 34, 38, 40], selected.Select(citation => citation.PageNumber));
+    }
+
+    [Fact]
     public void Citation_markers_are_removed_from_displayed_answer()
     {
         var citations = new[]
@@ -109,6 +129,23 @@ public sealed class ChatTests
             citations);
 
         Assert.Equal("Turn it off. ", answer);
+    }
+
+    [Fact]
+    public void Citation_ranges_are_removed_from_displayed_answer()
+    {
+        var citations = new[]
+        {
+            new ChatCitation(Guid.NewGuid(), "manual.pdf", 33),
+            new ChatCitation(Guid.NewGuid(), "manual.pdf", 38),
+            new ChatCitation(Guid.NewGuid(), "manual.pdf", 40)
+        };
+
+        var answer = CitationSelector.RemoveMarkers(
+            "First. [manual.pdf, p. 33–38]Second. [manual.pdf, p. 38, 40]",
+            citations);
+
+        Assert.Equal("First. Second. ", answer);
     }
 
     [Fact]
@@ -585,6 +622,24 @@ public sealed class ChatTests
         Assert.DoesNotContain(history, x => x.Content == "private");
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             service.GetRecentHistoryForModelAsync(db.Conversations.Single(x => x.UserId == "other").Id));
+    }
+
+    [Fact]
+    public async Task History_preserves_citations_after_answer_markers_are_removed()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        var service = new ChatHistoryService(
+            new TestDbFactory(options), new FakeCurrentUser("user-1"), new FakeActiveAccountGuard());
+        var conversation = await service.CreateConversationAsync();
+        var citations = new[] { new ChatCitation(Guid.NewGuid(), "manual.pdf", 16) };
+
+        await service.PersistExchangeAsync(
+            conversation.Id, "How should I reset it?", "Restart the appliance.", citations);
+
+        var history = await service.GetHistoryAsync(conversation.Id);
+        Assert.Equal(citations, Assert.Single(
+            history, message => message.Role == ChatMessageRole.Assistant).Citations);
     }
 
     [Fact]

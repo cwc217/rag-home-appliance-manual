@@ -529,13 +529,15 @@
         try
         {
             var cache = JsonSerializer.Deserialize<CachedMessage[]>(json) ?? [];
-            return cache.Select(x => new UiMessage(
-                x.Role,
-                CitationSelector.RemoveMarkers(
-                    x.Content,
-                    CitationSelector.SelectReferenced(x.Content, x.Citations)).TrimEnd(),
-                CitationSelector.SelectReferenced(x.Content, x.Citations),
-                x.CreatedAtUtc == default ? DateTime.UtcNow : x.CreatedAtUtc)).ToArray();
+            return cache.Select(x =>
+            {
+                var citations = x.Citations ?? [];
+                return new UiMessage(
+                    x.Role,
+                    CitationSelector.RemoveMarkers(x.Content, citations).TrimEnd(),
+                    citations,
+                    x.CreatedAtUtc == default ? DateTime.UtcNow : x.CreatedAtUtc);
+            }).ToArray();
         }
         catch (JsonException)
         {

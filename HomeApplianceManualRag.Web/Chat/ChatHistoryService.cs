@@ -290,9 +290,7 @@ public sealed class ChatHistoryService(
     {
         IReadOnlyList<ChatCitation> citations = string.IsNullOrWhiteSpace(message.CitationsJson)
             ? []
-            : CitationSelector.SelectReferenced(
-                message.Content,
-                JsonSerializer.Deserialize<IReadOnlyList<ChatCitation>>(message.CitationsJson) ?? []);
+            : JsonSerializer.Deserialize<IReadOnlyList<ChatCitation>>(message.CitationsJson) ?? [];
         return new ChatHistoryMessage(
             message.Role,
             CitationSelector.RemoveMarkers(message.Content, citations).TrimEnd(),
