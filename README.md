@@ -92,7 +92,7 @@ run the application in the `Development` environment:
 | Visual Studio `http` profile | `http://localhost:5170` | `Development` | Disabled |
 | Visual Studio `https` profile | `https://localhost:7151` | `Development` | Enabled |
 | Docker Compose `web` service | `http://localhost:8500` | `Development` | Disabled by Compose |
-| Production Docker Compose `web` service | `http://localhost:8501` | `Production` | Disabled by Compose |
+| Production Docker Compose `web` service | `http://127.0.0.1:8501` (loopback only) | `Production` | TLS must terminate at the reverse proxy |
 
 If no launch profile or environment variable is selected, ASP.NET Core defaults
 to the `Production` environment. The Compose file explicitly sets
@@ -101,11 +101,14 @@ to the `Production` environment. The Compose file explicitly sets
 `ASPNETCORE_ENVIRONMENT=Development`; the `https` profile also supplies the
 local HTTPS certificate and port.
 
-The application explicitly enables WebSockets with a 30-second keep-alive.
-Interactive Server prefers the `/_blazor` WebSocket, while the document page
-also performs a focused three-second refresh for Pending/Processing documents
-when a circuit event is delayed or missed. A reverse proxy must forward
-WebSocket upgrade requests.
+The production web port is bound to host loopback so it cannot serve plaintext
+HTTP directly to remote clients. Serve external traffic through a
+TLS-terminating reverse proxy on the same host, proxying to
+`http://127.0.0.1:8501`. The application explicitly enables WebSockets with a
+30-second keep-alive. Interactive Server prefers the `/_blazor` WebSocket,
+while the document page also performs a focused three-second refresh for
+Pending/Processing documents when a circuit event is delayed or missed. The
+reverse proxy must forward WebSocket upgrade requests.
 
 ## Local quick start
 
@@ -233,9 +236,10 @@ low-confidence metadata extraction does not prevent normal document indexing.
 For production deployment, create a GitHub Environment named `production` and
 configure the same variables and secrets there. Pushes to `main` use the
 `self-hosted` runner with the `qnap` label and the production Compose override.
-Only the web service is exposed on host port `8501`; PostgreSQL, Docling, and
-Adminer have no host port mappings. The web container runs with
-`ASPNETCORE_ENVIRONMENT=Production`.
+The web service binds only to host loopback port `8501` and is not publicly
+exposed; PostgreSQL, Docling, and Adminer have no host port mappings. Serve
+external traffic through a TLS-terminating reverse proxy on the deployment
+host. The web container runs with `ASPNETCORE_ENVIRONMENT=Production`.
 
 The `Deploy Dev to Production` workflow is manual-only. Run it from the
 Actions tab to deploy the current `dev` branch to the production host without
