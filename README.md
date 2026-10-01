@@ -325,11 +325,11 @@ lexical matching; PostgreSQL uses the `simple` text configuration, not an
 English-only dictionary. Vector and lexical candidates are fused with
 reciprocal-rank fusion; this PostgreSQL rank is not BM25.
 
-The schema migration backfills existing rows while retaining the old text and
-page columns as `LegacyText` and `LegacyPageNumber`. Re-index retained manuals
-from their original PDFs after applying the migration so all rows receive
-structure-aware chunks and normalized multilingual search text. The migration
-does not call Azure OpenAI; normal re-indexing regenerates embeddings.
+The schema migration backfills existing rows into the structure-aware columns;
+a follow-up migration removes the old text and page columns. Re-index retained
+manuals from their original PDFs after applying the migration so all rows
+receive structure-aware chunks and normalized multilingual search text. The
+migration does not call Azure OpenAI; normal re-indexing regenerates embeddings.
 
 ## Repository conventions
 

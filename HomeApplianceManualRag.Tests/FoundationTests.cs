@@ -16,7 +16,7 @@ namespace HomeApplianceManualRag.Tests;
 public sealed class ConfigurationValidationTests
 {
     [Fact]
-    public void Legacy_chunk_columns_are_optional_for_new_chunks()
+    public void Legacy_chunk_columns_are_absent_from_the_model()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
@@ -24,8 +24,8 @@ public sealed class ConfigurationValidationTests
         using var db = new ApplicationDbContext(options);
         var chunk = db.Model.FindEntityType(typeof(ManualChunk))!;
 
-        Assert.True(chunk.FindProperty(nameof(ManualChunk.LegacyText))!.IsNullable);
-        Assert.True(chunk.FindProperty(nameof(ManualChunk.LegacyPageNumber))!.IsNullable);
+        Assert.Null(chunk.FindProperty("LegacyText"));
+        Assert.Null(chunk.FindProperty("LegacyPageNumber"));
     }
 
     [Theory]

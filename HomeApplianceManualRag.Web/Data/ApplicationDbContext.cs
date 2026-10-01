@@ -202,8 +202,6 @@ public sealed class ManualChunk
     public Guid Id { get; set; }
     public Guid DocumentId { get; set; }
     public int ChunkOrdinal { get; set; }
-    public int? LegacyPageNumber { get; set; }
-    public string? LegacyText { get; set; }
     public int[] PageNumbers { get; set; } = [];
     public string Content { get; set; } = string.Empty;
     public string EmbeddingText { get; set; } = string.Empty;
