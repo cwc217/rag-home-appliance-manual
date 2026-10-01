@@ -17,7 +17,10 @@ public sealed record ChatHistoryMessage(
 public interface IChatConversationContext
 {
     Task<IReadOnlyList<ChatHistoryMessage>> GetRecentHistoryForModelAsync(
-        Guid conversationId, string? anonymousAccessKey = null, CancellationToken ct = default);
+        Guid conversationId,
+        string? anonymousAccessKey = null,
+        CancellationToken ct = default,
+        int contextExchangeCount = ChatHistoryService.DefaultContextExchangeCount);
 }
 
 public sealed record ChatConversation(Guid Id, string Title, DateTime CreatedAtUtc, DateTime UpdatedAtUtc);
@@ -31,7 +34,9 @@ public sealed class ChatHistoryService(
     public const int MaxActiveConversations = 3;
     public const int MaxConversationExchanges = 50;
     public const int MaxConversationMessages = MaxConversationExchanges * 2;
-    public const int ContextExchangeCount = 4;
+    public const int MinContextExchangeCount = 1;
+    public const int MaxContextExchangeCount = 4;
+    public const int DefaultContextExchangeCount = 1;
 
     public async Task<IReadOnlyList<ChatConversation>> GetConversationsAsync(
         string? anonymousAccessKey = null, CancellationToken ct = default)
@@ -69,8 +74,16 @@ public sealed class ChatHistoryService(
     }
 
     public async Task<IReadOnlyList<ChatHistoryMessage>> GetRecentHistoryForModelAsync(
-        Guid conversationId, string? anonymousAccessKey = null, CancellationToken ct = default)
+        Guid conversationId,
+        string? anonymousAccessKey = null,
+        CancellationToken ct = default,
+        int contextExchangeCount = DefaultContextExchangeCount)
     {
+        if (contextExchangeCount is < MinContextExchangeCount or > MaxContextExchangeCount)
+            throw new ArgumentOutOfRangeException(
+                nameof(contextExchangeCount),
+                $"Context exchange count must be between {MinContextExchangeCount} and {MaxContextExchangeCount}.");
+
         await accountGuard.EnsureEnabledAsync(ct);
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var conversation = await FindOwnedConversation(db, conversationId, anonymousAccessKey, ct)
@@ -83,7 +96,7 @@ public sealed class ChatHistoryService(
         var messages = await db.ChatMessages.AsNoTracking()
             .Where(x => x.ConversationId == conversation.Id)
             .OrderByDescending(x => x.Sequence)
-            .Take(ContextExchangeCount * 4)
+            .Take(contextExchangeCount * 4)
             .ToListAsync(ct);
         messages.Reverse();
         var exchanges = new List<ChatMessage>();
@@ -100,7 +113,7 @@ public sealed class ChatHistoryService(
             exchanges.Add(assistantMessage);
         }
 
-        return exchanges.TakeLast(ContextExchangeCount * 2)
+        return exchanges.TakeLast(contextExchangeCount * 2)
             .Select(ToHistoryMessage)
             .ToArray();
     }

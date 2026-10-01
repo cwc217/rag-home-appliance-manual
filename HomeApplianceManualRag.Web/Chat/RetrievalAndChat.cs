@@ -417,9 +417,17 @@ public sealed class ChatService(
         CancellationToken ct = default,
         IReadOnlyCollection<Guid>? selectedDocumentIds = null,
         Guid? conversationId = null,
-        string? anonymousAccessKey = null)
+        string? anonymousAccessKey = null,
+        int contextExchangeCount = ChatHistoryService.DefaultContextExchangeCount)
     {
         await accountGuard.EnsureEnabledAsync(ct);
+        if (contextExchangeCount is < ChatHistoryService.MinContextExchangeCount or
+            > ChatHistoryService.MaxContextExchangeCount)
+            throw new ArgumentOutOfRangeException(
+                nameof(contextExchangeCount),
+                $"Context exchange count must be between {ChatHistoryService.MinContextExchangeCount} and " +
+                $"{ChatHistoryService.MaxContextExchangeCount}.");
+
         if (string.IsNullOrWhiteSpace(question))
             throw new ArgumentException("Ask a question first.", nameof(question));
         var normalizedQuestion = question.Trim();
@@ -433,7 +441,8 @@ public sealed class ChatService(
         if (selectedIds is { Length: > 0 })
             await tools.ValidateSelectedManualsAsync(selectedIds, ct);
         var conversationHistory = conversationId is Guid id
-            ? await conversationContext.GetRecentHistoryForModelAsync(id, anonymousAccessKey, ct)
+            ? await conversationContext.GetRecentHistoryForModelAsync(
+                id, anonymousAccessKey, ct, contextExchangeCount)
             : [];
         var key = currentUser.UserId ?? httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
         rateLimiter.EnsureAllowed(key);

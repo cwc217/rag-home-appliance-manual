@@ -518,12 +518,27 @@ public sealed class ChatTests
         var service = CreateChatService(
             db, provider, new ToolTestCurrentUser("user-1"), conversationContext: history);
 
-        var result = await service.StartAsync("Follow up", conversationId: conversationId);
+        var result = await service.StartAsync(
+            "Follow up", conversationId: conversationId, contextExchangeCount: 3);
         await foreach (var _ in result.Stream!) { }
 
         Assert.Equal(conversationId, history.RequestedConversationId);
+        Assert.Equal(3, history.RequestedContextExchangeCount);
         Assert.Equal(["Earlier question", "Earlier answer"], provider.LastConversationHistory!
             .Select(message => message.Content));
+    }
+
+    [Fact]
+    public async Task Chat_rejects_context_exchange_counts_outside_the_supported_range()
+    {
+        await using var db = CreateDatabase();
+        var service = CreateChatService(
+            db, new ScriptedToolChatProvider([]), new ToolTestCurrentUser("user-1"));
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            service.StartAsync("Question", contextExchangeCount: 0));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            service.StartAsync("Question", contextExchangeCount: 5));
     }
 
     [Fact]
@@ -594,7 +609,7 @@ public sealed class ChatTests
     }
 
     [Fact]
-    public async Task Model_history_contains_only_the_latest_four_complete_exchanges()
+    public async Task Model_history_contains_only_the_requested_latest_complete_exchanges()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
@@ -605,10 +620,48 @@ public sealed class ChatTests
             await service.PersistExchangeAsync(
                 conversation.Id, $"question {exchange}", $"answer {exchange}", []);
 
-        var history = await service.GetRecentHistoryForModelAsync(conversation.Id);
+        var history = await service.GetRecentHistoryForModelAsync(
+            conversation.Id, contextExchangeCount: ChatHistoryService.MaxContextExchangeCount);
 
         Assert.Equal(
             ["question 3", "answer 3", "question 4", "answer 4", "question 5", "answer 5", "question 6", "answer 6"],
+            history.Select(message => message.Content));
+    }
+
+    [Fact]
+    public async Task Model_history_defaults_to_one_complete_exchange()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        var service = new ChatHistoryService(
+            new TestDbFactory(options), new FakeCurrentUser("user-1"), new FakeActiveAccountGuard());
+        var conversation = await service.CreateConversationAsync();
+        for (var exchange = 1; exchange <= 3; exchange++)
+            await service.PersistExchangeAsync(
+                conversation.Id, $"question {exchange}", $"answer {exchange}", []);
+
+        var history = await service.GetRecentHistoryForModelAsync(conversation.Id);
+
+        Assert.Equal(["question 3", "answer 3"], history.Select(message => message.Content));
+    }
+
+    [Fact]
+    public async Task Model_history_uses_the_selected_exchange_count()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        var service = new ChatHistoryService(
+            new TestDbFactory(options), new FakeCurrentUser("user-1"), new FakeActiveAccountGuard());
+        var conversation = await service.CreateConversationAsync();
+        for (var exchange = 1; exchange <= 4; exchange++)
+            await service.PersistExchangeAsync(
+                conversation.Id, $"question {exchange}", $"answer {exchange}", []);
+
+        var history = await service.GetRecentHistoryForModelAsync(
+            conversation.Id, contextExchangeCount: 2);
+
+        Assert.Equal(
+            ["question 3", "answer 3", "question 4", "answer 4"],
             history.Select(message => message.Content));
     }
 
@@ -1019,11 +1072,16 @@ public sealed class ChatTests
         : IChatConversationContext
     {
         public Guid? RequestedConversationId { get; private set; }
+        public int RequestedContextExchangeCount { get; private set; }
 
         public Task<IReadOnlyList<ChatHistoryMessage>> GetRecentHistoryForModelAsync(
-            Guid conversationId, string? anonymousAccessKey = null, CancellationToken ct = default)
+            Guid conversationId,
+            string? anonymousAccessKey = null,
+            CancellationToken ct = default,
+            int contextExchangeCount = ChatHistoryService.DefaultContextExchangeCount)
         {
             RequestedConversationId = conversationId;
+            RequestedContextExchangeCount = contextExchangeCount;
             return Task.FromResult(messages);
         }
     }
