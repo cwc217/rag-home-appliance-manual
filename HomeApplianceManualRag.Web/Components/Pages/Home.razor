@@ -164,13 +164,11 @@
         </div>
     </EditForm>
 </main>
-<span class="sr-only" role="status" aria-live="polite" aria-atomic="true">@chatAnnouncement</span>
 
 @code {
     private readonly ChatForm form = new();
     private readonly List<UiMessage> messages = [];
     private string? error;
-    private string chatAnnouncement = string.Empty;
     private bool busy;
     private bool loadingHistory = true;
     private bool initialized;
@@ -342,7 +340,6 @@
         }
 
         busy = true;
-        chatAnnouncement = "Thinking…";
         error = null;
         var question = form.Question.Trim();
         var isNewConversation = selectedConversationId is null;
@@ -379,7 +376,6 @@
                 RecordPersistedConversation(isNewConversation);
                 ConversationState.NotifyChanged();
                 await SaveAnonymousCache(conversationId);
-                chatAnnouncement = "Answer ready.";
                 return;
             }
 
@@ -401,7 +397,6 @@
             RecordPersistedConversation(isNewConversation);
             ConversationState.NotifyChanged();
             await SaveAnonymousCache(conversationId);
-            chatAnnouncement = "Answer ready.";
         }
         catch (ConversationLimitExceededException ex)
         {
