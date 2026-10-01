@@ -118,7 +118,8 @@
                  count <= ChatHistoryService.MaxContextExchangeCount;
                  count++)
             {
-                <MudSelectItem T="int" Value="@count">@count</MudSelectItem>
+                var exchangeCount = count;
+                <MudSelectItem T="int" Value="@exchangeCount">@exchangeCount</MudSelectItem>
             }
         </MudSelect>
         <MudTextField T="string" @bind-Value="form.Question" Label="Question" Variant="Variant.Outlined"
