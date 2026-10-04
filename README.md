@@ -71,6 +71,55 @@ removes the database record and creates a durable pending cleanup record in the
 same transaction, then removes the stored file. A cleanup worker retries failed
 deletions and periodically removes unreferenced files older than one hour.
 
+## System flow
+
+The diagram shows both manual ingestion and the grounded question-answering
+path. Document and chat retrieval scopes are enforced server-side.
+
+```mermaid
+flowchart TD
+  subgraph Ingestion["PDF ingestion and indexing"]
+    Upload["Admin or user uploads PDF"] --> Validate{"Authorized and valid PDF?"}
+    Validate -->|No| UploadRejected["Reject upload"]
+    Validate -->|Yes| Save["Store PDF and Pending document"]
+    Save --> Job["Create durable indexing job"]
+    Job --> Parse["Docling extracts page-aware content; OCR fallback when needed"]
+    Parse --> Classify["TypeSafe Jev classifies appliance manual"]
+    Classify -->|Not a manual| Rejected["Mark Rejected; exclude from retrieval"]
+    Classify -->|Classifier unavailable| IndexFailed["Mark Failed with actionable error; allow retry"]
+    Classify -->|Manual| Metadata["Extract appliance metadata"]
+    Metadata --> Chunk["Create structure-aware chunks with page provenance"]
+    Chunk --> Embed["Generate Azure OpenAI embeddings"]
+    Embed --> Dimension{"Embedding dimensions match?"}
+    Dimension -->|No| IndexFailed
+    Dimension -->|Yes| Persist["Atomically replace chunks and mark Ready"]
+    Parse -->|Parse failure| IndexFailed
+    Embed -->|Provider failure| IndexFailed
+    Metadata -.->|Extraction failure is non-blocking| Chunk
+  end
+
+  subgraph Chat["Question and answer"]
+    Ask["Visitor or signed-in user asks a question"] --> Preflight["TypeSafe Jev checks current question"]
+    Preflight -->|Blocked| Blocked["Return localized blocked response"]
+    Preflight -->|Unavailable or invalid| PreflightError["Fail closed; return temporary error and record diagnostic"]
+    Preflight -->|Accepted| Scope{"Choose authorized document scope"}
+    Scope -->|Anonymous| Public["Admin public manuals"]
+    Scope -->|Normal user| Owned["Current user's manuals"]
+    Scope -->|Admin| AllDocs["Explicit admin scope"]
+    Public --> Search["SQL filters by Ready status and scope; vector and lexical search"]
+    Owned --> Search
+    AllDocs --> Search
+    Search --> Fuse["Fuse candidate ranks"]
+    Fuse --> HasContext{"Relevant context found?"}
+    HasContext -->|No| NoAnswer["Prepare explicit no-answer response"]
+    HasContext -->|Yes| Generate["Azure OpenAI streams a grounded answer"]
+    Generate --> Verify["Validate answer citations against retrieved context"]
+    Verify --> Respond["Display final answer and validated citations, if any"]
+    NoAnswer --> Respond
+    Respond --> History["Persist conversation messages for the owner or anonymous access key"]
+  end
+```
+
 ## Stack
 
 - .NET 10 ASP.NET Core Blazor Web App
