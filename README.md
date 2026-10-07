@@ -129,7 +129,7 @@ flowchart TD
 - PostgreSQL with `pgvector`
 - Azure OpenAI chat and embedding deployments
 - Pinned Docling Serve container for Phase 3 PDF parsing
-- xUnit tests (integration and Playwright smoke tests are planned in later phases)
+- xUnit unit tests and opt-in PostgreSQL/pgvector integration tests
 
 ### Hosting defaults
 

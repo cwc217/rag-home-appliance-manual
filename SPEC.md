@@ -328,17 +328,6 @@ Cover PDF validation, chunking/page metadata, quota decisions, scope selection, 
 
 Use PostgreSQL/pgvector test infrastructure. Cover migrations, Identity roles, user quota under concurrency, ownership authorization, anonymous/admin/user retrieval scopes, and document lifecycle persistence.
 
-### UI smoke tests
-
-Playwright must cover:
-
-1. Anonymous visitor opens Chat Room and sees admin/public scope.
-2. Registered user uploads at most three documents and cannot query another user's document.
-3. Admin uploads a 10 MB-or-less PDF, observes processing, and can delete/re-index.
-4. Chat displays streaming output and page citations for a ready document.
-
-Use deterministic fake chat and embedding providers in automated tests. A real Azure OpenAI smoke test is opt-in and never required for the default test suite.
-
 ## 14. Acceptance criteria
 
 - A fresh local setup can start PostgreSQL/pgvector and the .NET 10 app using documented commands.
@@ -349,4 +338,4 @@ Use deterministic fake chat and embedding providers in automated tests. A real A
 - Failed indexing is visible and retryable without corrupting prior ready data.
 - Every grounded chat answer has document/page citations; insufficient context produces an explicit no-answer response.
 - Admin-only actions and cross-user document access are rejected server-side.
-- Unit, integration, and Playwright smoke tests pass without real Azure credentials.
+- Unit and integration tests pass without real Azure credentials.

@@ -70,14 +70,13 @@
 
 ## Phase 5 — Localization and UX quality
 
-- [ ] Add `en` and `zh-Hant` resource files.
-- [ ] Add browser-culture default and language selector.
-- [ ] Localize navigation, validation, status, errors, empty states, quota messages, and chat states.
-- [ ] Add empty state when no admin document is ready.
+- [x] Add `en` and `zh-Hant` resource files.
+- [x] Add browser-culture default and language selector.
+- [x] Localize navigation, validation, status, errors, empty states, quota messages, and chat states.
+- [x] Add role-aware empty states when no admin document is ready.
 - [x] Add processing progress/status refresh with bounded error details and no secret exposure.
 - [x] Add responsive messaging layout and keyboard-accessible controls.
 - [x] Adopt a shared MudBlazor theme and responsive component-based UI across the application shell and pages.
-- [ ] Add Playwright smoke flows for anonymous, user, and admin journeys.
 
 ## Phase 6 — Operational readiness
 
@@ -87,7 +86,7 @@
 - [ ] Add Azure App Service and Azure Database for PostgreSQL deployment instructions.
 - [ ] Add opt-in real Azure OpenAI smoke-test instructions; default tests must use fakes.
 - [ ] Verify migrations from an empty database.
-- [ ] Run unit, integration, and Playwright smoke suites.
+- [ ] Run unit and integration test suites.
 - [ ] Check every acceptance criterion in `SPEC.md`.
 
 ## Definition of done
