@@ -7,12 +7,16 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
+using Microsoft.AspNetCore.Localization;
 using HomeApplianceManualRag.Web.Resources;
+using HomeApplianceManualRag.Web.Localization;
 using HomeApplianceManualRag.Web.Documents;
 using HomeApplianceManualRag.Web.Chat;
 using HomeApplianceManualRag.Web.Admin;
 using HomeApplianceManualRag.Web.Activity;
+using MudBlazor;
 using MudBlazor.Services;
+using System.Globalization;
 
 var builder = WebApplication.CreateBuilder(args);
 ConfigurationValidation.ValidateProduction(builder.Configuration, builder.Environment);
@@ -82,6 +86,18 @@ builder.Services.ConfigureApplicationCookie(options =>
 builder.Services.Configure<SecurityStampValidatorOptions>(options =>
     options.ValidationInterval = TimeSpan.FromMinutes(5));
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddLocalization();
+builder.Services.Configure<RequestLocalizationOptions>(options =>
+{
+    options.DefaultRequestCulture = new RequestCulture(SupportedUiCultures.English);
+    options.SupportedCultures = SupportedUiCultures.Cultures;
+    options.SupportedUICultures = SupportedUiCultures.Cultures;
+    options.RequestCultureProviders =
+    [
+        new CookieRequestCultureProvider(),
+        new PreferredLanguageRequestCultureProvider()
+    ];
+});
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 builder.Services.AddScoped<IActiveAccountGuard, ActiveAccountGuard>();
 builder.Services.AddAuthorization(options =>
@@ -136,6 +152,7 @@ builder.Services.AddSingleton<IFileStorage, LocalFileStorage>();
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddMudServices();
+builder.Services.AddTransient<MudLocalizer, ResourceMudLocalizer>();
 
 var app = builder.Build();
 
@@ -159,6 +176,7 @@ app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages:
 if (builder.Configuration.GetValue("HttpsRedirection:Enabled", true))
     app.UseHttpsRedirection();
 
+app.UseRequestLocalization();
 app.UseStaticFiles();
 app.UseWebSockets(new WebSocketOptions
 {
@@ -168,6 +186,31 @@ app.UseAuthentication();
 app.UseMiddleware<PageViewLoggingMiddleware>();
 app.UseAuthorization();
 app.UseAntiforgery();
+
+app.MapPost("/culture", (
+    HttpContext context,
+    [FromForm] string? culture,
+    [FromForm] string? returnUrl) =>
+{
+    if (!SupportedUiCultures.IsSupported(culture))
+        return Results.BadRequest();
+
+    var normalizedCulture = SupportedUiCultures.Normalize(culture!);
+    context.Response.Cookies.Append(
+        CookieRequestCultureProvider.DefaultCookieName,
+        CookieRequestCultureProvider.MakeCookieValue(new RequestCulture(normalizedCulture)),
+        new CookieOptions
+        {
+            Expires = DateTimeOffset.UtcNow.AddYears(1),
+            HttpOnly = true,
+            IsEssential = true,
+            Path = "/",
+            SameSite = SameSiteMode.Lax,
+            Secure = context.Request.IsHttps
+        });
+
+    return Results.LocalRedirect(IsSafeLocalReturnUrl(returnUrl) ? returnUrl! : "/");
+}).AllowAnonymous().AddEndpointFilter(ValidateAntiforgery);
 
 app.MapPost("/account/login", async (
     HttpContext context,
@@ -179,7 +222,7 @@ app.MapPost("/account/login", async (
     [FromForm] string? returnUrl,
     [FromForm] string? culture) =>
 {
-    culture ??= context.Request.Headers.AcceptLanguage.ToString();
+    culture ??= CultureInfo.CurrentUICulture.Name;
     if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
         return Results.Redirect($"/login?error={Uri.EscapeDataString(IdentityMessages.Required("Email and password", culture))}");
     var user = await userManager.FindByEmailAsync(email);
@@ -214,7 +257,7 @@ app.MapPost("/account/register", async (
     [FromForm] string? confirmPassword,
     [FromForm] string? culture) =>
 {
-    culture ??= context.Request.Headers.AcceptLanguage.ToString();
+    culture ??= CultureInfo.CurrentUICulture.Name;
     if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password) || password != confirmPassword)
         return Results.Redirect($"/register?error={Uri.EscapeDataString(IdentityMessages.RegistrationFailed(culture))}");
     if (await userManager.FindByEmailAsync(email) is not null)

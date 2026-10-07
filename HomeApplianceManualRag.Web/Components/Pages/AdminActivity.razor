@@ -4,51 +4,51 @@
 @using HomeApplianceManualRag.Web.Activity
 @inject AdminActivityService Activities
 
-<PageTitle>User activity</PageTitle>
+<PageTitle>@L["User activity"]</PageTitle>
 
 <MudStack Spacing="3">
     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
         <div>
-            <MudText Typo="Typo.h4">User activity</MudText>
+            <MudText Typo="Typo.h4">@L["User activity"]</MudText>
             <MudText Typo="Typo.body2" Color="Color.Secondary">
-                Review sign-in and account activity. Sensitive values are not stored.
+                @L["Review sign-in and account activity. Sensitive values are not stored."]
             </MudText>
         </div>
         <MudButton Href="/admin" Variant="Variant.Outlined"
-                   StartIcon="@Icons.Material.Filled.ArrowBack">Dashboard</MudButton>
+                   StartIcon="@Icons.Material.Filled.ArrowBack">@L["Dashboard"]</MudButton>
     </MudStack>
 
     <MudGrid Spacing="2">
         <MudItem xs="12" sm="6" md="3">
-            <MudSelect T="string" @bind-Value="activityType" Label="Activity type"
+            <MudSelect T="string" @bind-Value="activityType" Label="@L["Activity type"]"
                        Variant="Variant.Outlined" Margin="Margin.Dense">
-                <MudSelectItem T="string" Value="@string.Empty">All activity types</MudSelectItem>
+                <MudSelectItem T="string" Value="@string.Empty">@L["All activity types"]</MudSelectItem>
                 @foreach (var type in ActivityTypes.All)
                 {
-                    <MudSelectItem T="string" Value="@type">@type</MudSelectItem>
+                    <MudSelectItem T="string" Value="@type">@L[type]</MudSelectItem>
                 }
             </MudSelect>
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
-            <MudTextField @bind-Value="email" Label="Email starts with"
+            <MudTextField @bind-Value="email" Label="@L["Email starts with"]"
                           Variant="Variant.Outlined" Margin="Margin.Dense" />
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
-            <MudTextField @bind-Value="ipAddress" Label="IP address contains"
+            <MudTextField @bind-Value="ipAddress" Label="@L["IP address contains"]"
                           Variant="Variant.Outlined" Margin="Margin.Dense" />
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
-            <MudTextField @bind-Value="path" Label="Path starts with"
+            <MudTextField @bind-Value="path" Label="@L["Path starts with"]"
                           Variant="Variant.Outlined" Margin="Margin.Dense" />
         </MudItem>
         <MudItem xs="12">
             <MudStack Row="true" Spacing="2">
                 <MudButton Variant="Variant.Filled" Color="Color.Primary"
                            StartIcon="@Icons.Material.Filled.FilterAlt"
-                           OnClick="FilterAsync">Filter</MudButton>
+                           OnClick="FilterAsync">@L["Filter"]</MudButton>
                 <MudButton Variant="Variant.Outlined"
                            StartIcon="@Icons.Material.Filled.Clear"
-                           OnClick="ClearFiltersAsync">Clear</MudButton>
+                           OnClick="ClearFiltersAsync">@L["Clear"]</MudButton>
             </MudStack>
         </MudItem>
     </MudGrid>
@@ -67,28 +67,28 @@
             <MudTable T="AdminActivityRow" Items="@activityPage.Items" Dense="true" Hover="true"
                       Breakpoint="Breakpoint.Sm" Loading="@loading">
                 <HeaderContent>
-                    <MudTh>When</MudTh>
-                    <MudTh>Activity</MudTh>
-                    <MudTh>User</MudTh>
-                    <MudTh>Path</MudTh>
-                    <MudTh>Target</MudTh>
-                    <MudTh>IP address</MudTh>
-                    <MudTh>Details</MudTh>
+                    <MudTh>@L["When"]</MudTh>
+                    <MudTh>@L["Activity"]</MudTh>
+                    <MudTh>@L["User"]</MudTh>
+                    <MudTh>@L["Path"]</MudTh>
+                    <MudTh>@L["Target"]</MudTh>
+                    <MudTh>@L["IP address"]</MudTh>
+                    <MudTh>@L["Details"]</MudTh>
                 </HeaderContent>
                 <RowTemplate>
-                    <MudTd DataLabel="When">@DateTimeDisplay.FormatUtcPlusEight(context.CreatedAtUtc, includeSeconds: true)</MudTd>
-                    <MudTd DataLabel="Activity">@context.ActivityType</MudTd>
-                    <MudTd DataLabel="User">
+                    <MudTd DataLabel="@L["When"]">@DateTimeDisplay.FormatUtcPlusEight(context.CreatedAtUtc, includeSeconds: true)</MudTd>
+                    <MudTd DataLabel="@L["Activity"]">@L[context.ActivityType]</MudTd>
+                    <MudTd DataLabel="@L["User"]">
                         @(context.UserEmail ?? (context.UserId is null
-                            ? $"Anonymous ({context.AnonymousVisitorId ?? "unknown"})"
+                            ? L["Anonymous ({0})", context.AnonymousVisitorId ?? L["unknown"].Value]
                             : context.UserId))
                     </MudTd>
-                    <MudTd DataLabel="Path">@(context.Path ?? "—")</MudTd>
-                    <MudTd DataLabel="Target">
+                    <MudTd DataLabel="@L["Path"]">@(context.Path ?? "—")</MudTd>
+                    <MudTd DataLabel="@L["Target"]">
                         @(context.TargetType is null ? "—" : $"{context.TargetType}/{context.TargetId}")
                     </MudTd>
-                    <MudTd DataLabel="IP address">@(context.IpAddress ?? "Unavailable")</MudTd>
-                    <MudTd DataLabel="Details">
+                    <MudTd DataLabel="@L["IP address"]">@(context.IpAddress ?? L["Unavailable"].Value)</MudTd>
+                    <MudTd DataLabel="@L["Details"]">
                         @if (!string.IsNullOrWhiteSpace(context.MetadataJson))
                         {
                             <MudText Typo="Typo.caption" Class="text-break">@context.MetadataJson</MudText>
@@ -100,13 +100,13 @@
                     </MudTd>
                 </RowTemplate>
                 <NoRecordsContent>
-                    <MudText Class="pa-4" Color="Color.Secondary">No activity found.</MudText>
+                    <MudText Class="pa-4" Color="Color.Secondary">@L["No activity found."]</MudText>
                 </NoRecordsContent>
             </MudTable>
         </MudPaper>
         <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
             <MudText Typo="Typo.caption" Color="Color.Secondary">
-                Showing @GetFirstItem()–@GetLastItem() of @activityPage.TotalCount events
+                @L["Showing {0}–{1} of {2} events", GetFirstItem(), GetLastItem(), activityPage.TotalCount]
             </MudText>
             <MudPagination Count="@PageCount" Selected="@pageNumber"
                            SelectedChanged="LoadPageAsync" Color="Color.Primary"
@@ -159,11 +159,11 @@
         }
         catch (UnauthorizedAccessException)
         {
-            errorMessage = "Administrator access is required.";
+            errorMessage = L["Administrator access is required."];
         }
         catch (Exception)
         {
-            errorMessage = "Activity data is temporarily unavailable.";
+            errorMessage = L["Activity data is temporarily unavailable."];
         }
         finally
         {

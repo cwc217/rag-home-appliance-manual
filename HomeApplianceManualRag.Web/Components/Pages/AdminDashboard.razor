@@ -5,29 +5,29 @@
 @inject AdminConversationService Conversations
 @inject IDialogService DialogService
 
-<PageTitle>Admin dashboard</PageTitle>
+<PageTitle>@L["Admin dashboard"]</PageTitle>
 
 <MudStack Spacing="3">
     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
         <div>
-            <MudText Typo="Typo.h4">Admin dashboard</MudText>
+            <MudText Typo="Typo.h4">@L["Admin dashboard"]</MudText>
             <MudText Typo="Typo.body2" Color="Color.Secondary">
-                A quick operational overview of users, manuals, indexing, and chat activity.
+                @L["A quick operational overview of users, manuals, indexing, and chat activity."]
             </MudText>
         </div>
         <MudStack Row="true" Spacing="1">
             <MudButton Href="/my-documents" Variant="Variant.Outlined"
-                       StartIcon="@Icons.Material.Filled.Description">Documents</MudButton>
+                       StartIcon="@Icons.Material.Filled.Description">@L["Documents"]</MudButton>
             <MudButton Href="/admin/chat-review" Variant="Variant.Outlined"
-                       StartIcon="@Icons.Material.Filled.Visibility">Chat review</MudButton>
+                       StartIcon="@Icons.Material.Filled.Visibility">@L["Chat review"]</MudButton>
             <MudButton Href="/admin/indexing-jobs" Variant="Variant.Outlined"
-                       StartIcon="@Icons.Material.Filled.Work">Indexing jobs</MudButton>
+                       StartIcon="@Icons.Material.Filled.Work">@L["Indexing jobs"]</MudButton>
             <MudButton Href="/admin/error-logs" Variant="Variant.Outlined"
-                       StartIcon="@Icons.Material.Filled.ErrorOutline">System errors</MudButton>
+                       StartIcon="@Icons.Material.Filled.ErrorOutline">@L["System errors"]</MudButton>
             <MudButton Href="/admin/users" Variant="Variant.Outlined"
-                       StartIcon="@Icons.Material.Filled.People">Users</MudButton>
+                       StartIcon="@Icons.Material.Filled.People">@L["Users"]</MudButton>
             <MudButton Href="/admin/activity" Variant="Variant.Outlined"
-                       StartIcon="@Icons.Material.Filled.History">Activity</MudButton>
+                       StartIcon="@Icons.Material.Filled.History">@L["Activity"]</MudButton>
         </MudStack>
     </MudStack>
 
@@ -44,34 +44,34 @@
         <MudGrid Spacing="3">
             <MudItem xs="12" sm="6" lg="3">
                 <MudPaper Class="pa-4 h-100" Elevation="1">
-                    <MudText Typo="Typo.overline" Color="Color.Secondary">Registered users</MudText>
+                    <MudText Typo="Typo.overline" Color="Color.Secondary">@L["Registered users"]</MudText>
                     <MudText Typo="Typo.h4">@snapshot.RegisteredUsers</MudText>
                 </MudPaper>
             </MudItem>
             <MudItem xs="12" sm="6" lg="3">
                 <MudPaper Class="pa-4 h-100" Elevation="1">
-                    <MudText Typo="Typo.overline" Color="Color.Secondary">Manuals</MudText>
+                    <MudText Typo="Typo.overline" Color="Color.Secondary">@L["Manuals"]</MudText>
                     <MudText Typo="Typo.h4">@snapshot.TotalDocuments</MudText>
                     <MudText Typo="Typo.caption" Color="Color.Secondary">
-                        @GetDocumentCount(DocumentStatus.Ready) ready · @GetDocumentCount(DocumentStatus.Failed) failed
+                        @L["{0} ready · {1} failed", GetDocumentCount(DocumentStatus.Ready), GetDocumentCount(DocumentStatus.Failed)]
                     </MudText>
                 </MudPaper>
             </MudItem>
             <MudItem xs="12" sm="6" lg="3">
                 <MudPaper Class="pa-4 h-100" Elevation="1">
-                    <MudText Typo="Typo.overline" Color="Color.Secondary">Conversations</MudText>
+                    <MudText Typo="Typo.overline" Color="Color.Secondary">@L["Conversations"]</MudText>
                     <MudText Typo="Typo.h4">@snapshot.TotalConversations</MudText>
                     <MudText Typo="Typo.caption" Color="Color.Secondary">
-                        @snapshot.ConversationsLast24Hours in the last 24 hours
+                        @L["{0} in the last 24 hours", snapshot.ConversationsLast24Hours]
                     </MudText>
                 </MudPaper>
             </MudItem>
             <MudItem xs="12" sm="6" lg="3">
                 <MudPaper Class="pa-4 h-100" Elevation="1">
-                    <MudText Typo="Typo.overline" Color="Color.Secondary">Indexing jobs</MudText>
-                    <MudText Typo="Typo.h4">@snapshot.ActiveIndexingJobs active</MudText>
+                    <MudText Typo="Typo.overline" Color="Color.Secondary">@L["Indexing jobs"]</MudText>
+                    <MudText Typo="Typo.h4">@L["{0} active", snapshot.ActiveIndexingJobs]</MudText>
                     <MudText Typo="Typo.caption" Color="@(snapshot.FailedIndexingJobs > 0 ? Color.Error : Color.Secondary)">
-                        @snapshot.FailedIndexingJobs failed
+                        @L["{0} failed", snapshot.FailedIndexingJobs]
                     </MudText>
                 </MudPaper>
             </MudItem>
@@ -80,36 +80,36 @@
         <MudGrid Spacing="3">
             <MudItem xs="12" md="7">
                 <MudPaper Class="pa-4" Elevation="1">
-                    <MudText Typo="Typo.h6" Class="mb-3">Recent conversations</MudText>
+                    <MudText Typo="Typo.h6" Class="mb-3">@L["Recent conversations"]</MudText>
                     @if (snapshot.RecentConversations.Count == 0)
                     {
-                        <MudText Typo="Typo.body2" Color="Color.Secondary">No conversations yet.</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@L["No conversations yet."]</MudText>
                     }
                     else
                     {
                         <MudTable T="AdminConversationSummary" Items="@snapshot.RecentConversations"
                                   Dense="true" Hover="true" Breakpoint="Breakpoint.Sm">
                             <HeaderContent>
-                                <MudTh>Conversation</MudTh>
-                                <MudTh>Owner</MudTh>
-                                <MudTh>Updated</MudTh>
+                                <MudTh>@L["Conversation"]</MudTh>
+                                <MudTh>@L["Owner"]</MudTh>
+                                <MudTh>@L["Updated"]</MudTh>
                                 <MudTh></MudTh>
                             </HeaderContent>
                             <RowTemplate>
-                                <MudTd DataLabel="Conversation">
+                                <MudTd DataLabel="@L["Conversation"]">
                                     <MudText Typo="Typo.body2" Class="text-break">@context.Title</MudText>
                                     <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                        @context.MessageCount messages
+                                        @L["{0} messages", context.MessageCount]
                                     </MudText>
                                 </MudTd>
-                                <MudTd DataLabel="Owner">@context.Owner</MudTd>
-                                <MudTd DataLabel="Updated">
+                                <MudTd DataLabel="@L["Owner"]">@context.Owner</MudTd>
+                                <MudTd DataLabel="@L["Updated"]">
                                     @DateTimeDisplay.FormatUtcPlusEight(context.UpdatedAtUtc)
                                 </MudTd>
-                                <MudTd DataLabel="Actions">
+                                <MudTd DataLabel="@L["Actions"]">
                                     <MudButton Size="Size.Small" Variant="Variant.Text"
                                                OnClick="() => ShowConversationAsync(context.Id)">
-                                        Detail
+                                        @L["Detail"]
                                     </MudButton>
                                 </MudTd>
                             </RowTemplate>
@@ -119,11 +119,11 @@
             </MudItem>
             <MudItem xs="12" md="5">
                 <MudPaper Class="pa-4" Elevation="1">
-                    <MudText Typo="Typo.h6" Class="mb-3">Manual status</MudText>
+                    <MudText Typo="Typo.h6" Class="mb-3">@L["Manual status"]</MudText>
                     @foreach (var status in Enum.GetValues<DocumentStatus>())
                     {
                         <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mb-2">
-                            <MudText Typo="Typo.body2">@status</MudText>
+                            <MudText Typo="Typo.body2">@L[status.ToString()]</MudText>
                             <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(status)">
                                 @GetDocumentCount(status)
                             </MudChip>
@@ -147,11 +147,11 @@
         }
         catch (UnauthorizedAccessException)
         {
-            errorMessage = "Administrator access is required.";
+            errorMessage = L["Administrator access is required."];
         }
         catch (Exception)
         {
-            errorMessage = "Dashboard data is temporarily unavailable.";
+            errorMessage = L["Dashboard data is temporarily unavailable."];
         }
     }
 
@@ -173,7 +173,7 @@
             return;
 
         await DialogService.ShowAsync<AdminConversationDialog>(
-            "Conversation detail",
+            L["Conversation detail"],
             new DialogParameters { ["Detail"] = detail },
             new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Large, FullWidth = true });
     }

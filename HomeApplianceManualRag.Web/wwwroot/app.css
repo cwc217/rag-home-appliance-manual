@@ -91,6 +91,34 @@ body {
     flex-direction: column;
 }
 
+.nav-language-form {
+    display: grid;
+    gap: .35rem;
+    padding: .5rem .75rem;
+}
+
+.nav-language-form label {
+    color: #475569;
+    font-size: .875rem;
+    font-weight: 600;
+}
+
+.nav-language-form select {
+    width: 100%;
+    min-height: 2.5rem;
+    padding: .5rem .65rem;
+    border: 1px solid #cbd5e1;
+    border-radius: .375rem;
+    background: #fff;
+    color: #0f172a;
+    font: inherit;
+}
+
+.nav-language-form select:focus-visible {
+    outline: 3px solid rgb(37 99 235 / 25%);
+    outline-offset: 2px;
+}
+
 .nav-build-version {
     margin-top: auto;
     padding-bottom: .5rem;

@@ -3,18 +3,18 @@
 @using HomeApplianceManualRag.Web.Admin
 @inject AdminIndexingJobService Jobs
 
-<PageTitle>Indexing jobs</PageTitle>
+<PageTitle>@L["Indexing jobs"]</PageTitle>
 
 <MudStack Spacing="3">
     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
         <div>
-            <MudText Typo="Typo.h4">Indexing jobs</MudText>
+            <MudText Typo="Typo.h4">@L["Indexing jobs"]</MudText>
             <MudText Typo="Typo.body2" Color="Color.Secondary">
-                Review document indexing history, retries, and failures.
+                @L["Review document indexing history, retries, and failures."]
             </MudText>
         </div>
         <MudButton Href="/admin" Variant="Variant.Outlined"
-                   StartIcon="@Icons.Material.Filled.ArrowBack">Dashboard</MudButton>
+                   StartIcon="@Icons.Material.Filled.ArrowBack">@L["Dashboard"]</MudButton>
     </MudStack>
 
     @if (indexingPage is null && errorMessage is null)
@@ -31,37 +31,37 @@
             <MudTable T="AdminIndexingJobRow" Items="@indexingPage.Items" Dense="true" Hover="true"
                       Breakpoint="Breakpoint.Sm" Loading="@loading">
                 <HeaderContent>
-                    <MudTh>Document</MudTh>
-                    <MudTh>Owner</MudTh>
-                    <MudTh>Status</MudTh>
-                    <MudTh>Attempts</MudTh>
-                    <MudTh>Created</MudTh>
-                    <MudTh>Completed</MudTh>
-                    <MudTh>Last error</MudTh>
-                    <MudTh>Actions</MudTh>
+                    <MudTh>@L["Document"]</MudTh>
+                    <MudTh>@L["Owner"]</MudTh>
+                    <MudTh>@L["Status"]</MudTh>
+                    <MudTh>@L["Attempts"]</MudTh>
+                    <MudTh>@L["Created"]</MudTh>
+                    <MudTh>@L["Completed"]</MudTh>
+                    <MudTh>@L["Last error"]</MudTh>
+                    <MudTh>@L["Actions"]</MudTh>
                 </HeaderContent>
                 <RowTemplate>
-                    <MudTd DataLabel="Document">
+                    <MudTd DataLabel="@L["Document"]">
                         <MudText Typo="Typo.body2" Class="text-break">@context.DocumentName</MudText>
                     </MudTd>
-                    <MudTd DataLabel="Owner">
-                        @(string.IsNullOrWhiteSpace(context.OwnerUserId) ? "Admin/public" : context.OwnerUserId)
+                    <MudTd DataLabel="@L["Owner"]">
+                        @(string.IsNullOrWhiteSpace(context.OwnerUserId) ? L["Admin/public"] : context.OwnerUserId)
                     </MudTd>
-                    <MudTd DataLabel="Status">
+                    <MudTd DataLabel="@L["Status"]">
                         <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
-                            @context.Status
+                            @L[context.Status.ToString()]
                         </MudChip>
                         @if (context.DeletedAtUtc is not null)
                         {
-                            <MudChip T="string" Size="Size.Small" Color="Color.Dark">Deleted</MudChip>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Dark">@L["Deleted"]</MudChip>
                         }
                     </MudTd>
-                    <MudTd DataLabel="Attempts">@context.Attempts</MudTd>
-                    <MudTd DataLabel="Created">@FormatDate(context.CreatedAtUtc)</MudTd>
-                    <MudTd DataLabel="Completed">
+                    <MudTd DataLabel="@L["Attempts"]">@context.Attempts</MudTd>
+                    <MudTd DataLabel="@L["Created"]">@FormatDate(context.CreatedAtUtc)</MudTd>
+                    <MudTd DataLabel="@L["Completed"]">
                         @(context.CompletedAtUtc is null ? "—" : FormatDate(context.CompletedAtUtc.Value))
                     </MudTd>
-                    <MudTd DataLabel="Last error">
+                    <MudTd DataLabel="@L["Last error"]">
                         @if (string.IsNullOrWhiteSpace(context.LastError))
                         {
                             <MudText Typo="Typo.body2" Color="Color.Secondary">—</MudText>
@@ -69,31 +69,31 @@
                         else
                         {
                             <MudText Typo="Typo.body2" Class="text-break" Color="Color.Error">
-                                @context.LastError
+                                @L[context.LastError]
                             </MudText>
                         }
                     </MudTd>
-                    <MudTd DataLabel="Actions">
+                    <MudTd DataLabel="@L["Actions"]">
                         @if (!string.Equals(context.DocumentName, "(deleted document)", StringComparison.Ordinal))
                         {
                             <MudButton Href="@($"/documents/{context.DocumentId}/download")"
                                        Variant="Variant.Text"
                                        Size="Size.Small"
                                        StartIcon="@Icons.Material.Filled.Download">
-                                Download PDF
+                                @L["Download PDF"]
                             </MudButton>
                         }
                     </MudTd>
                 </RowTemplate>
                 <NoRecordsContent>
-                    <MudText Class="pa-4" Color="Color.Secondary">No indexing jobs found.</MudText>
+                    <MudText Class="pa-4" Color="Color.Secondary">@L["No indexing jobs found."]</MudText>
                 </NoRecordsContent>
             </MudTable>
         </MudPaper>
 
         <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
             <MudText Typo="Typo.caption" Color="Color.Secondary">
-                Showing @GetFirstItem()–@GetLastItem() of @indexingPage.TotalCount jobs
+                @L["Showing {0}–{1} of {2} jobs", GetFirstItem(), GetLastItem(), indexingPage.TotalCount]
             </MudText>
             <MudPagination Count="@PageCount" Selected="@pageNumber"
                            SelectedChanged="LoadPageAsync" Color="Color.Primary"
@@ -125,11 +125,11 @@
         }
         catch (UnauthorizedAccessException)
         {
-            errorMessage = "Administrator access is required.";
+            errorMessage = L["Administrator access is required."];
         }
         catch (Exception)
         {
-            errorMessage = "Indexing job data is temporarily unavailable.";
+            errorMessage = L["Indexing job data is temporarily unavailable."];
         }
         finally
         {

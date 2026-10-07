@@ -6,21 +6,33 @@
 
 <MudNavMenu Class="pa-3 nav-menu">
     <MudText Typo="Typo.overline" Color="Color.Secondary" Class="px-3">RAG</MudText>
+    <form method="post" action="/culture" class="nav-language-form" data-enhance="false">
+        <AntiforgeryToken />
+        <input type="hidden" name="returnUrl" value="@CurrentLocalReturnUrl" />
+        <label for="culture-select">@L["Language"]</label>
+        <select id="culture-select" name="culture" aria-label="@L["Language"]"
+                onchange="this.form.submit()">
+            <option value="en" selected="@(CurrentCulture == "en")">@L["English"]</option>
+            <option value="zh-Hant" selected="@(CurrentCulture.StartsWith("zh", StringComparison.OrdinalIgnoreCase))">
+                @L["Traditional Chinese"]
+            </option>
+        </select>
+    </form>
     <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Add"
                 Class="nav-new-conversation" OnClick="NewConversation">
-        New chat
+        @L["New chat"]
     </MudNavLink>
     @if (isAuthenticated)
     {
         <details class="nav-conversations-collapse" open>
             <summary>
                 <MudIcon Icon="@Icons.Material.Filled.Chat" Size="Size.Small" />
-                <span>Conversations (@activeConversationCount/@ChatHistoryService.MaxActiveConversations)</span>
+                <span>@L["Conversations ({0}/{1})", activeConversationCount, ChatHistoryService.MaxActiveConversations]</span>
             </summary>
-            <div class="nav-conversations" aria-label="Conversation rooms">
+            <div class="nav-conversations" aria-label="@L["Conversation rooms"]">
                 @if (!conversationsLoaded)
                 {
-                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-3">Loading chats…</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-3">@L["Loading chats…"]</MudText>
                 }
                 else if (!string.IsNullOrWhiteSpace(conversationsError))
                 {
@@ -28,7 +40,7 @@
                 }
                 else if (conversations.Where(x => x.Title != "New chat").Take(8).Count() == 0)
                 {
-                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-3">No conversations yet</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-3">@L["No conversations yet"]</MudText>
                 }
                 else
                 {
@@ -43,7 +55,7 @@
                             <MudIconButton Icon="@Icons.Material.Filled.Delete"
                                            Color="Color.Error"
                                            Size="Size.Small"
-                                           title="@($"Delete conversation {GetConversationTitle(conversation)}")"
+                                           title="@L["Delete conversation {0}", GetConversationTitle(conversation)]"
                                            OnClick="@(() => ConfirmDelete(conversation))" />
                         </div>
                     }
@@ -53,33 +65,33 @@
     }
     <AuthorizeView>
             <NotAuthorized>
-                <MudNavLink Href="/login" Icon="@Icons.Material.Filled.Login">Login</MudNavLink>
-                <MudNavLink Href="/register" Icon="@Icons.Material.Filled.PersonAdd">Register</MudNavLink>
+                <MudNavLink Href="/login" Icon="@Icons.Material.Filled.Login">@L["Login"]</MudNavLink>
+                <MudNavLink Href="/register" Icon="@Icons.Material.Filled.PersonAdd">@L["Register"]</MudNavLink>
             </NotAuthorized>
             <Authorized>
                 <AuthorizeView Roles="@ApplicationRoles.Admin" Context="dashboardContext">
-                    <MudNavLink Href="/admin" Icon="@Icons.Material.Filled.Dashboard">Admin dashboard</MudNavLink>
+                    <MudNavLink Href="/admin" Icon="@Icons.Material.Filled.Dashboard">@L["Admin dashboard"]</MudNavLink>
                 </AuthorizeView>
-                <MudNavLink Href="/my-documents" Icon="@Icons.Material.Filled.Description">My documents</MudNavLink>
+                <MudNavLink Href="/my-documents" Icon="@Icons.Material.Filled.Description">@L["My documents"]</MudNavLink>
                 <AuthorizeView Roles="@ApplicationRoles.Admin" Context="adminContext">
-                    <MudNavLink Href="/admin/chat-review" Icon="@Icons.Material.Filled.Visibility">Chat review</MudNavLink>
-                    <MudNavLink Href="/admin/indexing-jobs" Icon="@Icons.Material.Filled.Work">Indexing jobs</MudNavLink>
-                    <MudNavLink Href="/admin/error-logs" Icon="@Icons.Material.Filled.ErrorOutline">System errors</MudNavLink>
-                    <MudNavLink Href="/admin/users" Icon="@Icons.Material.Filled.People">Users</MudNavLink>
-                    <MudNavLink Href="/admin/activity" Icon="@Icons.Material.Filled.History">User activity</MudNavLink>
+                    <MudNavLink Href="/admin/chat-review" Icon="@Icons.Material.Filled.Visibility">@L["Chat review"]</MudNavLink>
+                    <MudNavLink Href="/admin/indexing-jobs" Icon="@Icons.Material.Filled.Work">@L["Indexing jobs"]</MudNavLink>
+                    <MudNavLink Href="/admin/error-logs" Icon="@Icons.Material.Filled.ErrorOutline">@L["System errors"]</MudNavLink>
+                    <MudNavLink Href="/admin/users" Icon="@Icons.Material.Filled.People">@L["Users"]</MudNavLink>
+                    <MudNavLink Href="/admin/activity" Icon="@Icons.Material.Filled.History">@L["User activity"]</MudNavLink>
                 </AuthorizeView>
                 <form method="post" action="/account/logout" data-enhance="false">
                     <AntiforgeryToken />
                     <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Text"
                                StartIcon="@Icons.Material.Filled.Logout" Class="nav-logout">
-                        Logout
+                        @L["Logout"]
                     </MudButton>
                 </form>
             </Authorized>
         </AuthorizeView>
         <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-3 nav-build-version"
-             title="Application build time">
-        Build @BuildTime
+             title="@L["Application build time"]">
+        @L["Build {0}", BuildTime]
     </MudText>
 </MudNavMenu>
 
@@ -110,7 +122,7 @@
         }
         catch
         {
-            conversationsError = "Conversation history unavailable.";
+            conversationsError = L["Conversation history unavailable."];
         }
         finally
         {
@@ -128,10 +140,10 @@
     {
         var title = GetConversationTitle(conversation);
         var confirmed = await DialogService.ShowMessageBox(
-            "Delete conversation?",
-            $"Delete \"{title}\"? The conversation will be hidden but retained for records.",
-            yesText: "Delete",
-            cancelText: "Cancel",
+            L["Delete conversation?"],
+            L["Delete \"{0}\"? The conversation will be hidden but retained for records.", title],
+            yesText: L["Delete"],
+            cancelText: L["Cancel"],
             options: new DialogOptions { CloseOnEscapeKey = true });
         if (confirmed != true)
             return;
@@ -169,8 +181,11 @@
         ConversationState.Changed -= OnConversationStateChanged;
     }
 
-    private static string GetConversationTitle(ChatConversation conversation) =>
-        conversation.Title == "New chat" ? "Current chat" : conversation.Title;
+    private string GetConversationTitle(ChatConversation conversation) =>
+        conversation.Title == "New chat" ? L["Current chat"] : conversation.Title;
+
+    private string CurrentCulture => CultureInfo.CurrentUICulture.Name;
+    private string CurrentLocalReturnUrl => "/" + Navigation.ToBaseRelativePath(Navigation.Uri);
 
     private static string BuildTime
     {

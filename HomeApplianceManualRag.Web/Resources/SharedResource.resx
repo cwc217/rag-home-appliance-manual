@@ -1,0 +1,314 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="Home Appliance Manual" xml:space="preserve"><value>Home Appliance Manual</value></data>
+  <data name="About" xml:space="preserve"><value>About</value></data>
+  <data name="Skip to main content" xml:space="preserve"><value>Skip to main content</value></data>
+  <data name="Toggle navigation" xml:space="preserve"><value>Toggle navigation</value></data>
+  <data name="Language" xml:space="preserve"><value>Language</value></data>
+  <data name="English" xml:space="preserve"><value>English</value></data>
+  <data name="Traditional Chinese" xml:space="preserve"><value>Traditional Chinese</value></data>
+  <data name="An unhandled error has occurred." xml:space="preserve"><value>An unhandled error has occurred.</value></data>
+  <data name="Reload" xml:space="preserve"><value>Reload</value></data>
+  <data name="Dismiss" xml:space="preserve"><value>Dismiss</value></data>
+  <data name="Build {0}" xml:space="preserve"><value>Build {0}</value></data>
+  <data name="Application build time" xml:space="preserve"><value>Application build time</value></data>
+  <data name="New chat" xml:space="preserve"><value>New chat</value></data>
+  <data name="Conversations ({0}/{1})" xml:space="preserve"><value>Conversations ({0}/{1})</value></data>
+  <data name="Conversation rooms" xml:space="preserve"><value>Conversation rooms</value></data>
+  <data name="Loading chats…" xml:space="preserve"><value>Loading chats…</value></data>
+  <data name="No conversations yet" xml:space="preserve"><value>No conversations yet</value></data>
+  <data name="Delete conversation {0}" xml:space="preserve"><value>Delete conversation {0}</value></data>
+  <data name="Current chat" xml:space="preserve"><value>Current chat</value></data>
+  <data name="Login" xml:space="preserve"><value>Login</value></data>
+  <data name="Sign in" xml:space="preserve"><value>Sign in</value></data>
+  <data name="Register" xml:space="preserve"><value>Register</value></data>
+  <data name="Logout" xml:space="preserve"><value>Logout</value></data>
+  <data name="Admin dashboard" xml:space="preserve"><value>Admin dashboard</value></data>
+  <data name="My documents" xml:space="preserve"><value>My documents</value></data>
+  <data name="Chat review" xml:space="preserve"><value>Chat review</value></data>
+  <data name="Indexing jobs" xml:space="preserve"><value>Indexing jobs</value></data>
+  <data name="System errors" xml:space="preserve"><value>System errors</value></data>
+  <data name="Users" xml:space="preserve"><value>Users</value></data>
+  <data name="User activity" xml:space="preserve"><value>User activity</value></data>
+  <data name="Chat Room" xml:space="preserve"><value>Chat Room</value></data>
+  <data name="Conversation" xml:space="preserve"><value>Conversation</value></data>
+  <data name="Loading conversation history…" xml:space="preserve"><value>Loading conversation history…</value></data>
+  <data name="You" xml:space="preserve"><value>You</value></data>
+  <data name="Assistant" xml:space="preserve"><value>Assistant</value></data>
+  <data name="Sources" xml:space="preserve"><value>Sources</value></data>
+  <data name="Thinking…" xml:space="preserve"><value>Thinking…</value></data>
+  <data name="Select manuals for this answer" xml:space="preserve"><value>Select manuals for this answer</value></data>
+  <data name="Loading manuals…" xml:space="preserve"><value>Loading manuals…</value></data>
+  <data name="Manuals unavailable" xml:space="preserve"><value>Manuals unavailable</value></data>
+  <data name="Question" xml:space="preserve"><value>Question</value></data>
+  <data name="How do I clean the filter?" xml:space="preserve"><value>How do I clean the filter?</value></data>
+  <data name="Prior Q&amp;A pairs" xml:space="preserve"><value>Prior Q&amp;A pairs</value></data>
+  <data name="Ask" xml:space="preserve"><value>Ask</value></data>
+  <data name="Searching all available manuals." xml:space="preserve"><value>Searching all available manuals.</value></data>
+  <data name="Searching {0} selected manual(s)." xml:space="preserve"><value>Searching {0} selected manual(s).</value></data>
+  <data name="Content is AI-generated for reference only and may not be fully accurate." xml:space="preserve"><value>Content is AI-generated for reference only and may not be fully accurate.</value></data>
+  <data name="Active conversations: {0}/{1}" xml:space="preserve"><value>Active conversations: {0}/{1}</value></data>
+  <data name="Exchanges: {0}/{1}" xml:space="preserve"><value>Exchanges: {0}/{1}</value></data>
+  <data name="Ask a question and get an answer grounded in your available manuals." xml:space="preserve"><value>Ask a question and get an answer grounded in your available manuals.</value></data>
+  <data name="You have reached the limit of {0} active conversations." xml:space="preserve"><value>You have reached the limit of {0} active conversations.</value></data>
+  <data name="Delete an existing conversation to start a new one. Existing conversations remain available." xml:space="preserve"><value>Delete an existing conversation to start a new one. Existing conversations remain available.</value></data>
+  <data name="This conversation has reached its limit of {0} question-and-answer exchanges." xml:space="preserve"><value>This conversation has reached its limit of {0} question-and-answer exchanges.</value></data>
+  <data name="Start a new conversation to continue." xml:space="preserve"><value>Start a new conversation to continue.</value></data>
+  <data name="No ready manuals yet" xml:space="preserve"><value>No ready manuals yet</value></data>
+  <data name="No public manuals are ready yet." xml:space="preserve"><value>No public manuals are ready yet.</value></data>
+  <data name="Upload an appliance manual and wait for processing to finish. Ready manuals will appear here for chat." xml:space="preserve"><value>Upload an appliance manual and wait for processing to finish. Ready manuals will appear here for chat.</value></data>
+  <data name="Chat uses ready public manuals. Sign in to use manuals in your account, or create an account to upload one." xml:space="preserve"><value>Chat uses ready public manuals. Sign in to use manuals in your account, or create an account to upload one.</value></data>
+  <data name="Manage manuals" xml:space="preserve"><value>Manage manuals</value></data>
+  <data name="Create account" xml:space="preserve"><value>Create account</value></data>
+  <data name="No ready manuals" xml:space="preserve"><value>No ready manuals</value></data>
+  <data name="Too many requests. Try again in {0} seconds." xml:space="preserve"><value>Too many requests. Try again in {0} seconds.</value></data>
+  <data name="I can't find an answer in the available manuals." xml:space="preserve"><value>I can't find an answer in the available manuals.</value></data>
+  <data name="I can help with home-appliance questions. Please ask about operating or troubleshooting an appliance." xml:space="preserve"><value>I can help with home-appliance questions. Please ask about operating or troubleshooting an appliance.</value></data>
+  <data name="I can't help bypass instructions, reveal hidden information, or misuse tools." xml:space="preserve"><value>I can't help bypass instructions, reveal hidden information, or misuse tools.</value></data>
+  <data name="I can't safely process this question right now. Please try again later." xml:space="preserve"><value>I can't safely process this question right now. Please try again later.</value></data>
+  <data name="Conversation history is temporarily unavailable." xml:space="preserve"><value>Conversation history is temporarily unavailable.</value></data>
+  <data name="Manuals could not be loaded. Refresh the page and try again." xml:space="preserve"><value>Manuals could not be loaded. Refresh the page and try again.</value></data>
+  <data name="Choose between {0} and {1} prior Q&amp;A pairs." xml:space="preserve"><value>Choose between {0} and {1} prior Q&amp;A pairs.</value></data>
+  <data name="The Prior Q&amp;A pairs setting could not be saved in this browser." xml:space="preserve"><value>The Prior Q&amp;A pairs setting could not be saved in this browser.</value></data>
+  <data name="The answer service is temporarily unavailable. Please try again." xml:space="preserve"><value>The answer service is temporarily unavailable. Please try again.</value></data>
+  <data name="Your answer was generated, but it could not be saved. Please try again." xml:space="preserve"><value>Your answer was generated, but it could not be saved. Please try again.</value></data>
+  <data name="System error data is temporarily unavailable." xml:space="preserve"><value>System error data is temporarily unavailable.</value></data>
+  <data name="Sign in to manage manuals and keep your chat history." xml:space="preserve"><value>Sign in to manage manuals and keep your chat history.</value></data>
+  <data name="Email" xml:space="preserve"><value>Email</value></data>
+  <data name="Password" xml:space="preserve"><value>Password</value></data>
+  <data name="Confirm password" xml:space="preserve"><value>Confirm password</value></data>
+  <data name="{0} is required." xml:space="preserve"><value>{0} is required.</value></data>
+  <data name="Email and password" xml:space="preserve"><value>Email and password</value></data>
+  <data name="Invalid email or password." xml:space="preserve"><value>Invalid email or password.</value></data>
+  <data name="Registration failed. Please check your information." xml:space="preserve"><value>Registration failed. Please check your information.</value></data>
+  <data name="This email is already registered." xml:space="preserve"><value>This email is already registered.</value></data>
+  <data name="Create an account to upload your own appliance manuals." xml:space="preserve"><value>Create an account to upload your own appliance manuals.</value></data>
+  <data name="All documents" xml:space="preserve"><value>All documents</value></data>
+  <data name="Administrators have unlimited uploads." xml:space="preserve"><value>Administrators have unlimited uploads.</value></data>
+  <data name="Active quota: {0} / 3." xml:space="preserve"><value>Active quota: {0} / 3.</value></data>
+  <data name="PDF manual" xml:space="preserve"><value>PDF manual</value></data>
+  <data name="Upload" xml:space="preserve"><value>Upload</value></data>
+  <data name="Validating PDF and preparing upload…" xml:space="preserve"><value>Validating PDF and preparing upload…</value></data>
+  <data name="Uploading PDF: {0}%" xml:space="preserve"><value>Uploading PDF: {0}%</value></data>
+  <data name="Finishing upload…" xml:space="preserve"><value>Finishing upload…</value></data>
+  <data name="Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Upload guidelines" xml:space="preserve"><value>Upload guidelines</value></data>
+  <data name="Upload a single PDF file (Max 10 MB)." xml:space="preserve"><value>Upload a single PDF file (Max 10 MB).</value></data>
+  <data name="Upload the manual for one appliance. Include its brand and exact model number in the PDF or file name." xml:space="preserve"><value>Upload the manual for one appliance. Include its brand and exact model number in the PDF or file name.</value></data>
+  <data name="Use a clear, text-searchable PDF. Scanned or blurry pages and password-protected files may not be read accurately." xml:space="preserve"><value>Use a clear, text-searchable PDF. Scanned or blurry pages and password-protected files may not be read accurately.</value></data>
+  <data name="Use one language per PDF." xml:space="preserve"><value>Use one language per PDF.</value></data>
+  <data name="Status" xml:space="preserve"><value>Status</value></data>
+  <data name="Owner" xml:space="preserve"><value>Owner</value></data>
+  <data name="Admin/public" xml:space="preserve"><value>Admin/public</value></data>
+  <data name="Deleted {0}" xml:space="preserve"><value>Deleted {0}</value></data>
+  <data name="{0}. This page updates automatically." xml:space="preserve"><value>{0}. This page updates automatically.</value></data>
+  <data name="Download" xml:space="preserve"><value>Download</value></data>
+  <data name="Retry" xml:space="preserve"><value>Retry</value></data>
+  <data name="Re-index" xml:space="preserve"><value>Re-index</value></data>
+  <data name="Delete" xml:space="preserve"><value>Delete</value></data>
+  <data name="Delete conversation?" xml:space="preserve"><value>Delete conversation?</value></data>
+  <data name="Delete &quot;{0}&quot;? The conversation will be hidden but retained for records." xml:space="preserve"><value>Delete &quot;{0}&quot;? The conversation will be hidden but retained for records.</value></data>
+  <data name="Restore" xml:space="preserve"><value>Restore</value></data>
+  <data name="Permanently delete" xml:space="preserve"><value>Permanently delete</value></data>
+  <data name="Queued" xml:space="preserve"><value>Queued</value></data>
+  <data name="Processing" xml:space="preserve"><value>Processing</value></data>
+  <data name="Ready" xml:space="preserve"><value>Ready</value></data>
+  <data name="Failed" xml:space="preserve"><value>Failed</value></data>
+  <data name="Rejected" xml:space="preserve"><value>Rejected</value></data>
+  <data name="Cancelled" xml:space="preserve"><value>Cancelled</value></data>
+  <data name="Deleted" xml:space="preserve"><value>Deleted</value></data>
+  <data name="Waiting in queue" xml:space="preserve"><value>Waiting in queue</value></data>
+  <data name="Extracting PDF text" xml:space="preserve"><value>Extracting PDF text</value></data>
+  <data name="Checking the manual" xml:space="preserve"><value>Checking the manual</value></data>
+  <data name="Analyzing diagrams, if present" xml:space="preserve"><value>Analyzing diagrams, if present</value></data>
+  <data name="Identifying appliance details" xml:space="preserve"><value>Identifying appliance details</value></data>
+  <data name="Preparing searchable sections" xml:space="preserve"><value>Preparing searchable sections</value></data>
+  <data name="Building search index" xml:space="preserve"><value>Building search index</value></data>
+  <data name="Saving search index" xml:space="preserve"><value>Saving search index</value></data>
+  <data name="Finishing" xml:space="preserve"><value>Finishing</value></data>
+  <data name="({0}/{1} chunks)" xml:space="preserve"><value>({0}/{1} chunks)</value></data>
+  <data name="Cancel upload?" xml:space="preserve"><value>Cancel upload?</value></data>
+  <data name="The upload or indexing process will continue unless you confirm." xml:space="preserve"><value>The upload or indexing process will continue unless you confirm.</value></data>
+  <data name="Cancel upload" xml:space="preserve"><value>Cancel upload</value></data>
+  <data name="Continue" xml:space="preserve"><value>Continue</value></data>
+  <data name="Cancel processing?" xml:space="preserve"><value>Cancel processing?</value></data>
+  <data name="Cancel indexing for &quot;{0}&quot;? The uploaded PDF will be kept and can be retried." xml:space="preserve"><value>Cancel indexing for &quot;{0}&quot;? The uploaded PDF will be kept and can be retried.</value></data>
+  <data name="Cancel processing" xml:space="preserve"><value>Cancel processing</value></data>
+  <data name="Continue processing" xml:space="preserve"><value>Continue processing</value></data>
+  <data name="Processing has already finished and cannot be cancelled." xml:space="preserve"><value>Processing has already finished and cannot be cancelled.</value></data>
+  <data name="Delete document?" xml:space="preserve"><value>Delete document?</value></data>
+  <data name="Delete &quot;{0}&quot;? This action cannot be undone." xml:space="preserve"><value>Delete &quot;{0}&quot;? This action cannot be undone.</value></data>
+  <data name="Permanently delete document?" xml:space="preserve"><value>Permanently delete document?</value></data>
+  <data name="Permanently delete &quot;{0}&quot; and its stored PDF? This cannot be undone." xml:space="preserve"><value>Permanently delete &quot;{0}&quot; and its stored PDF? This cannot be undone.</value></data>
+  <data name="Upload cancelled." xml:space="preserve"><value>Upload cancelled.</value></data>
+  <data name="Unable to refresh document status. Please reload the page." xml:space="preserve"><value>Unable to refresh document status. Please reload the page.</value></data>
+  <data name="You can have at most 3 active documents." xml:space="preserve"><value>You can have at most 3 active documents.</value></data>
+  <data name="You can only process one document at a time. Wait for the current document to finish before trying again." xml:space="preserve"><value>You can only process one document at a time. Wait for the current document to finish before trying again.</value></data>
+  <data name="This file does not appear to be a supported appliance manual." xml:space="preserve"><value>This file does not appear to be a supported appliance manual.</value></data>
+  <data name="We couldn't read this document. Check that it is a valid PDF with extractable text, then retry." xml:space="preserve"><value>We couldn't read this document. Check that it is a valid PDF with extractable text, then retry.</value></data>
+  <data name="We couldn't verify that this is an appliance manual. Check the file and retry." xml:space="preserve"><value>We couldn't verify that this is an appliance manual. Check the file and retry.</value></data>
+  <data name="Image analysis failed. Please retry processing." xml:space="preserve"><value>Image analysis failed. Please retry processing.</value></data>
+  <data name="Document processing failed. Please retry. If the problem continues, contact support." xml:space="preserve"><value>Document processing failed. Please retry. If the problem continues, contact support.</value></data>
+  <data name="A file is required." xml:space="preserve"><value>A file is required.</value></data>
+  <data name="PDF files must be between 1 byte and {0} MB." xml:space="preserve"><value>PDF files must be between 1 byte and {0} MB.</value></data>
+  <data name="Only .pdf files are accepted." xml:space="preserve"><value>Only .pdf files are accepted.</value></data>
+  <data name="The declared content type must be application/pdf." xml:space="preserve"><value>The declared content type must be application/pdf.</value></data>
+  <data name="The file is not a valid PDF (missing %PDF- signature)." xml:space="preserve"><value>The file is not a valid PDF (missing %PDF- signature).</value></data>
+  <data name="Brand" xml:space="preserve"><value>Brand</value></data>
+  <data name="Category" xml:space="preserve"><value>Category</value></data>
+  <data name="Model" xml:space="preserve"><value>Model</value></data>
+  <data name="A quick operational overview of users, manuals, indexing, and chat activity." xml:space="preserve"><value>A quick operational overview of users, manuals, indexing, and chat activity.</value></data>
+  <data name="Documents" xml:space="preserve"><value>Documents</value></data>
+  <data name="Activity" xml:space="preserve"><value>Activity</value></data>
+  <data name="Registered users" xml:space="preserve"><value>Registered users</value></data>
+  <data name="Manuals" xml:space="preserve"><value>Manuals</value></data>
+  <data name="Conversations" xml:space="preserve"><value>Conversations</value></data>
+  <data name="{0} active" xml:space="preserve"><value>{0} active</value></data>
+  <data name="{0} failed" xml:space="preserve"><value>{0} failed</value></data>
+  <data name="{0} ready · {1} failed" xml:space="preserve"><value>{0} ready · {1} failed</value></data>
+  <data name="{0} in the last 24 hours" xml:space="preserve"><value>{0} in the last 24 hours</value></data>
+  <data name="Recent conversations" xml:space="preserve"><value>Recent conversations</value></data>
+  <data name="Manual status" xml:space="preserve"><value>Manual status</value></data>
+  <data name="Detail" xml:space="preserve"><value>Detail</value></data>
+  <data name="Conversation detail" xml:space="preserve"><value>Conversation detail</value></data>
+  <data name="Review the latest 20 authenticated and anonymous conversations." xml:space="preserve"><value>Review the latest 20 authenticated and anonymous conversations.</value></data>
+  <data name="No conversations yet." xml:space="preserve"><value>No conversations yet.</value></data>
+  <data name="Messages" xml:space="preserve"><value>Messages</value></data>
+  <data name="Updated" xml:space="preserve"><value>Updated</value></data>
+  <data name="Created {0}" xml:space="preserve"><value>Created {0}</value></data>
+  <data name="{0} messages" xml:space="preserve"><value>{0} messages</value></data>
+  <data name="Close" xml:space="preserve"><value>Close</value></data>
+  <data name="Review sign-in and account activity. Sensitive values are not stored." xml:space="preserve"><value>Review sign-in and account activity. Sensitive values are not stored.</value></data>
+  <data name="Activity type" xml:space="preserve"><value>Activity type</value></data>
+  <data name="All activity types" xml:space="preserve"><value>All activity types</value></data>
+  <data name="Email starts with" xml:space="preserve"><value>Email starts with</value></data>
+  <data name="IP address contains" xml:space="preserve"><value>IP address contains</value></data>
+  <data name="Path starts with" xml:space="preserve"><value>Path starts with</value></data>
+  <data name="Filter" xml:space="preserve"><value>Filter</value></data>
+  <data name="Clear" xml:space="preserve"><value>Clear</value></data>
+  <data name="When" xml:space="preserve"><value>When</value></data>
+  <data name="User" xml:space="preserve"><value>User</value></data>
+  <data name="Path" xml:space="preserve"><value>Path</value></data>
+  <data name="Target" xml:space="preserve"><value>Target</value></data>
+  <data name="IP address" xml:space="preserve"><value>IP address</value></data>
+  <data name="Details" xml:space="preserve"><value>Details</value></data>
+  <data name="Unavailable" xml:space="preserve"><value>Unavailable</value></data>
+  <data name="No activity found." xml:space="preserve"><value>No activity found.</value></data>
+  <data name="Showing {0}–{1} of {2} events" xml:space="preserve"><value>Showing {0}–{1} of {2} events</value></data>
+  <data name="{0} occurrences; first {1}" xml:space="preserve"><value>{0} occurrences; first {1}</value></data>
+  <data name="Operational failures from document indexing, chat, and dependent services." xml:space="preserve"><value>Operational failures from document indexing, chat, and dependent services.</value></data>
+  <data name="Prompts, manual text, and stack traces are not stored here. History is retained for 90 days." xml:space="preserve"><value>Prompts, manual text, and stack traces are not stored here. History is retained for 90 days.</value></data>
+  <data name="Service" xml:space="preserve"><value>Service</value></data>
+  <data name="All services" xml:space="preserve"><value>All services</value></data>
+  <data name="Severity" xml:space="preserve"><value>Severity</value></data>
+  <data name="All severities" xml:space="preserve"><value>All severities</value></data>
+  <data name="Error" xml:space="preserve"><value>Error</value></data>
+  <data name="Warning" xml:space="preserve"><value>Warning</value></data>
+  <data name="Time range" xml:space="preserve"><value>Time range</value></data>
+  <data name="Last 24 hours" xml:space="preserve"><value>Last 24 hours</value></data>
+  <data name="Last 7 days" xml:space="preserve"><value>Last 7 days</value></data>
+  <data name="Last 30 days" xml:space="preserve"><value>Last 30 days</value></data>
+  <data name="All retained" xml:space="preserve"><value>All retained</value></data>
+  <data name="Last occurred" xml:space="preserve"><value>Last occurred</value></data>
+  <data name="Service / operation" xml:space="preserve"><value>Service / operation</value></data>
+  <data name="Summary" xml:space="preserve"><value>Summary</value></data>
+  <data name="Diagnostic details" xml:space="preserve"><value>Diagnostic details</value></data>
+  <data name="References" xml:space="preserve"><value>References</value></data>
+  <data name="HTTP {0}" xml:space="preserve"><value>HTTP {0}</value></data>
+  <data name="Document: {0}" xml:space="preserve"><value>Document: {0}</value></data>
+  <data name="Job: {0}" xml:space="preserve"><value>Job: {0}</value></data>
+  <data name="Trace: {0}" xml:space="preserve"><value>Trace: {0}</value></data>
+  <data name="No system errors in this time range." xml:space="preserve"><value>No system errors in this time range.</value></data>
+  <data name="Showing {0}–{1} of {2} errors" xml:space="preserve"><value>Showing {0}–{1} of {2} errors</value></data>
+  <data name="Showing {0}–{1} of {2} jobs" xml:space="preserve"><value>Showing {0}–{1} of {2} jobs</value></data>
+  <data name="Review document indexing history, retries, and failures." xml:space="preserve"><value>Review document indexing history, retries, and failures.</value></data>
+  <data name="Document" xml:space="preserve"><value>Document</value></data>
+  <data name="Attempts" xml:space="preserve"><value>Attempts</value></data>
+  <data name="Created" xml:space="preserve"><value>Created</value></data>
+  <data name="Completed" xml:space="preserve"><value>Completed</value></data>
+  <data name="Last error" xml:space="preserve"><value>Last error</value></data>
+  <data name="Actions" xml:space="preserve"><value>Actions</value></data>
+  <data name="Download PDF" xml:space="preserve"><value>Download PDF</value></data>
+  <data name="No indexing jobs found." xml:space="preserve"><value>No indexing jobs found.</value></data>
+  <data name="View account details and sign-in status." xml:space="preserve"><value>View account details and sign-in status.</value></data>
+  <data name="Search email or user ID" xml:space="preserve"><value>Search email or user ID</value></data>
+  <data name="Search" xml:space="preserve"><value>Search</value></data>
+  <data name="Roles" xml:space="preserve"><value>Roles</value></data>
+  <data name="Sign-in status" xml:space="preserve"><value>Sign-in status</value></data>
+  <data name="Disabled" xml:space="preserve"><value>Disabled</value></data>
+  <data name="Locked" xml:space="preserve"><value>Locked</value></data>
+  <data name="Available" xml:space="preserve"><value>Available</value></data>
+  <data name="{0} failed attempts" xml:space="preserve"><value>{0} failed attempts</value></data>
+  <data name="Enable" xml:space="preserve"><value>Enable</value></data>
+  <data name="Disable" xml:space="preserve"><value>Disable</value></data>
+  <data name="Enable account?" xml:space="preserve"><value>Enable account?</value></data>
+  <data name="Disable account?" xml:space="preserve"><value>Disable account?</value></data>
+  <data name="Are you sure you want to {0} {1}?" xml:space="preserve"><value>Are you sure you want to {0} {1}?</value></data>
+  <data name="No users found." xml:space="preserve"><value>No users found.</value></data>
+  <data name="Showing {0}–{1} of {2} users" xml:space="preserve"><value>Showing {0}–{1} of {2} users</value></data>
+  <data name="User was not found." xml:space="preserve"><value>User was not found.</value></data>
+  <data name="Administrator access is required." xml:space="preserve"><value>Administrator access is required.</value></data>
+  <data name="Dashboard data is temporarily unavailable." xml:space="preserve"><value>Dashboard data is temporarily unavailable.</value></data>
+  <data name="Dashboard" xml:space="preserve"><value>Dashboard</value></data>
+  <data name="Anonymous ({0})" xml:space="preserve"><value>Anonymous ({0})</value></data>
+  <data name="Activity data is temporarily unavailable." xml:space="preserve"><value>Activity data is temporarily unavailable.</value></data>
+  <data name="Conversation history unavailable." xml:space="preserve"><value>Conversation history unavailable.</value></data>
+  <data name="Indexing job data is temporarily unavailable." xml:space="preserve"><value>Indexing job data is temporarily unavailable.</value></data>
+  <data name="User data is temporarily unavailable." xml:space="preserve"><value>User data is temporarily unavailable.</value></data>
+  <data name="Not found" xml:space="preserve"><value>Not found</value></data>
+  <data name="Sorry, the content you are looking for does not exist." xml:space="preserve"><value>Sorry, the content you are looking for does not exist.</value></data>
+  <data name="Return home" xml:space="preserve"><value>Return home</value></data>
+  <data name="Forbidden" xml:space="preserve"><value>Forbidden</value></data>
+  <data name="Access denied" xml:space="preserve"><value>Access denied</value></data>
+  <data name="You do not have permission to access this page." xml:space="preserve"><value>You do not have permission to access this page.</value></data>
+  <data name="You must be signed in to view this page." xml:space="preserve"><value>You must be signed in to view this page.</value></data>
+  <data name="An error occurred while processing your request." xml:space="preserve"><value>An error occurred while processing your request.</value></data>
+  <data name="Request ID:" xml:space="preserve"><value>Request ID:</value></data>
+  <data name="Development Mode" xml:space="preserve"><value>Development Mode</value></data>
+  <data name="Swapping to Development environment will display more detailed information about the error that occurred." xml:space="preserve"><value>Swapping to Development environment will display more detailed information about the error that occurred.</value></data>
+  <data name="The Development environment shouldn't be enabled for deployed applications." xml:space="preserve"><value>The Development environment shouldn't be enabled for deployed applications.</value></data>
+  <data name="It can result in displaying sensitive information from exceptions to end users." xml:space="preserve"><value>It can result in displaying sensitive information from exceptions to end users.</value></data>
+  <data name="For local debugging, enable the Development environment by setting the ASPNETCORE_ENVIRONMENT environment variable to Development" xml:space="preserve"><value>For local debugging, enable the Development environment by setting the ASPNETCORE_ENVIRONMENT environment variable to Development</value></data>
+  <data name="and restarting the app." xml:space="preserve"><value>and restarting the app.</value></data>
+  <data name="Rejoining the server…" xml:space="preserve"><value>Rejoining the server…</value></data>
+  <data name="Rejoin failed… trying again in {0} seconds." xml:space="preserve"><value>Rejoin failed… trying again in {0} seconds.</value></data>
+  <data name="Rejoin failed… trying again in" xml:space="preserve"><value>Rejoin failed… trying again in</value></data>
+  <data name="seconds." xml:space="preserve"><value>seconds.</value></data>
+  <data name="Failed to rejoin." xml:space="preserve"><value>Failed to rejoin.</value></data>
+  <data name="Please retry or reload the page." xml:space="preserve"><value>Please retry or reload the page.</value></data>
+  <data name="The session has been paused by the server." xml:space="preserve"><value>The session has been paused by the server.</value></data>
+  <data name="Failed to resume the session." xml:space="preserve"><value>Failed to resume the session.</value></data>
+  <data name="Resume" xml:space="preserve"><value>Resume</value></data>
+  <data name="MudPagination_FirstPage" xml:space="preserve"><value>First page</value></data>
+  <data name="MudPagination_PreviousPage" xml:space="preserve"><value>Previous page</value></data>
+  <data name="MudPagination_NextPage" xml:space="preserve"><value>Next page</value></data>
+  <data name="MudPagination_LastPage" xml:space="preserve"><value>Last page</value></data>
+  <data name="MudPagination_CurrentPage" xml:space="preserve"><value>Current page {0}</value></data>
+  <data name="MudPagination_PageIndex" xml:space="preserve"><value>Page {0}</value></data>
+  <data name="MudTablePager_FirstPage" xml:space="preserve"><value>First page</value></data>
+  <data name="MudTablePager_PreviousPage" xml:space="preserve"><value>Previous page</value></data>
+  <data name="MudTablePager_NextPage" xml:space="preserve"><value>Next page</value></data>
+  <data name="MudTablePager_LastPage" xml:space="preserve"><value>Last page</value></data>
+  <data name="MudDialog_Close" xml:space="preserve"><value>Close</value></data>
+  <data name="PageViewed" xml:space="preserve"><value>PageViewed</value></data>
+  <data name="LoginSucceeded" xml:space="preserve"><value>LoginSucceeded</value></data>
+  <data name="LoginFailed" xml:space="preserve"><value>LoginFailed</value></data>
+  <data name="AccountDisabled" xml:space="preserve"><value>AccountDisabled</value></data>
+  <data name="AccountEnabled" xml:space="preserve"><value>AccountEnabled</value></data>
+  <data name="UserRegistered" xml:space="preserve"><value>UserRegistered</value></data>
+  <data name="DocumentUploaded" xml:space="preserve"><value>DocumentUploaded</value></data>
+  <data name="DocumentSoftDeleted" xml:space="preserve"><value>DocumentSoftDeleted</value></data>
+  <data name="DocumentRestored" xml:space="preserve"><value>DocumentRestored</value></data>
+  <data name="DocumentHardDeleted" xml:space="preserve"><value>DocumentHardDeleted</value></data>
+  <data name="DocumentRetried" xml:space="preserve"><value>DocumentRetried</value></data>
+  <data name="DocumentReindexed" xml:space="preserve"><value>DocumentReindexed</value></data>
+  <data name="ConversationCreated" xml:space="preserve"><value>ConversationCreated</value></data>
+  <data name="ConversationDeleted" xml:space="preserve"><value>ConversationDeleted</value></data>
+  <data name="ChatExchangePersisted" xml:space="preserve"><value>ChatExchangePersisted</value></data>
+  <data name="unknown" xml:space="preserve"><value>unknown</value></data>
+  <data name="Admin" xml:space="preserve"><value>Admin</value></data>
+</root>

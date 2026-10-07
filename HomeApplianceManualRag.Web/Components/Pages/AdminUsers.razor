@@ -4,27 +4,27 @@
 @inject AdminUserService Users
 @inject IDialogService DialogService
 
-<PageTitle>Users</PageTitle>
+<PageTitle>@L["Users"]</PageTitle>
 
 <MudStack Spacing="3">
     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
         <div>
-            <MudText Typo="Typo.h4">Users</MudText>
+            <MudText Typo="Typo.h4">@L["Users"]</MudText>
             <MudText Typo="Typo.body2" Color="Color.Secondary">
-                View account details and sign-in status.
+                @L["View account details and sign-in status."]
             </MudText>
         </div>
         <MudButton Href="/admin" Variant="Variant.Outlined"
-                   StartIcon="@Icons.Material.Filled.ArrowBack">Dashboard</MudButton>
+                   StartIcon="@Icons.Material.Filled.ArrowBack">@L["Dashboard"]</MudButton>
     </MudStack>
 
     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-        <MudTextField @bind-Value="search" Label="Search email or user ID"
+        <MudTextField @bind-Value="search" Label="@L["Search email or user ID"]"
                       Variant="Variant.Outlined" Margin="Margin.Dense"
                       Immediate="false" />
         <MudButton Variant="Variant.Filled" Color="Color.Primary"
                    StartIcon="@Icons.Material.Filled.Search"
-                   OnClick="SearchAsync">Search</MudButton>
+                   OnClick="SearchAsync">@L["Search"]</MudButton>
     </MudStack>
 
     @if (usersPage is null && errorMessage is null)
@@ -41,67 +41,67 @@
             <MudTable T="AdminUserRow" Items="@usersPage.Items" Dense="true" Hover="true"
                       Breakpoint="Breakpoint.Sm" Loading="@loading">
                 <HeaderContent>
-                    <MudTh>User</MudTh>
-                    <MudTh>Roles</MudTh>
-                    <MudTh>Created</MudTh>
-                    <MudTh>Sign-in status</MudTh>
+                    <MudTh>@L["User"]</MudTh>
+                    <MudTh>@L["Roles"]</MudTh>
+                    <MudTh>@L["Created"]</MudTh>
+                    <MudTh>@L["Sign-in status"]</MudTh>
                 </HeaderContent>
                 <RowTemplate>
-                    <MudTd DataLabel="User">
+                    <MudTd DataLabel="@L["User"]">
                         <MudText Typo="Typo.body2" Class="text-break">@context.Email</MudText>
                         <MudText Typo="Typo.caption" Color="Color.Secondary" Class="text-break">
                             @context.Id
                         </MudText>
                     </MudTd>
-                    <MudTd DataLabel="Roles">
+                    <MudTd DataLabel="@L["Roles"]">
                         @if (context.Roles.Count == 0)
                         {
-                            <MudText Typo="Typo.body2" Color="Color.Secondary">User</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">@L["User"]</MudText>
                         }
                         else
                         {
                             @foreach (var role in context.Roles)
                             {
-                                <MudChip T="string" Size="Size.Small">@role</MudChip>
+                                <MudChip T="string" Size="Size.Small">@L[role]</MudChip>
                             }
                         }
                     </MudTd>
-                    <MudTd DataLabel="Created">@FormatDate(context.CreatedAtUtc)</MudTd>
-                    <MudTd DataLabel="Sign-in status">
+                    <MudTd DataLabel="@L["Created"]">@FormatDate(context.CreatedAtUtc)</MudTd>
+                    <MudTd DataLabel="@L["Sign-in status"]">
                         @if (context.AccountDisabled)
                         {
-                            <MudChip T="string" Size="Size.Small" Color="Color.Error">Disabled</MudChip>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Error">@L["Disabled"]</MudChip>
                         }
                         else if (context.LockoutEnd is not null && context.LockoutEnd > DateTimeOffset.UtcNow)
                         {
-                            <MudChip T="string" Size="Size.Small" Color="Color.Error">Locked</MudChip>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Error">@L["Locked"]</MudChip>
                         }
                         else
                         {
-                            <MudChip T="string" Size="Size.Small" Color="Color.Success">Available</MudChip>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Success">@L["Available"]</MudChip>
                         }
                         @if (context.AccessFailedCount > 0)
                         {
                             <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                @context.AccessFailedCount failed attempts
+                                @L["{0} failed attempts", context.AccessFailedCount]
                             </MudText>
                         }
                         <MudButton Variant="Variant.Text" Size="Size.Small"
                                    Color="@(context.AccountDisabled ? Color.Success : Color.Error)"
                                    OnClick="() => ConfirmAccountStatusChange(context)">
-                            @(context.AccountDisabled ? "Enable" : "Disable")
+                            @(context.AccountDisabled ? L["Enable"] : L["Disable"])
                         </MudButton>
                     </MudTd>
                 </RowTemplate>
                 <NoRecordsContent>
-                    <MudText Class="pa-4" Color="Color.Secondary">No users found.</MudText>
+                    <MudText Class="pa-4" Color="Color.Secondary">@L["No users found."]</MudText>
                 </NoRecordsContent>
             </MudTable>
         </MudPaper>
 
         <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
             <MudText Typo="Typo.caption" Color="Color.Secondary">
-                Showing @GetFirstItem()–@GetLastItem() of @usersPage.TotalCount users
+                @L["Showing {0}–{1} of {2} users", GetFirstItem(), GetLastItem(), usersPage.TotalCount]
             </MudText>
             <MudPagination Count="@PageCount" Selected="@pageNumber"
                            SelectedChanged="LoadPageAsync" Color="Color.Primary"
@@ -136,11 +136,11 @@
         }
         catch (UnauthorizedAccessException)
         {
-            errorMessage = "Administrator access is required.";
+            errorMessage = L["Administrator access is required."];
         }
         catch (Exception)
         {
-            errorMessage = "User data is temporarily unavailable.";
+            errorMessage = L["User data is temporarily unavailable."];
         }
         finally
         {
@@ -166,12 +166,13 @@
 
     private async Task ConfirmAccountStatusChange(AdminUserRow user)
     {
-        var action = user.AccountDisabled ? "enable" : "disable";
+        var action = user.AccountDisabled ? L["Enable"].Value : L["Disable"].Value;
+        var actionTitle = user.AccountDisabled ? L["Enable account?"] : L["Disable account?"];
         var confirmed = await DialogService.ShowMessageBox(
-            $"{char.ToUpperInvariant(action[0])}{action[1..]} account?",
-            $"Are you sure you want to {action} {user.Email}?",
-            yesText: char.ToUpperInvariant(action[0]) + action[1..],
-            cancelText: "Cancel",
+            actionTitle,
+            L["Are you sure you want to {0} {1}?", action, user.Email],
+            yesText: action,
+            cancelText: L["Cancel"],
             options: new DialogOptions { CloseOnEscapeKey = true });
         if (confirmed != true)
             return;
@@ -192,7 +193,7 @@
         }
         catch (KeyNotFoundException)
         {
-            errorMessage = "User was not found.";
+            errorMessage = L["User was not found."];
         }
         finally
         {

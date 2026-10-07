@@ -1,20 +1,20 @@
 @page "/login"
 @using HomeApplianceManualRag.Web.Resources
 @inject NavigationManager Navigation
-<PageTitle>Login</PageTitle>
+<PageTitle>@L["Login"]</PageTitle>
 <MudPaper Class="auth-card pa-6" Elevation="2">
-<MudText Typo="Typo.h4" GutterBottom="true">Login</MudText>
-<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-6">Sign in to manage manuals and keep your chat history.</MudText>
+<MudText Typo="Typo.h4" GutterBottom="true">@L["Login"]</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-6">@L["Sign in to manage manuals and keep your chat history."]</MudText>
 <form method="post" action="/account/login" data-enhance="false">
     <AntiforgeryToken />
     <input type="hidden" name="returnUrl" value="@ReturnUrl" />
     <MudStack Spacing="3">
         <div class="auth-field">
-            <label for="email">Email</label>
+            <label for="email">@L["Email"]</label>
             <input id="email" name="email" type="email" autocomplete="email" required class="auth-input" />
         </div>
         <div class="auth-field">
-            <label for="password">Password</label>
+            <label for="password">@L["Password"]</label>
             <input id="password" name="password" type="password" autocomplete="current-password" required class="auth-input" />
         </div>
         @if (!string.IsNullOrWhiteSpace(Error))
@@ -22,7 +22,7 @@
             <MudAlert Severity="Severity.Error">@Error</MudAlert>
         }
         <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary"
-                   FullWidth="true">Login</MudButton>
+                   FullWidth="true">@L["Login"]</MudButton>
     </MudStack>
 </form>
 </MudPaper>

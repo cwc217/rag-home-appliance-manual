@@ -110,7 +110,7 @@ public sealed class ConfigurationValidationTests
     public void Identity_validation_messages_follow_requested_culture()
     {
         Assert.Contains("required", IdentityMessages.Required("Email", "en-US"));
-        Assert.Contains("必填", IdentityMessages.Required("Email", "zh-Hant"));
+        Assert.Contains("電子郵件", IdentityMessages.Required("Email", "zh-Hant"));
         Assert.Contains("already registered", IdentityMessages.EmailTaken("en-US"));
         Assert.Contains("已註冊", IdentityMessages.EmailTaken("zh-Hant"));
     }

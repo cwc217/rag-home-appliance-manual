@@ -14,12 +14,12 @@
 @using Microsoft.JSInterop
 @implements IDisposable
 
-<PageTitle>Chat Room</PageTitle>
+<PageTitle>@L["Chat Room"]</PageTitle>
 <main class="chat-shell">
-    <section class="chat-transcript" aria-label="Conversation">
+    <section class="chat-transcript" aria-label="@L["Conversation"]">
         @if (loadingHistory)
         {
-            <MudText Class="chat-state" Color="Color.Secondary">Loading conversation history…</MudText>
+            <MudText Class="chat-state" Color="Color.Secondary">@L["Loading conversation history…"]</MudText>
         }
         else if (!loadingHistory && manualsLoaded && manualsError is null && availableManuals.Count == 0)
         {
@@ -47,13 +47,13 @@
         else if (messages.Count == 0)
         {
             <MudText Class="chat-state" Color="Color.Secondary">
-                Ask a question and get an answer grounded in your available manuals.
+                @L["Ask a question and get an answer grounded in your available manuals."]
             </MudText>
         }
         @foreach (var message in messages)
         {
             <article class="chat-message @(message.Role == ChatMessageRole.User ? "chat-message-user" : "chat-message-assistant")">
-                <MudText Class="sr-only">@(message.Role == ChatMessageRole.User ? "You" : "Assistant")</MudText>
+                <MudText Class="sr-only">@(message.Role == ChatMessageRole.User ? L["You"] : L["Assistant"])</MudText>
                 <MudPaper Class="chat-bubble pa-3" Elevation="1">@message.Content</MudPaper>
                 <MudText Class="chat-message-time" Typo="Typo.caption">
                     @DateTimeDisplay.FormatUtcPlusEight(message.CreatedAtUtc)
@@ -61,7 +61,7 @@
                 @if (message.Citations.Count > 0)
                 {
                     <div class="chat-citations">
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">Sources</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@L["Sources"]</MudText>
                         <ul>
                             @foreach (var citation in message.Citations)
                             {
@@ -74,7 +74,7 @@
         }
         @if (busy)
         {
-            <MudText Class="chat-state" Color="Color.Secondary">Thinking…</MudText>
+            <MudText Class="chat-state" Color="Color.Secondary">@L["Thinking…"]</MudText>
         }
         @if (!string.IsNullOrWhiteSpace(error))
         {
@@ -83,29 +83,30 @@
         @if (!loadingHistory && IsNewConversationBlocked)
         {
             <MudAlert Severity="Severity.Warning">
-                You have reached the limit of @ChatHistoryService.MaxActiveConversations active conversations.
-                Delete an existing conversation to start a new one. Existing conversations remain available.
+                @L["You have reached the limit of {0} active conversations.", ChatHistoryService.MaxActiveConversations]
+                @L["Delete an existing conversation to start a new one. Existing conversations remain available."]
             </MudAlert>
         }
         @if (!loadingHistory && IsConversationAtLimit)
         {
             <MudAlert Severity="Severity.Warning">
-                This conversation has reached its limit of @ChatHistoryService.MaxConversationExchanges question-and-answer exchanges.
-                Start a new conversation to continue.
+                @L["This conversation has reached its limit of {0} question-and-answer exchanges.", ChatHistoryService.MaxConversationExchanges]
+                @L["Start a new conversation to continue."]
             </MudAlert>
         }
     </section>
 
     <EditForm Model="form" OnValidSubmit="Ask" class="chat-composer">
-        <MudStack Row="true" Spacing="1" Class="manual-chip-list" aria-label="Select manuals for this answer">
+        <MudStack Row="true" Spacing="1" Class="manual-chip-list"
+                  aria-label="@L["Select manuals for this answer"]">
             @if (manualsLoading)
             {
-                <MudChip T="string" Disabled="true" Variant="Variant.Outlined">Loading manuals…</MudChip>
+                <MudChip T="string" Disabled="true" Variant="Variant.Outlined">@L["Loading manuals…"]</MudChip>
             }
             else if (!string.IsNullOrWhiteSpace(manualsError))
             {
                 <MudChip T="string" Disabled="true" Color="Color.Error" Variant="Variant.Outlined">
-                    Manuals unavailable
+                    @L["Manuals unavailable"]
                 </MudChip>
                 <MudAlert Severity="Severity.Error" Dense="true">@manualsError</MudAlert>
             }
@@ -135,8 +136,8 @@
                 }
             }
         </MudStack>
-        <MudTextField T="string" @bind-Value="form.Question" Label="Question" Variant="Variant.Outlined"
-                      Placeholder="How do I clean the filter?" Lines="2" Disabled="@IsComposerDisabled"
+        <MudTextField T="string" @bind-Value="form.Question" Label="@L["Question"]" Variant="Variant.Outlined"
+                      Placeholder="@L["How do I clean the filter?"]" Lines="2" Disabled="@IsComposerDisabled"
                       FullWidth="true" />
         <div class="composer-actions">
             <MudText Typo="Typo.caption" Color="Color.Secondary">
@@ -144,26 +145,26 @@
                 {
                     <span>
                         @(selectedManualIds.Count == 0 || selectedManualIds.Count == availableManuals.Count
-                            ? "Searching all available manuals."
-                            : $"Searching {selectedManualIds.Count} selected manual(s).")
+                            ? L["Searching all available manuals."]
+                            : L["Searching {0} selected manual(s).", selectedManualIds.Count])
                     </span>
                 }
-                Content is AI-generated for reference only and may not be fully accurate.
+                @L["Content is AI-generated for reference only and may not be fully accurate."]
             </MudText>
             @if (selectedConversationId is null && conversationCountLoaded)
             {
                 <MudText Typo="Typo.caption" Color="Color.Secondary">
-                    Active conversations: @activeConversationCount/@ChatHistoryService.MaxActiveConversations
+                    @L["Active conversations: {0}/{1}", activeConversationCount, ChatHistoryService.MaxActiveConversations]
                 </MudText>
             }
             else if (selectedConversationId is not null)
             {
                 <MudText Typo="Typo.caption" Color="Color.Secondary">
-                    Exchanges: @Math.Min(messages.Count / 2, ChatHistoryService.MaxConversationExchanges)/@ChatHistoryService.MaxConversationExchanges
+                    @L["Exchanges: {0}/{1}", Math.Min(messages.Count / 2, ChatHistoryService.MaxConversationExchanges), ChatHistoryService.MaxConversationExchanges]
                 </MudText>
             }
             <MudSelect T="int" Value="@contextExchangeCount" ValueChanged="OnContextExchangeCountChangedAsync"
-                       Label="Prior Q&amp;A pairs" Variant="Variant.Outlined" Margin="Margin.Dense"
+                       Label="@L["Prior Q&A pairs"]" Variant="Variant.Outlined" Margin="Margin.Dense"
                        Disabled="@(busy || !contextExchangeCountLoaded)">
                 @for (var count = ChatHistoryService.MinContextExchangeCount;
                      count <= ChatHistoryService.MaxContextExchangeCount;
@@ -178,11 +179,11 @@
                 @if (busy)
                 {
                     <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-2" />
-                    <span>Thinking…</span>
+                    <span>@L["Thinking…"]</span>
                 }
                 else
                 {
-                    <span>Ask</span>
+                    <span>@L["Ask"]</span>
                 }
             </MudButton>
         </div>
@@ -265,7 +266,7 @@
         }
         catch
         {
-            error = "Conversation history is temporarily unavailable.";
+            error = L["Conversation history is temporarily unavailable."];
         }
         finally
         {
@@ -309,7 +310,7 @@
         catch (Exception ex)
         {
             Logger.LogError(ex, "Unable to load available manuals for chat.");
-            manualsError = "Manuals could not be loaded. Refresh the page and try again.";
+            manualsError = L["Manuals could not be loaded. Refresh the page and try again."];
         }
         finally
         {
@@ -346,8 +347,9 @@
         if (count is < ChatHistoryService.MinContextExchangeCount or
             > ChatHistoryService.MaxContextExchangeCount)
         {
-            error = $"Choose between {ChatHistoryService.MinContextExchangeCount} and " +
-                    $"{ChatHistoryService.MaxContextExchangeCount} prior Q&A pairs.";
+            error = L["Choose between {0} and {1} prior Q&A pairs.",
+                ChatHistoryService.MinContextExchangeCount,
+                ChatHistoryService.MaxContextExchangeCount];
             return;
         }
 
@@ -362,7 +364,7 @@
         catch (JSException ex)
         {
             Logger.LogWarning(ex, "Unable to save Prior Q&A pairs preference to localStorage.");
-            error = "The Prior Q&A pairs setting could not be saved in this browser.";
+            error = L["The Prior Q&A pairs setting could not be saved in this browser."];
         }
     }
 
@@ -411,8 +413,9 @@
         if (contextExchangeCount is < ChatHistoryService.MinContextExchangeCount or
             > ChatHistoryService.MaxContextExchangeCount)
         {
-            error = $"Choose between {ChatHistoryService.MinContextExchangeCount} and " +
-                    $"{ChatHistoryService.MaxContextExchangeCount} prior Q&A pairs.";
+            error = L["Choose between {0} and {1} prior Q&A pairs.",
+                ChatHistoryService.MinContextExchangeCount,
+                ChatHistoryService.MaxContextExchangeCount];
             return;
         }
 
@@ -500,7 +503,7 @@
         catch (ChatProviderException)
         {
             messages.RemoveAt(messages.Count - 1);
-            error = "The answer service is temporarily unavailable. Please try again.";
+            error = L["The answer service is temporarily unavailable. Please try again."];
         }
         catch (ArgumentException ex)
         {
@@ -510,7 +513,7 @@
         }
         catch
         {
-            error = "Your answer was generated, but it could not be saved. Please try again.";
+            error = L["Your answer was generated, but it could not be saved. Please try again."];
         }
         finally
         {
@@ -555,7 +558,7 @@
             {
                 Logger.LogWarning(ex, "Unable to refresh the active conversation count.");
                 conversationCountLoaded = false;
-                error = "Conversation history is temporarily unavailable.";
+                error = L["Conversation history is temporarily unavailable."];
             }
             StateHasChanged();
         });

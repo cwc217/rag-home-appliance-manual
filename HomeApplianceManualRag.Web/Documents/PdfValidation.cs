@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
 using HomeApplianceManualRag.Web.Configuration;
+using HomeApplianceManualRag.Web.Resources;
+using System.Globalization;
 
 namespace HomeApplianceManualRag.Web.Documents;
 
@@ -21,19 +23,23 @@ public sealed class PdfValidator(IOptions<UploadOptions> options)
 
     public async Task<PdfValidationResult> ValidateAsync(PdfUpload file, CancellationToken cancellationToken = default)
     {
-        if (file is null) return new(false, "A file is required.", 0);
+        if (file is null) return new(false, UiText.Get("A file is required."), 0);
         var max = options.Value.MaxFileSizeBytes;
-        if (file.Length <= 0 || file.Length > max) return new(false, $"PDF files must be between 1 byte and {max / 1024 / 1024} MB.", file.Length);
+        if (file.Length <= 0 || file.Length > max)
+            return new(false, UiText.Format(
+                "PDF files must be between 1 byte and {0} MB.",
+                CultureInfo.CurrentUICulture.Name,
+                max / 1024 / 1024), file.Length);
         if (!string.Equals(Path.GetExtension(file.FileName), ".pdf", StringComparison.OrdinalIgnoreCase))
-            return new(false, "Only .pdf files are accepted.", file.Length);
+            return new(false, UiText.Get("Only .pdf files are accepted."), file.Length);
         if (!string.Equals(file.ContentType, "application/pdf", StringComparison.OrdinalIgnoreCase))
-            return new(false, "The declared content type must be application/pdf.", file.Length);
+            return new(false, UiText.Get("The declared content type must be application/pdf."), file.Length);
         cancellationToken.ThrowIfCancellationRequested();
         await using var stream = file.OpenRead(cancellationToken);
         var header = new byte[Signature.Length];
         var read = await stream.ReadAsync(header, cancellationToken);
         if (read != Signature.Length || !header.AsSpan().SequenceEqual(Signature))
-            return new(false, "The file is not a valid PDF (missing %PDF- signature).", file.Length);
+            return new(false, UiText.Get("The file is not a valid PDF (missing %PDF- signature)."), file.Length);
         return new(true, null, file.Length);
     }
 }

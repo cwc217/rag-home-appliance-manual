@@ -10,30 +10,30 @@
 @using HomeApplianceManualRag.Web.Documents
 @implements IAsyncDisposable
 
-<PageTitle>@(isAdmin ? "All documents" : "My documents")</PageTitle>
+<PageTitle>@(isAdmin ? L["All documents"] : L["My documents"])</PageTitle>
 <MudStack Spacing="3">
-<MudText Typo="Typo.h4">@(isAdmin ? "All documents" : "My documents")</MudText>
+<MudText Typo="Typo.h4">@(isAdmin ? L["All documents"] : L["My documents"])</MudText>
 <MudText Typo="Typo.body2" Color="Color.Secondary">
-    @(isAdmin ? "Administrators have unlimited uploads." : $"Active quota: {activeCount} / 3.")
+    @(isAdmin ? L["Administrators have unlimited uploads."] : L["Active quota: {0} / 3.", activeCount])
 </MudText>
 <MudPaper Class="pa-4" Elevation="1">
 <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="document-upload">
     <div class="document-file-field">
-        <label for="manual-upload">PDF manual</label>
+        <label for="manual-upload">@L["PDF manual"]</label>
         <InputFile id="manual-upload" OnChange="SelectFile" accept=".pdf,application/pdf"
                    aria-describedby="manual-upload-help" />
     </div>
     <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Upload"
-               OnClick="Upload" Disabled="@(selectedFile is null || IsUploadDisabled)">Upload</MudButton>
+               OnClick="Upload" Disabled="@(selectedFile is null || IsUploadDisabled)">@L["Upload"]</MudButton>
     @if (busy)
     {
         <MudText Typo="Typo.body2" Color="Color.Secondary">
             @(uploadProgressPercent is int percent
-                ? percent == 100 ? "Finishing upload..." : $"Uploading PDF: {percent}%"
-                : "Validating PDF and preparing upload...")
+                ? percent == 100 ? L["Finishing upload…"] : L["Uploading PDF: {0}%", percent]
+                : L["Validating PDF and preparing upload…"])
         </MudText>
         <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small"
-                   OnClick="ConfirmCancelUpload">Cancel</MudButton>
+                   OnClick="ConfirmCancelUpload">@L["Cancel"]</MudButton>
     }
 </MudStack>
 @if (uploadProgressPercent is int uploadPercent)
@@ -41,12 +41,12 @@
     <MudProgressLinear Value="@((double)uploadPercent)" Color="Color.Primary" Class="mt-2" />
 }
 <MudAlert Severity="Severity.Info" Dense="true" Class="document-upload-tips">
-    <MudText Typo="Typo.subtitle2">Upload guidelines</MudText>
+    <MudText Typo="Typo.subtitle2">@L["Upload guidelines"]</MudText>
     <ul>
-        <li>Upload a single PDF file (Max 10 MB).</li>
-        <li>Upload the manual for one appliance. Include its brand and exact model number in the PDF or file name.</li>
-        <li>Use a clear, text-searchable PDF. Scanned or blurry pages and password-protected files may not be read accurately.</li>        
-        <li>Use one language per PDF.</li>
+        <li>@L["Upload a single PDF file (Max 10 MB)."]</li>
+        <li>@L["Upload the manual for one appliance. Include its brand and exact model number in the PDF or file name."]</li>
+        <li>@L["Use a clear, text-searchable PDF. Scanned or blurry pages and password-protected files may not be read accurately."]</li>
+        <li>@L["Use one language per PDF."]</li>
     </ul>
 </MudAlert>
 </MudPaper>
@@ -62,9 +62,9 @@
             <MudCardContent>
                 <MudText Typo="Typo.h6" Class="text-break">@document.DisplayName</MudText>
                 <MudText Typo="Typo.body2" Class="mb-2">
-                    Status:
+                    @L["Status"]:
                     <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(document)">
-                        @(document.DeletedAtUtc is null ? GetStage(document) : "Deleted")
+                        @(document.DeletedAtUtc is null ? L[GetStage(document)] : L["Deleted"])
                     </MudChip>
                 </MudText>
                 @if (ManualDocumentPresentation.FormatProductSummary(document) is string productSummary)
@@ -76,7 +76,7 @@
                 @if (document.DeletedAtUtc is not null)
                 {
                     <MudAlert Severity="Severity.Warning" Dense="true">
-                        Deleted @FormatDate(document.DeletedAtUtc.Value)
+                        @L["Deleted {0}", FormatDate(document.DeletedAtUtc.Value)]
                     </MudAlert>
                 }
                 @if (!refreshStopped && IsProcessing(document))
@@ -84,7 +84,7 @@
                     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-2">
                         <MudProgressCircular Size="Size.Small" Indeterminate="true" />
                         <MudText Typo="Typo.caption" Color="Color.Secondary">
-                            @GetProgressLabel(document). This page updates automatically.
+                            @L["{0}. This page updates automatically.", GetProgressLabel(document)]
                         </MudText>
                     </MudStack>
                     @if (TryGetEmbeddingProgress(document, out var embeddingProgress))
@@ -92,12 +92,12 @@
                         <MudProgressLinear Value="@embeddingProgress" Color="Color.Primary" Class="mb-3" />
                     }
                 }
-                @if (isAdmin) { <MudText Typo="Typo.caption" Color="Color.Secondary">Owner: @(document.OwnerEmail ?? "Admin/public")</MudText> }
+                @if (isAdmin) { <MudText Typo="Typo.caption" Color="Color.Secondary">@L["Owner"]: @(document.OwnerEmail ?? L["Admin/public"].Value)</MudText> }
                 @if (!string.IsNullOrWhiteSpace(document.LastError))
                 {
                     <MudAlert Severity="Severity.Error" Dense="true" Class="mt-2 document-error">
                         <MudText Class="document-error-message">
-                            @IndexingErrorMessages.ForDisplay(document.LastError)
+                            @L[IndexingErrorMessages.ForDisplay(document.LastError)!]
                         </MudText>
                     </MudAlert>
                 }
@@ -105,21 +105,21 @@
             <MudCardActions Class="mt-auto">
                 @if (document.DeletedAtUtc is null)
                 {
-                    <MudButton Variant="Variant.Outlined" Size="Size.Small" Href="@($"/documents/{document.Id}/download")">Download</MudButton>
-                    @if (document.Status is DocumentStatus.Failed or DocumentStatus.Cancelled) { <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="() => Retry(document.Id)" Disabled="@IsBusy(document.Id)">Retry</MudButton> }
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" Href="@($"/documents/{document.Id}/download")">@L["Download"]</MudButton>
+                    @if (document.Status is DocumentStatus.Failed or DocumentStatus.Cancelled) { <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="() => Retry(document.Id)" Disabled="@IsBusy(document.Id)">@L["Retry"]</MudButton> }
                     @if (IsProcessingStatus(document))
                     {
                         <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small"
                                    OnClick="() => ConfirmCancelProcessing(document)"
-                                   Disabled="@IsBusy(document.Id)">Cancel</MudButton>
+                                   Disabled="@IsBusy(document.Id)">@L["Cancel"]</MudButton>
                     }
-                    @if (isAdmin) { <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="() => Reindex(document.Id)" Disabled="@IsDocumentActionDisabled(document)">Re-index</MudButton> }
-                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small" OnClick="() => ConfirmDelete(document)" Disabled="@IsDocumentActionDisabled(document)">Delete</MudButton>
+                    @if (isAdmin) { <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="() => Reindex(document.Id)" Disabled="@IsDocumentActionDisabled(document)">@L["Re-index"]</MudButton> }
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small" OnClick="() => ConfirmDelete(document)" Disabled="@IsDocumentActionDisabled(document)">@L["Delete"]</MudButton>
                 }
                 else if (isAdmin)
                 {
-                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="() => Restore(document.Id)" Disabled="@IsBusy(document.Id)">Restore</MudButton>
-                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small" OnClick="() => ConfirmHardDelete(document)" Disabled="@(IsBusy(document.Id) || IsProcessingStatus(document))">Permanently delete</MudButton>
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="() => Restore(document.Id)" Disabled="@IsBusy(document.Id)">@L["Restore"]</MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small" OnClick="() => ConfirmHardDelete(document)" Disabled="@(IsBusy(document.Id) || IsProcessingStatus(document))">@L["Permanently delete"]</MudButton>
                 }
             </MudCardActions>
         </MudCard>
@@ -196,11 +196,11 @@
         }
         catch (Exception ex) when (ex is InvalidDataException or DocumentQuotaExceededException or DocumentProcessingInProgressException or UnauthorizedAccessException or IOException)
         {
-            errorMessage = ex.Message;
+            errorMessage = L[ex.Message].Value;
         }
         catch (OperationCanceledException) when (uploadCancellation?.IsCancellationRequested == true)
         {
-            errorMessage = "Upload cancelled.";
+            errorMessage = L["Upload cancelled."];
         }
         finally
         {
@@ -213,10 +213,10 @@
     private async Task ConfirmCancelUpload()
     {
         var confirmed = await DialogService.ShowMessageBox(
-            "Cancel upload?",
-            "The upload or indexing process will continue unless you confirm.",
-            yesText: "Cancel upload",
-            cancelText: "Continue",
+            L["Cancel upload?"],
+            L["The upload or indexing process will continue unless you confirm."],
+            yesText: L["Cancel upload"],
+            cancelText: L["Continue"],
             options: new DialogOptions { CloseOnEscapeKey = true });
         if (confirmed != true)
             return;
@@ -233,10 +233,10 @@
     private async Task ConfirmCancelProcessing(ManualDocument document)
     {
         var confirmed = await DialogService.ShowMessageBox(
-            "Cancel processing?",
-            $"Cancel indexing for \"{document.DisplayName}\"? The uploaded PDF will be kept and can be retried.",
-            yesText: "Cancel processing",
-            cancelText: "Continue processing",
+            L["Cancel processing?"],
+            L["Cancel indexing for \"{0}\"? The uploaded PDF will be kept and can be retried.", document.DisplayName],
+            yesText: L["Cancel processing"],
+            cancelText: L["Continue processing"],
             options: new DialogOptions { CloseOnEscapeKey = true });
         if (confirmed == true)
             await ConfirmCancelProcessingById(document.Id);
@@ -251,14 +251,14 @@
         {
             var cancelled = await Documents.CancelProcessingAsync(documentId);
             if (!cancelled)
-                errorMessage = "Processing has already finished and cannot be cancelled.";
+                errorMessage = L["Processing has already finished and cannot be cancelled."];
             await Refresh();
             refreshStopped = false;
             StartFallbackRefresh();
         }
         catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException or KeyNotFoundException or IOException)
         {
-            errorMessage = ex.Message;
+            errorMessage = L[ex.Message].Value;
         }
         finally
         {
@@ -280,10 +280,10 @@
     private async Task ConfirmDelete(ManualDocument document)
     {
         var confirmed = await DialogService.ShowMessageBox(
-            "Delete document?",
-            $"Delete \"{document.DisplayName}\"? This action cannot be undone.",
-            yesText: "Delete",
-            cancelText: "Cancel",
+            L["Delete document?"],
+            L["Delete \"{0}\"? This action cannot be undone.", document.DisplayName],
+            yesText: L["Delete"],
+            cancelText: L["Cancel"],
             options: new DialogOptions { CloseOnEscapeKey = true });
 
         if (confirmed == true)
@@ -292,10 +292,10 @@
     private async Task ConfirmHardDelete(ManualDocument document)
     {
         var confirmed = await DialogService.ShowMessageBox(
-            "Permanently delete document?",
-            $"Permanently delete \"{document.DisplayName}\" and its stored PDF? This cannot be undone.",
-            yesText: "Permanently delete",
-            cancelText: "Cancel",
+            L["Permanently delete document?"],
+            L["Permanently delete \"{0}\" and its stored PDF? This cannot be undone.", document.DisplayName],
+            yesText: L["Permanently delete"],
+            cancelText: L["Cancel"],
             options: new DialogOptions { CloseOnEscapeKey = true });
 
         if (confirmed == true)
@@ -318,7 +318,7 @@
         catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException or KeyNotFoundException or FileNotFoundException or IOException)
         {
             refreshStopped = true;
-            errorMessage = ex.Message;
+            errorMessage = L[ex.Message].Value;
         }
         finally
         {
@@ -357,7 +357,7 @@
             catch (Exception)
             {
                 refreshStopped = true;
-                errorMessage = "Unable to refresh document status. Please reload the page.";
+                errorMessage = L["Unable to refresh document status. Please reload the page."];
                 await InvokeAsync(StateHasChanged);
                 break;
             }
@@ -454,12 +454,12 @@
             _ => document.Status.ToString()
         };
     }
-    private static string GetProgressLabel(ManualDocument document) =>
-        $"{GetProgressStageNumber(document.ProcessingStage)}/8 · {GetProgressStageName(document.ProcessingStage)}" +
+    private string GetProgressLabel(ManualDocument document) =>
+        $"{GetProgressStageNumber(document.ProcessingStage)}/8 · {L[GetProgressStageName(document.ProcessingStage)]}" +
         (document.ProcessingStage == DocumentProcessingStage.CreatingEmbeddings &&
          document.ProgressCompletedUnits is int completed &&
          document.ProgressTotalUnits is int total
-            ? $" ({completed}/{total} chunks)"
+            ? $" {L["({0}/{1} chunks)", completed, total]}"
             : string.Empty);
     private static int GetProgressStageNumber(DocumentProcessingStage stage) => stage switch
     {
