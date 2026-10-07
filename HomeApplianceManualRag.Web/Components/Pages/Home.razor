@@ -21,6 +21,29 @@
         {
             <MudText Class="chat-state" Color="Color.Secondary">Loading conversation history…</MudText>
         }
+        else if (!loadingHistory && manualsLoaded && manualsError is null && availableManuals.Count == 0)
+        {
+            <div class="chat-empty-state">
+                <MudText Typo="Typo.h6">
+                    @ChatMessages.NoReadyManualsTitle(CultureInfo.CurrentUICulture.Name, IsAuthenticated)
+                </MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    @ChatMessages.NoReadyManualsDescription(CultureInfo.CurrentUICulture.Name, IsAuthenticated)
+                </MudText>
+                <MudStack Row="true" Justify="Justify.Center" Spacing="2" Class="chat-empty-state-actions">
+                    <MudButton Href="@(IsAuthenticated ? "/my-documents" : "/login")"
+                               Variant="Variant.Filled" Color="Color.Primary">
+                        @ChatMessages.NoReadyManualsAction(CultureInfo.CurrentUICulture.Name, IsAuthenticated)
+                    </MudButton>
+                    @if (!IsAuthenticated)
+                    {
+                        <MudButton Href="/register" Variant="Variant.Outlined" Color="Color.Primary">
+                            @ChatMessages.RegisterAction(CultureInfo.CurrentUICulture.Name)
+                        </MudButton>
+                    }
+                </MudStack>
+            </div>
+        }
         else if (messages.Count == 0)
         {
             <MudText Class="chat-state" Color="Color.Secondary">
@@ -89,7 +112,7 @@
             else if (availableManuals.Count == 0)
             {
                 <MudChip T="string" Disabled="true" Variant="Variant.Outlined">
-                    Upload a manual to start chatting
+                    @ChatMessages.NoReadyManualsChip(CultureInfo.CurrentUICulture.Name)
                 </MudChip>
             }
             else

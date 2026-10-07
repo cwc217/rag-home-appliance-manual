@@ -3,6 +3,7 @@ using HomeApplianceManualRag.Web.Configuration;
 using HomeApplianceManualRag.Web.Data;
 using HomeApplianceManualRag.Web.Diagnostics;
 using HomeApplianceManualRag.Web.Providers;
+using HomeApplianceManualRag.Web.Resources;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -14,6 +15,29 @@ namespace HomeApplianceManualRag.Tests;
 
 public sealed class ChatTests
 {
+    [Fact]
+    public void No_manual_empty_state_guides_guests_to_sign_in_or_register()
+    {
+        const string culture = "en-US";
+
+        Assert.Equal("No public manuals are ready yet.", ChatMessages.NoReadyManualsTitle(culture, false));
+        Assert.Contains("ready public manuals", ChatMessages.NoReadyManualsDescription(culture, false));
+        Assert.Equal("Sign in", ChatMessages.NoReadyManualsAction(culture, false));
+        Assert.Equal("Create account", ChatMessages.RegisterAction(culture));
+        Assert.Equal("No ready manuals", ChatMessages.NoReadyManualsChip(culture));
+    }
+
+    [Fact]
+    public void No_manual_empty_state_guides_authenticated_users_to_manage_manuals()
+    {
+        const string culture = "zh-Hant";
+
+        Assert.Equal("尚未有可用手冊", ChatMessages.NoReadyManualsTitle(culture, true));
+        Assert.Contains("處理完成", ChatMessages.NoReadyManualsDescription(culture, true));
+        Assert.Equal("管理手冊", ChatMessages.NoReadyManualsAction(culture, true));
+        Assert.Equal("沒有已就緒的手冊", ChatMessages.NoReadyManualsChip(culture));
+    }
+
     [Fact]
     public void Grounded_prompt_contains_manual_excerpts_and_user_question()
     {

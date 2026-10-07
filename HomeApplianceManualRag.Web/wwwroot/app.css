@@ -243,6 +243,21 @@ body {
     text-align: center;
 }
 
+.chat-empty-state {
+    width: min(100%, 36rem);
+    margin: auto;
+    padding: 1.5rem 1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: .75rem;
+    text-align: center;
+}
+
+.chat-empty-state-actions {
+    flex-wrap: wrap;
+}
+
 .chat-composer {
     grid-column: 1;
     width: min(100%, 52rem);
