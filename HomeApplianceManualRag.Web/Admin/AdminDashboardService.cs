@@ -1,5 +1,6 @@
 using HomeApplianceManualRag.Web.Configuration;
 using HomeApplianceManualRag.Web.Data;
+using HomeApplianceManualRag.Web.Documents;
 using Microsoft.EntityFrameworkCore;
 
 namespace HomeApplianceManualRag.Web.Admin;
@@ -125,7 +126,13 @@ public sealed class AdminIndexingJobService(
                 job.Document == null ? null : job.Document.DeletedAtUtc))
             .ToListAsync(cancellationToken);
 
-        return new AdminIndexingJobPage(items, totalCount, pageNumber, pageSize);
+        var safeItems = items
+            .Select(item => item with
+            {
+                LastError = IndexingErrorMessages.ForDisplay(item.LastError)
+            })
+            .ToArray();
+        return new AdminIndexingJobPage(safeItems, totalCount, pageNumber, pageSize);
     }
 
     private async Task EnsureAdminAsync(CancellationToken cancellationToken)

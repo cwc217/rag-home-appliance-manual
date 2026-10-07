@@ -840,6 +840,7 @@ public sealed class IndexingWorker(
         var job = await db.IndexingJobs.Include(x => x.Document).SingleOrDefaultAsync(x => x.Id == jobId, ct);
         if (job is null) return;
         if (job.Status == IndexingJobStatus.Cancelled) return;
+        var safeErrorMessage = IndexingErrorMessages.ForException(exception);
         var status = retryable && job.Attempts < 3 ? IndexingJobStatus.Pending : IndexingJobStatus.Failed;
         var nextAttempt = status == IndexingJobStatus.Pending
             ? DateTime.UtcNow.AddMinutes(Math.Pow(2, job.Attempts))
@@ -855,7 +856,7 @@ public sealed class IndexingWorker(
                              x.Status == IndexingJobStatus.Processing))
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(x => x.Status, status)
-                    .SetProperty(x => x.LastError, exception.Message)
+                    .SetProperty(x => x.LastError, safeErrorMessage)
                     .SetProperty(x => x.NextAttemptAtUtc, nextAttempt), ct);
             if (updated == 0)
                 return;
@@ -864,7 +865,7 @@ public sealed class IndexingWorker(
         else
         {
             job.Status = status;
-            job.LastError = exception.Message;
+            job.LastError = safeErrorMessage;
             job.NextAttemptAtUtc = nextAttempt;
         }
         if (job.Document is not null &&
@@ -875,7 +876,7 @@ public sealed class IndexingWorker(
             job.Document.ProcessingStage = DocumentProcessingStage.Failed;
             job.Document.ProgressCompletedUnits = null;
             job.Document.ProgressTotalUnits = null;
-            job.Document.LastError = exception.Message;
+            job.Document.LastError = safeErrorMessage;
             job.Document.UpdatedAtUtc = DateTime.UtcNow;
         }
         await db.SaveChangesAsync(ct);
@@ -919,6 +920,7 @@ public sealed class IndexingWorker(
         var job = await db.IndexingJobs.Include(x => x.Document).SingleOrDefaultAsync(x => x.Id == jobId, ct);
         if (job is null) return;
         if (job.Status == IndexingJobStatus.Cancelled) return;
+        var safeErrorMessage = IndexingErrorMessages.ForException(exception);
         await using var transaction = db.Database.IsRelational()
             ? await db.Database.BeginTransactionAsync(ct)
             : null;
@@ -930,7 +932,7 @@ public sealed class IndexingWorker(
                              x.Status == IndexingJobStatus.Processing))
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(x => x.Status, IndexingJobStatus.Failed)
-                    .SetProperty(x => x.LastError, exception.Message)
+                    .SetProperty(x => x.LastError, safeErrorMessage)
                     .SetProperty(x => x.NextAttemptAtUtc, (DateTime?)null), ct);
             if (updated == 0)
                 return;
@@ -939,7 +941,7 @@ public sealed class IndexingWorker(
         else
         {
             job.Status = IndexingJobStatus.Failed;
-            job.LastError = exception.Message;
+            job.LastError = safeErrorMessage;
             job.NextAttemptAtUtc = null;
         }
         if (job.Document is not null &&
@@ -950,7 +952,7 @@ public sealed class IndexingWorker(
             job.Document.ProcessingStage = DocumentProcessingStage.Failed;
             job.Document.ProgressCompletedUnits = null;
             job.Document.ProgressTotalUnits = null;
-            job.Document.LastError = exception.Message;
+            job.Document.LastError = safeErrorMessage;
             job.Document.UpdatedAtUtc = DateTime.UtcNow;
         }
         await db.SaveChangesAsync(ct);

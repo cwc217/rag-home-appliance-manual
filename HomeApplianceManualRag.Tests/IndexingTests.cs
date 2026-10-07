@@ -15,6 +15,49 @@ namespace HomeApplianceManualRag.Tests;
 public sealed class IndexingTests
 {
     [Fact]
+    public void Indexing_error_presenter_uses_bounded_safe_messages()
+    {
+        var cases = new (Exception Exception, string Expected)[]
+        {
+            (new DocumentParseException("Provider response contains password=secret-value"),
+                IndexingErrorMessages.DocumentUnreadable),
+            (new ManualClassificationException("Provider response contains password=secret-value"),
+                IndexingErrorMessages.ManualVerificationFailed),
+            (new ImageAnalysisException("Provider response contains password=secret-value"),
+                IndexingErrorMessages.ImageAnalysisFailed),
+            (new DocumentRejectedException("Provider response contains password=secret-value"),
+                IndexingErrorMessages.UnsupportedManual),
+            (new InvalidOperationException("Provider response contains password=secret-value"),
+                IndexingErrorMessages.ProcessingFailed)
+        };
+
+        foreach (var (exception, expected) in cases)
+        {
+            var message = IndexingErrorMessages.ForException(exception);
+
+            Assert.Equal(expected, message);
+            Assert.True(message.Length <= IndexingErrorMessages.MaxDisplayLength);
+            Assert.DoesNotContain("secret-value", message, StringComparison.Ordinal);
+        }
+    }
+
+    [Theory]
+    [InlineData("Provider response contains password=secret-value")]
+    [InlineData(" ")]
+    public void Indexing_error_presenter_does_not_render_unrecognized_stored_messages(string? storedMessage)
+    {
+        var message = IndexingErrorMessages.ForDisplay(storedMessage);
+
+        if (string.IsNullOrWhiteSpace(storedMessage))
+            Assert.Null(message);
+        else
+        {
+            Assert.Equal(IndexingErrorMessages.ProcessingFailed, message);
+            Assert.DoesNotContain("secret-value", message, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public void Cancellation_registry_signals_the_active_job_and_unregisters_it_on_dispose()
     {
         var registry = new IndexingCancellationRegistry();

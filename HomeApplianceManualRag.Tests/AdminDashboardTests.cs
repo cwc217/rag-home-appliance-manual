@@ -2,6 +2,7 @@ using HomeApplianceManualRag.Web.Admin;
 using HomeApplianceManualRag.Web.Activity;
 using HomeApplianceManualRag.Web.Configuration;
 using HomeApplianceManualRag.Web.Data;
+using HomeApplianceManualRag.Web.Documents;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using System.Net;
@@ -145,7 +146,7 @@ public sealed class AdminDashboardTests
         Assert.Single(page.Items);
         Assert.Equal("second.pdf", page.Items[0].DocumentName);
         Assert.Equal(IndexingJobStatus.Failed, page.Items[0].Status);
-        Assert.Equal("parse failed", page.Items[0].LastError);
+        Assert.Equal(IndexingErrorMessages.ProcessingFailed, page.Items[0].LastError);
     }
 
     [Fact]
