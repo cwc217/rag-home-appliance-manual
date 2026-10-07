@@ -222,6 +222,27 @@ Docker starts unless they were explicitly stopped; `docker compose down` removes
 the containers, so run `docker compose up` again to recreate them. To start
 Docker Desktop automatically after signing in, enable its startup option.
 
+### PostgreSQL integration tests
+
+The PostgreSQL integration tests are opt-in and require a dedicated PostgreSQL
+17 instance with pgvector. They connect using
+`POSTGRES_INTEGRATION_TEST_CONNECTION_STRING`, create a uniquely named temporary
+database, apply all migrations, run real PostgreSQL retrieval queries, and drop
+the temporary database afterward. The configured role must be allowed to create
+and drop databases. Do not point this setting at a production database.
+
+With the local Compose PostgreSQL service running, set the test connection
+string and run the filtered test class:
+
+```powershell
+$env:POSTGRES_INTEGRATION_TEST_CONNECTION_STRING = "Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=<POSTGRES_PASSWORD>"
+dotnet test HomeApplianceManualRag.Tests\HomeApplianceManualRag.Tests.csproj --filter FullyQualifiedName~PostgresIntegrationTests
+Remove-Item Env:POSTGRES_INTEGRATION_TEST_CONNECTION_STRING
+```
+
+Without the environment variable, the integration tests are reported as
+skipped and the regular unit-test suite remains independent of Docker.
+
 When source code has changed, rebuild and recreate the web container so it
 contains the current Blazor progress-update implementation:
 
