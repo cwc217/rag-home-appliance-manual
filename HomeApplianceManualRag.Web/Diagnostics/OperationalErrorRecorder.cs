@@ -169,7 +169,14 @@ public sealed class OperationalErrorRecorder(
         for (var current = exception; current is not null; current = current.InnerException)
         {
             var item = current.GetType().Name;
-            if (current is HttpRequestException or SocketException)
+            if (current is HomeApplianceManualRag.Web.Documents.DocumentParseException
+                { DiagnosticDetails: { Length: > 0 } diagnosticDetails })
+            {
+                if (diagnosticDetails.Length > MaxDetailsLength)
+                    diagnosticDetails = diagnosticDetails[..MaxDetailsLength];
+                item += ": " + Redact(diagnosticDetails);
+            }
+            else if (current is HttpRequestException or SocketException)
             {
                 var message = current.Message;
                 if (message.Length > MaxDetailsLength)

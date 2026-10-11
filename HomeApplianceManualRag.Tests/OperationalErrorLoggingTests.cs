@@ -51,6 +51,27 @@ public sealed class OperationalErrorLoggingTests
     }
 
     [Fact]
+    public async Task Recorder_stores_redacted_docling_response_diagnostics()
+    {
+        var options = CreateOptions();
+        var recorder = new OperationalErrorRecorder(
+            new TestDbFactory(options),
+            NullLogger<OperationalErrorRecorder>.Instance);
+        var exception = new HomeApplianceManualRag.Web.Documents.DocumentParseException(
+            "Docling returned HTTP 504.",
+            retryable: true,
+            httpStatusCode: (int)HttpStatusCode.GatewayTimeout,
+            diagnosticDetails: "Processing exceeded timeout; api-key=secret-value");
+
+        await recorder.RecordAsync("Docling", "Index document", exception, "Warning");
+
+        await using var db = new ApplicationDbContext(options);
+        var saved = Assert.Single(db.OperationalErrorEvents);
+        Assert.Contains("Processing exceeded timeout", saved.Details, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret-value", saved.Details, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Recorder_removes_events_past_the_90_day_retention_period()
     {
         var options = CreateOptions();

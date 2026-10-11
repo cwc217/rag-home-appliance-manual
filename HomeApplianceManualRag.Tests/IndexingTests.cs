@@ -332,6 +332,26 @@ public sealed class IndexingTests
     }
 
     [Fact]
+    public async Task Docling_parser_preserves_http_error_body_as_diagnostic_details()
+    {
+        using var client = new HttpClient(new StubHandler(
+            "Document processing time exceeded timeout of 300 seconds.",
+            HttpStatusCode.GatewayTimeout))
+        {
+            BaseAddress = new Uri("http://docling:5001/")
+        };
+        var parser = new DoclingHttpParser(
+            client,
+            Options.Create(new DoclingOptions { ServiceUrl = "http://docling:5001", EnableOcrFallback = false }));
+
+        var exception = await Assert.ThrowsAsync<DocumentParseException>(() =>
+            parser.ParseAsync(new(Guid.NewGuid(), "manual.pdf", new MemoryStream([1]))));
+
+        Assert.Equal((int)HttpStatusCode.GatewayTimeout, exception.HttpStatusCode);
+        Assert.Contains("exceeded timeout", exception.DiagnosticDetails, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Docling_parser_retries_text_poor_pdfs_with_ocr()
     {
         var handler = new OcrFallbackStubHandler(
@@ -869,7 +889,9 @@ public sealed class IndexingTests
             Task.FromResult<IReadOnlyCollection<StoredFile>>([]);
     }
 
-    private sealed class StubHandler(string response) : HttpMessageHandler
+    private sealed class StubHandler(
+        string response,
+        HttpStatusCode statusCode = HttpStatusCode.OK) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
@@ -877,9 +899,11 @@ public sealed class IndexingTests
         {
             Assert.Equal(HttpMethod.Post, request.Method);
             Assert.EndsWith("/v1/convert/file", request.RequestUri!.AbsoluteUri, StringComparison.Ordinal);
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            return Task.FromResult(new HttpResponseMessage(statusCode)
             {
-                Content = JsonContent.Create(JsonDocument.Parse(response).RootElement)
+                Content = statusCode == HttpStatusCode.OK
+                    ? JsonContent.Create(JsonDocument.Parse(response).RootElement)
+                    : new StringContent(response)
             });
         }
 
