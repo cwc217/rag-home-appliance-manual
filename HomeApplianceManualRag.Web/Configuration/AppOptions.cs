@@ -43,7 +43,7 @@ public sealed class DoclingOptions
 {
     public const string SectionName = "Docling";
     [Required, Url] public string ServiceUrl { get; init; } = "http://docling:5001";
-    [Range(1, 3600)] public int TimeoutSeconds { get; init; } = 300;
+    [Range(1, 3600)] public int TimeoutSeconds { get; init; } = 600;
     [Range(1, 4)] public int MaxConcurrentJobs { get; init; } = 1;
     public bool IncludeImages { get; init; } = true;
     public bool EnableOcrFallback { get; init; } = true;
