@@ -61,7 +61,7 @@ jobs:
             "AZURE_OPENAI_API_VERSION",
             "AZURE_OPENAI_EMBEDDING_DIMENSIONS",
             "SEED_ADMIN_EMAIL",
-            "SEED_ADMIN_PASSWORD"
+            "SEED_ADMIN_PASSWORD",
             "TYPESAFE_API_KEY"
           )
           foreach ($name in $required) {
