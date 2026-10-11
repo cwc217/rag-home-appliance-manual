@@ -1,0 +1,86 @@
+services:
+  docling:
+    image: quay.io/docling-project/docling-serve:v1.34.0
+    restart: unless-stopped
+    environment:
+      UVICORN_HOST: 0.0.0.0
+      UVICORN_PORT: 5001
+      DOCLING_SERVE_LOG_FORMAT: json
+      DOCLING_SERVE_LOAD_MODELS_AT_BOOT: "true"
+      DOCLING_SERVE_MAX_FILE_SIZE: 10485760
+      DOCLING_SERVE_MAX_DOCUMENT_TIMEOUT: 300
+    ports:
+      - "127.0.0.1:5001:5001"
+    volumes:
+      - docling-model-cache:/root/.cache
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5001/version')"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-manuals}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-manuals}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  web:
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: HomeApplianceManualRag.Web/Dockerfile
+    depends_on:
+      docling:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: 8080
+      HttpsRedirection__Enabled: "false"
+      Docling__ServiceUrl: http://docling:5001
+      Docling__TimeoutSeconds: 300
+      Docling__MaxConcurrentJobs: 1
+      TypeSafe__Endpoint: ${TypeSafe__Endpoint:-https://api.typesafe.ai}
+      TypeSafe__ApiKey: ${TypeSafe__ApiKey:-development-placeholder}
+      TypeSafe__Model: ${TypeSafe__Model:-jev-latest}
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-manuals};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
+      AzureOpenAI__Endpoint: ${AzureOpenAI__Endpoint:-https://development.invalid/}
+      AzureOpenAI__ApiKey: ${AzureOpenAI__ApiKey:-development-placeholder}
+      AzureOpenAI__ChatDeployment: ${AzureOpenAI__ChatDeployment:-development-chat}
+      AzureOpenAI__EmbeddingDeployment: ${AzureOpenAI__EmbeddingDeployment:-development-embedding}
+      AzureOpenAI__ApiVersion: ${AzureOpenAI__ApiVersion:-2024-10-21}
+      AzureOpenAI__EmbeddingDimensions: ${AzureOpenAI__EmbeddingDimensions:-1536}
+      SeedAdmin__Email: ${SeedAdmin__Email:-admin@example.invalid}
+      SeedAdmin__Password: ${SeedAdmin__Password:?Set SeedAdmin__Password in .env}
+    volumes:
+      - document-data:/app/App_Data/uploads
+    ports:
+      - "8500:8080"
+
+  adminer:
+    image: adminer:4.8.1
+    profiles:
+      - tools
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8581:8080"
+
+volumes:
+  postgres-data:
+  docling-model-cache:
+  document-data:

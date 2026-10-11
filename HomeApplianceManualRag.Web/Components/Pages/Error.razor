@@ -1,0 +1,35 @@
+﻿@page "/Error"
+@using System.Diagnostics
+
+<PageTitle>@L["Error"]</PageTitle>
+
+<MudAlert Severity="Severity.Error" Variant="Variant.Outlined">
+    <MudText Typo="Typo.h5">@L["An error occurred while processing your request."]</MudText>
+</MudAlert>
+
+@if (ShowRequestId)
+{
+    <MudText Typo="Typo.body2"><strong>@L["Request ID:"]</strong> <code>@RequestId</code></MudText>
+}
+
+<MudText Typo="Typo.h6" Class="mt-6">@L["Development Mode"]</MudText>
+<MudText Typo="Typo.body2">
+    @L["Swapping to Development environment will display more detailed information about the error that occurred."]
+</MudText>
+<MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
+    <strong>@L["The Development environment shouldn't be enabled for deployed applications."]</strong>
+    @L["It can result in displaying sensitive information from exceptions to end users."]
+    @L["For local debugging, enable the Development environment by setting the ASPNETCORE_ENVIRONMENT environment variable to Development"]
+    @L["and restarting the app."]
+</MudAlert>
+
+@code{
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    private string? RequestId { get; set; }
+    private bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
+
+    protected override void OnInitialized() =>
+        RequestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+}

@@ -1,0 +1,430 @@
+using HomeApplianceManualRag.Web.Configuration;
+using HomeApplianceManualRag.Web.Data;
+using HomeApplianceManualRag.Web.Activity;
+using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.AspNetCore.Components.Forms;
+
+namespace HomeApplianceManualRag.Web.Documents;
+
+public sealed class DocumentQuotaExceededException() : InvalidOperationException("You can have at most 3 active documents.");
+public sealed class DocumentProcessingInProgressException() : InvalidOperationException("You can only process one document at a time. Wait for the current document to finish before trying again.");
+public sealed class DocumentForbiddenException() : UnauthorizedAccessException("You are not allowed to manage this document.");
+
+public sealed class DocumentService(
+    ApplicationDbContext db,
+    ICurrentUser currentUser,
+    PdfValidator validator,
+    IFileStorage storage,
+    IActiveAccountGuard accountGuard,
+    DocumentUploadConcurrencyGate uploadConcurrencyGate,
+    IndexingCancellationRegistry? indexingCancellationRegistry = null,
+    DocumentProgressNotifier? progressNotifier = null,
+    ActivityLogService? activityLog = null)
+{
+    private static readonly DocumentStatus[] ActiveStatuses = [DocumentStatus.Pending, DocumentStatus.Processing, DocumentStatus.Ready];
+
+    public async Task<ManualDocument> UploadAsync(IFormFile file, CancellationToken cancellationToken = default)
+        => await UploadAsync(new PdfUpload(
+            file.FileName, file.ContentType, file.Length, _ => file.OpenReadStream()), cancellationToken);
+
+    public async Task<ManualDocument> UploadAsync(
+        IBrowserFile file,
+        CancellationToken cancellationToken = default,
+        IProgress<long>? byteProgress = null)
+        => await UploadAsync(
+            new PdfUpload(file.Name, file.ContentType, file.Size,
+                ct => file.OpenReadStream(file.Size, ct)),
+            cancellationToken,
+            byteProgress);
+
+    private async Task<ManualDocument> UploadAsync(
+        PdfUpload file,
+        CancellationToken cancellationToken = default,
+        IProgress<long>? byteProgress = null)
+    {
+        await accountGuard.EnsureEnabledAsync(cancellationToken);
+        var validation = await validator.ValidateAsync(file, cancellationToken);
+        if (!validation.IsValid) throw new InvalidDataException(validation.Error);
+        var isAdmin = currentUser.IsInRole(ApplicationRoles.Admin);
+        var owner = isAdmin ? null : currentUser.UserId ?? throw new DocumentForbiddenException();
+        using var uploadLease = await uploadConcurrencyGate.AcquireAsync(cancellationToken);
+        await using var transaction = db.Database.IsRelational()
+            ? await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken)
+            : null;
+        if (!isAdmin && await HasInProgressDocumentAsync(owner!, cancellationToken))
+            throw new DocumentProcessingInProgressException();
+        if (!isAdmin && await db.ManualDocuments.CountAsync(x =>
+                x.OwnerUserId == owner &&
+                x.DeletedAtUtc == null &&
+                ActiveStatuses.Contains(x.Status), cancellationToken) >= 3)
+            throw new DocumentQuotaExceededException();
+        var key = $"{Guid.NewGuid():N}.pdf";
+        var document = new ManualDocument { Id = Guid.NewGuid(), OwnerUserId = owner, DisplayName = Path.GetFileName(file.FileName), StorageKey = key, ContentType = "application/pdf", SizeBytes = validation.SizeBytes, Status = DocumentStatus.Pending, CreatedAtUtc = DateTime.UtcNow, UpdatedAtUtc = DateTime.UtcNow };
+        var storageWriteStarted = false;
+        try
+        {
+            storageWriteStarted = true;
+            await using var stream = file.OpenRead(cancellationToken);
+            if (byteProgress is null)
+            {
+                await storage.StoreAsync(key, stream, cancellationToken);
+            }
+            else
+            {
+                await using var progressStream = new UploadProgressStream(stream, byteProgress, leaveOpen: true);
+                await storage.StoreAsync(key, progressStream, cancellationToken);
+            }
+            db.ManualDocuments.Add(document);
+            db.IndexingJobs.Add(CreateIndexingJob(document));
+            await db.SaveChangesAsync(cancellationToken);
+            if (transaction is not null)
+                await transaction.CommitAsync(cancellationToken);
+            if (activityLog is not null)
+                await activityLog.RecordAsync(
+                    ActivityTypes.DocumentUploaded,
+                    "ManualDocument",
+                    document.Id.ToString(),
+                    new { document.DisplayName, document.SizeBytes });
+            return document;
+        }
+        catch (Exception databaseException) when (storageWriteStarted)
+        {
+            try
+            {
+                await storage.DeleteAsync(key, CancellationToken.None);
+            }
+            catch (Exception cleanupException)
+            {
+                throw new AggregateException(
+                    "Document metadata save failed and uploaded file cleanup also failed.",
+                    databaseException,
+                    cleanupException);
+            }
+
+            throw;
+        }
+    }
+
+    public async Task<List<ManualDocument>> ListAsync(CancellationToken ct = default)
+    {
+        if (!currentUser.IsAuthenticated) throw new DocumentForbiddenException();
+        await accountGuard.EnsureEnabledAsync(ct);
+        var isAdmin = currentUser.IsInRole(ApplicationRoles.Admin);
+        var owner = currentUser.UserId;
+        return await ListCoreAsync(isAdmin, owner, ct);
+    }
+
+    public async Task<List<ManualDocument>> ListProgressAsync(
+        IReadOnlyCollection<Guid> documentIds,
+        CancellationToken ct = default)
+    {
+        if (!currentUser.IsAuthenticated) throw new DocumentForbiddenException();
+        await accountGuard.EnsureEnabledAsync(ct);
+        if (documentIds.Count == 0) return [];
+
+        var isAdmin = currentUser.IsInRole(ApplicationRoles.Admin);
+        var owner = currentUser.UserId;
+        var query = db.ManualDocuments
+            .AsNoTracking()
+            .Where(x => documentIds.Contains(x.Id) && x.DeletedAtUtc == null);
+        if (!isAdmin)
+            query = query.Where(x => x.OwnerUserId == owner);
+
+        var documents = await query
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .ToListAsync(ct);
+        await PopulateOwnerEmailsAsync(documents, isAdmin, ct);
+        return documents;
+    }
+
+    private async Task<List<ManualDocument>> ListCoreAsync(bool isAdmin, string? owner, CancellationToken ct)
+    {
+        var documents = await (isAdmin
+                ? db.ManualDocuments
+                : db.ManualDocuments.Where(x => x.OwnerUserId == owner && x.DeletedAtUtc == null))
+            .AsNoTracking()
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .ToListAsync(ct);
+        await PopulateOwnerEmailsAsync(documents, isAdmin, ct);
+        return documents;
+    }
+
+    private async Task PopulateOwnerEmailsAsync(
+        List<ManualDocument> documents,
+        bool isAdmin,
+        CancellationToken ct)
+    {
+        if (isAdmin)
+        {
+            var ownerIds = documents.Where(x => x.OwnerUserId is not null).Select(x => x.OwnerUserId!).Distinct().ToList();
+            var emails = await db.Users
+                .Where(x => ownerIds.Contains(x.Id))
+                .ToDictionaryAsync(x => x.Id, x => x.Email, ct);
+            foreach (var document in documents)
+                document.OwnerEmail = document.OwnerUserId is not null && emails.TryGetValue(document.OwnerUserId, out var email)
+                    ? email
+                    : null;
+        }
+    }
+
+    public async Task DeleteAsync(Guid id, CancellationToken ct = default)
+    {
+        var document = await GetAuthorizedAsync(id, ct);
+        EnsureNotProcessing(document);
+        if (document.DeletedAtUtc is not null)
+            return;
+
+        document.DeletedAtUtc = DateTime.UtcNow;
+        document.DeletedByUserId = currentUser.UserId;
+        document.DeletionReason = "Deleted by user";
+        document.UpdatedAtUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        if (activityLog is not null)
+            await activityLog.RecordAsync(
+                ActivityTypes.DocumentSoftDeleted,
+                "ManualDocument",
+                document.Id.ToString(),
+                new { document.DeletionReason });
+    }
+
+    public async Task RestoreAsync(Guid id, CancellationToken ct = default)
+    {
+        await EnsureAdminAsync(ct);
+        var document = await db.ManualDocuments.SingleOrDefaultAsync(x => x.Id == id, ct)
+            ?? throw new KeyNotFoundException("Document was not found.");
+        if (document.DeletedAtUtc is null)
+            return;
+
+        document.DeletedAtUtc = null;
+        document.DeletedByUserId = null;
+        document.DeletionReason = null;
+        document.UpdatedAtUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        if (activityLog is not null)
+            await activityLog.RecordAsync(
+                ActivityTypes.DocumentRestored,
+                "ManualDocument",
+                document.Id.ToString());
+    }
+
+    public async Task HardDeleteAsync(Guid id, CancellationToken ct = default)
+    {
+        await EnsureAdminAsync(ct);
+        var document = await db.ManualDocuments.SingleOrDefaultAsync(x => x.Id == id, ct)
+            ?? throw new KeyNotFoundException("Document was not found.");
+        if (document.DeletedAtUtc is null)
+            throw new InvalidOperationException("Only deleted documents can be permanently deleted.");
+        EnsureNotProcessing(document);
+
+        var cleanup = new StorageCleanup
+        {
+            Id = Guid.NewGuid(),
+            StorageKey = document.StorageKey,
+            CreatedAtUtc = DateTime.UtcNow,
+            NextAttemptAtUtc = DateTime.UtcNow
+        };
+        await using var transaction = db.Database.IsRelational()
+            ? await db.Database.BeginTransactionAsync(ct)
+            : null;
+        db.ManualDocuments.Remove(document);
+        db.StorageCleanups.Add(cleanup);
+        await db.SaveChangesAsync(ct);
+        if (transaction is not null)
+            await transaction.CommitAsync(ct);
+
+        await storage.DeleteAsync(document.StorageKey, ct);
+        cleanup.Status = StorageCleanupStatus.Completed;
+        cleanup.CompletedAtUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        if (activityLog is not null)
+            await activityLog.RecordAsync(
+                ActivityTypes.DocumentHardDeleted,
+                "ManualDocument",
+                document.Id.ToString(),
+                new { document.DisplayName });
+    }
+
+    public async Task<(ManualDocument Document, Stream Content)> OpenReadAsync(Guid id, CancellationToken ct = default)
+    {
+        var document = await GetAuthorizedAsync(id, ct);
+        return (document, await storage.OpenReadAsync(document.StorageKey, ct));
+    }
+
+    public async Task RetryAsync(Guid id, CancellationToken ct = default)
+    {
+        var document = await GetAuthorizedAsync(id, ct);
+        if (document.Status is not (DocumentStatus.Failed or DocumentStatus.Cancelled))
+            throw new InvalidOperationException("Only failed or cancelled documents can be retried.");
+        if (!currentUser.IsInRole(ApplicationRoles.Admin) &&
+            await HasInProgressDocumentAsync(currentUser.UserId!, ct))
+            throw new DocumentProcessingInProgressException();
+        document.Status = DocumentStatus.Pending;
+        ResetProgress(document);
+        document.LastError = null;
+        document.DocumentVersion = Guid.NewGuid();
+        document.UpdatedAtUtc = DateTime.UtcNow;
+        await CancelOutstandingJobsAsync(document.Id, ct);
+        db.IndexingJobs.Add(CreateIndexingJob(document));
+        await db.SaveChangesAsync(ct);
+        if (activityLog is not null)
+            await activityLog.RecordAsync(
+                ActivityTypes.DocumentRetried,
+                "ManualDocument",
+                document.Id.ToString());
+    }
+
+    public async Task<bool> CancelProcessingAsync(Guid id, CancellationToken ct = default)
+    {
+        var document = await GetAuthorizedAsync(id, ct);
+        if (document.Status is not (DocumentStatus.Pending or DocumentStatus.Processing))
+            return false;
+
+        var job = await db.IndexingJobs
+            .Where(x => x.DocumentId == document.Id &&
+                        x.DocumentVersion == document.DocumentVersion &&
+                        (x.Status == IndexingJobStatus.Pending || x.Status == IndexingJobStatus.Processing))
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
+        if (job is null)
+            return false;
+
+        var previousStatus = job.Status;
+        await using var transaction = db.Database.IsRelational()
+            ? await db.Database.BeginTransactionAsync(ct)
+            : null;
+        if (db.Database.IsRelational())
+        {
+            var updated = await db.IndexingJobs
+                .Where(x => x.Id == job.Id &&
+                            (x.Status == IndexingJobStatus.Pending ||
+                             x.Status == IndexingJobStatus.Processing))
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(x => x.Status, IndexingJobStatus.Cancelled)
+                    .SetProperty(x => x.NextAttemptAtUtc, (DateTime?)null)
+                    .SetProperty(x => x.CompletedAtUtc, DateTime.UtcNow), ct);
+            if (updated == 0)
+                return false;
+        }
+        else
+        {
+            if (job.Status is not (IndexingJobStatus.Pending or IndexingJobStatus.Processing))
+                return false;
+            job.Status = IndexingJobStatus.Cancelled;
+            job.NextAttemptAtUtc = null;
+            job.CompletedAtUtc = DateTime.UtcNow;
+        }
+
+        document.Status = DocumentStatus.Cancelled;
+        document.ProcessingStage = DocumentProcessingStage.Cancelled;
+        document.ProgressCompletedUnits = null;
+        document.ProgressTotalUnits = null;
+        document.LastError = null;
+        document.UpdatedAtUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        if (transaction is not null)
+            await transaction.CommitAsync(ct);
+
+        if (previousStatus == IndexingJobStatus.Processing)
+            indexingCancellationRegistry?.Cancel(job.Id);
+        if (progressNotifier is not null)
+            await progressNotifier.PublishAsync(new(
+                document.Id,
+                document.OwnerUserId,
+                document.Status,
+                document.LastError,
+                document.ProcessingStage,
+                document.ProgressCompletedUnits,
+                document.ProgressTotalUnits));
+        return true;
+    }
+
+    public async Task ReindexAsync(Guid id, CancellationToken ct = default)
+    {
+        await accountGuard.EnsureEnabledAsync(ct);
+        if (!currentUser.IsInRole(ApplicationRoles.Admin)) throw new DocumentForbiddenException();
+        var document = await GetAuthorizedAsync(id, ct);
+        EnsureNotProcessing(document);
+        document.Status = DocumentStatus.Pending;
+        ResetProgress(document);
+        document.LastError = null;
+        document.IndexedAtUtc = null;
+        document.DocumentVersion = Guid.NewGuid();
+        document.UpdatedAtUtc = DateTime.UtcNow;
+        await CancelOutstandingJobsAsync(document.Id, ct);
+        db.IndexingJobs.Add(CreateIndexingJob(document));
+        await db.SaveChangesAsync(ct);
+        if (activityLog is not null)
+            await activityLog.RecordAsync(
+                ActivityTypes.DocumentReindexed,
+                "ManualDocument",
+                document.Id.ToString());
+    }
+
+    private static IndexingJob CreateIndexingJob(ManualDocument document) => new()
+    {
+        Id = Guid.NewGuid(),
+        DocumentId = document.Id,
+        DocumentVersion = document.DocumentVersion,
+        Status = IndexingJobStatus.Pending,
+        CreatedAtUtc = DateTime.UtcNow,
+        NextAttemptAtUtc = DateTime.UtcNow
+    };
+
+    private static void ResetProgress(ManualDocument document)
+    {
+        document.ProcessingStage = DocumentProcessingStage.Queued;
+        document.ProgressCompletedUnits = null;
+        document.ProgressTotalUnits = null;
+    }
+
+    private async Task CancelOutstandingJobsAsync(Guid documentId, CancellationToken ct)
+    {
+        var jobs = await db.IndexingJobs
+            .Where(x => x.DocumentId == documentId &&
+                        (x.Status == IndexingJobStatus.Pending || x.Status == IndexingJobStatus.Processing))
+            .ToListAsync(ct);
+        foreach (var job in jobs)
+        {
+            job.Status = IndexingJobStatus.Failed;
+            job.LastError = "Superseded by a newer indexing request.";
+            job.NextAttemptAtUtc = null;
+        }
+    }
+
+    private Task<bool> HasInProgressDocumentAsync(string owner, CancellationToken ct) =>
+        db.ManualDocuments.AnyAsync(
+            x => x.OwnerUserId == owner &&
+                 x.DeletedAtUtc == null &&
+                 (x.Status == DocumentStatus.Pending || x.Status == DocumentStatus.Processing),
+            ct);
+
+    private async Task<ManualDocument> GetAuthorizedAsync(Guid id, CancellationToken ct)
+    {
+        if (!currentUser.IsAuthenticated) throw new DocumentForbiddenException();
+        await accountGuard.EnsureEnabledAsync(ct);
+        var document = await db.ManualDocuments.SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw new KeyNotFoundException("Document was not found.");
+        await db.Entry(document).ReloadAsync(ct);
+        if (db.Entry(document).State == EntityState.Detached)
+            throw new KeyNotFoundException("Document was not found.");
+        if (!currentUser.IsInRole(ApplicationRoles.Admin) &&
+            (document.DeletedAtUtc is not null ||
+             !(currentUser.IsAuthenticated && document.OwnerUserId == currentUser.UserId)))
+            throw new DocumentForbiddenException();
+        return document;
+    }
+
+    private async Task EnsureAdminAsync(CancellationToken cancellationToken)
+    {
+        if (!currentUser.IsAuthenticated || !currentUser.IsInRole(ApplicationRoles.Admin))
+            throw new DocumentForbiddenException();
+        await accountGuard.EnsureEnabledAsync(cancellationToken);
+    }
+
+    private static void EnsureNotProcessing(ManualDocument document)
+    {
+        if (document.Status is DocumentStatus.Pending or DocumentStatus.Processing)
+            throw new DocumentProcessingInProgressException();
+    }
+}

@@ -1,0 +1,203 @@
+@page "/admin/users"
+@attribute [Authorize(Policy = ApplicationPolicies.AdminOnly)]
+@using HomeApplianceManualRag.Web.Admin
+@inject AdminUserService Users
+@inject IDialogService DialogService
+
+<PageTitle>@L["Users"]</PageTitle>
+
+<MudStack Spacing="3">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <div>
+            <MudText Typo="Typo.h4">@L["Users"]</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                @L["View account details and sign-in status."]
+            </MudText>
+        </div>
+        <MudButton Href="/admin" Variant="Variant.Outlined"
+                   StartIcon="@Icons.Material.Filled.ArrowBack">@L["Dashboard"]</MudButton>
+    </MudStack>
+
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+        <MudTextField @bind-Value="search" Label="@L["Search email or user ID"]"
+                      Variant="Variant.Outlined" Margin="Margin.Dense"
+                      Immediate="false" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Search"
+                   OnClick="SearchAsync">@L["Search"]</MudButton>
+    </MudStack>
+
+    @if (usersPage is null && errorMessage is null)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+    else if (errorMessage is not null)
+    {
+        <MudAlert Severity="Severity.Error">@errorMessage</MudAlert>
+    }
+    else if (usersPage is not null)
+    {
+        <MudPaper Class="pa-0" Elevation="1">
+            <MudTable T="AdminUserRow" Items="@usersPage.Items" Dense="true" Hover="true"
+                      Breakpoint="Breakpoint.Sm" Loading="@loading">
+                <HeaderContent>
+                    <MudTh>@L["User"]</MudTh>
+                    <MudTh>@L["Roles"]</MudTh>
+                    <MudTh>@L["Created"]</MudTh>
+                    <MudTh>@L["Sign-in status"]</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="@L["User"]">
+                        <MudText Typo="Typo.body2" Class="text-break">@context.Email</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="text-break">
+                            @context.Id
+                        </MudText>
+                    </MudTd>
+                    <MudTd DataLabel="@L["Roles"]">
+                        @if (context.Roles.Count == 0)
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">@L["User"]</MudText>
+                        }
+                        else
+                        {
+                            @foreach (var role in context.Roles)
+                            {
+                                <MudChip T="string" Size="Size.Small">@L[role]</MudChip>
+                            }
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="@L["Created"]">@FormatDate(context.CreatedAtUtc)</MudTd>
+                    <MudTd DataLabel="@L["Sign-in status"]">
+                        @if (context.AccountDisabled)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Error">@L["Disabled"]</MudChip>
+                        }
+                        else if (context.LockoutEnd is not null && context.LockoutEnd > DateTimeOffset.UtcNow)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Error">@L["Locked"]</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Success">@L["Available"]</MudChip>
+                        }
+                        @if (context.AccessFailedCount > 0)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @L["{0} failed attempts", context.AccessFailedCount]
+                            </MudText>
+                        }
+                        <MudButton Variant="Variant.Text" Size="Size.Small"
+                                   Color="@(context.AccountDisabled ? Color.Success : Color.Error)"
+                                   OnClick="() => ConfirmAccountStatusChange(context)">
+                            @(context.AccountDisabled ? L["Enable"] : L["Disable"])
+                        </MudButton>
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText Class="pa-4" Color="Color.Secondary">@L["No users found."]</MudText>
+                </NoRecordsContent>
+            </MudTable>
+        </MudPaper>
+
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                @L["Showing {0}–{1} of {2} users", GetFirstItem(), GetLastItem(), usersPage.TotalCount]
+            </MudText>
+            <MudPagination Count="@PageCount" Selected="@pageNumber"
+                           SelectedChanged="LoadPageAsync" Color="Color.Primary"
+                           BoundaryCount="1" />
+        </MudStack>
+    }
+</MudStack>
+
+@code {
+    private const int PageSize = 20;
+    private AdminUserPage? usersPage;
+    private string? errorMessage;
+    private string? search;
+    private bool loading;
+    private int pageNumber = 1;
+
+    protected override async Task OnInitializedAsync() => await LoadPageAsync(1);
+
+    private async Task SearchAsync() => await LoadPageAsync(1);
+
+    private async Task LoadPageAsync(int selectedPage)
+    {
+        if (selectedPage < 1)
+            return;
+
+        loading = true;
+        errorMessage = null;
+        try
+        {
+            usersPage = await Users.GetPageAsync(selectedPage, PageSize, search);
+            pageNumber = usersPage.PageNumber;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            errorMessage = L["Administrator access is required."];
+        }
+        catch (Exception)
+        {
+            errorMessage = L["User data is temporarily unavailable."];
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private int PageCount =>
+        usersPage is null || usersPage.TotalCount == 0
+            ? 1
+            : (int)Math.Ceiling(usersPage.TotalCount / (double)PageSize);
+
+    private int GetFirstItem() => usersPage is null || usersPage.TotalCount == 0
+        ? 0
+        : ((usersPage.PageNumber - 1) * PageSize) + 1;
+
+    private int GetLastItem() => usersPage is null
+        ? 0
+        : Math.Min(usersPage.PageNumber * PageSize, usersPage.TotalCount);
+
+    private static string FormatDate(DateTime value) =>
+        DateTimeDisplay.FormatUtcPlusEight(value);
+
+    private async Task ConfirmAccountStatusChange(AdminUserRow user)
+    {
+        var action = user.AccountDisabled ? L["Enable"].Value : L["Disable"].Value;
+        var actionTitle = user.AccountDisabled ? L["Enable account?"] : L["Disable account?"];
+        var confirmed = await DialogService.ShowMessageBox(
+            actionTitle,
+            L["Are you sure you want to {0} {1}?", action, user.Email],
+            yesText: action,
+            cancelText: L["Cancel"],
+            options: new DialogOptions { CloseOnEscapeKey = true });
+        if (confirmed != true)
+            return;
+
+        loading = true;
+        errorMessage = null;
+        try
+        {
+            if (user.AccountDisabled)
+                await Users.EnableAsync(user.Id);
+            else
+                await Users.DisableAsync(user.Id);
+            await LoadPageAsync(pageNumber);
+        }
+        catch (InvalidOperationException ex)
+        {
+            errorMessage = ex.Message;
+        }
+        catch (KeyNotFoundException)
+        {
+            errorMessage = L["User was not found."];
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+}

@@ -1,0 +1,185 @@
+@page "/admin/activity"
+@attribute [Authorize(Policy = ApplicationPolicies.AdminOnly)]
+@using HomeApplianceManualRag.Web.Admin
+@using HomeApplianceManualRag.Web.Activity
+@inject AdminActivityService Activities
+
+<PageTitle>@L["User activity"]</PageTitle>
+
+<MudStack Spacing="3">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <div>
+            <MudText Typo="Typo.h4">@L["User activity"]</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                @L["Review sign-in and account activity. Sensitive values are not stored."]
+            </MudText>
+        </div>
+        <MudButton Href="/admin" Variant="Variant.Outlined"
+                   StartIcon="@Icons.Material.Filled.ArrowBack">@L["Dashboard"]</MudButton>
+    </MudStack>
+
+    <MudGrid Spacing="2">
+        <MudItem xs="12" sm="6" md="3">
+            <MudSelect T="string" @bind-Value="activityType" Label="@L["Activity type"]"
+                       Variant="Variant.Outlined" Margin="Margin.Dense">
+                <MudSelectItem T="string" Value="@string.Empty">@L["All activity types"]</MudSelectItem>
+                @foreach (var type in ActivityTypes.All)
+                {
+                    <MudSelectItem T="string" Value="@type">@L[type]</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudTextField @bind-Value="email" Label="@L["Email starts with"]"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudTextField @bind-Value="ipAddress" Label="@L["IP address contains"]"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudTextField @bind-Value="path" Label="@L["Path starts with"]"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12">
+            <MudStack Row="true" Spacing="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.FilterAlt"
+                           OnClick="FilterAsync">@L["Filter"]</MudButton>
+                <MudButton Variant="Variant.Outlined"
+                           StartIcon="@Icons.Material.Filled.Clear"
+                           OnClick="ClearFiltersAsync">@L["Clear"]</MudButton>
+            </MudStack>
+        </MudItem>
+    </MudGrid>
+
+    @if (activityPage is null && errorMessage is null)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+    else if (errorMessage is not null)
+    {
+        <MudAlert Severity="Severity.Error">@errorMessage</MudAlert>
+    }
+    else if (activityPage is not null)
+    {
+        <MudPaper Class="pa-0" Elevation="1">
+            <MudTable T="AdminActivityRow" Items="@activityPage.Items" Dense="true" Hover="true"
+                      Breakpoint="Breakpoint.Sm" Loading="@loading">
+                <HeaderContent>
+                    <MudTh>@L["When"]</MudTh>
+                    <MudTh>@L["Activity"]</MudTh>
+                    <MudTh>@L["User"]</MudTh>
+                    <MudTh>@L["Path"]</MudTh>
+                    <MudTh>@L["Target"]</MudTh>
+                    <MudTh>@L["IP address"]</MudTh>
+                    <MudTh>@L["Details"]</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="@L["When"]">@DateTimeDisplay.FormatUtcPlusEight(context.CreatedAtUtc, includeSeconds: true)</MudTd>
+                    <MudTd DataLabel="@L["Activity"]">@L[context.ActivityType]</MudTd>
+                    <MudTd DataLabel="@L["User"]">
+                        @(context.UserEmail ?? (context.UserId is null
+                            ? L["Anonymous ({0})", context.AnonymousVisitorId ?? L["unknown"].Value]
+                            : context.UserId))
+                    </MudTd>
+                    <MudTd DataLabel="@L["Path"]">@(context.Path ?? "—")</MudTd>
+                    <MudTd DataLabel="@L["Target"]">
+                        @(context.TargetType is null ? "—" : $"{context.TargetType}/{context.TargetId}")
+                    </MudTd>
+                    <MudTd DataLabel="@L["IP address"]">@(context.IpAddress ?? L["Unavailable"].Value)</MudTd>
+                    <MudTd DataLabel="@L["Details"]">
+                        @if (!string.IsNullOrWhiteSpace(context.MetadataJson))
+                        {
+                            <MudText Typo="Typo.caption" Class="text-break">@context.MetadataJson</MudText>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">—</MudText>
+                        }
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText Class="pa-4" Color="Color.Secondary">@L["No activity found."]</MudText>
+                </NoRecordsContent>
+            </MudTable>
+        </MudPaper>
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                @L["Showing {0}–{1} of {2} events", GetFirstItem(), GetLastItem(), activityPage.TotalCount]
+            </MudText>
+            <MudPagination Count="@PageCount" Selected="@pageNumber"
+                           SelectedChanged="LoadPageAsync" Color="Color.Primary"
+                           BoundaryCount="1" />
+        </MudStack>
+    }
+</MudStack>
+
+@code {
+    private const int PageSize = 25;
+    private AdminActivityPage? activityPage;
+    private string activityType = string.Empty;
+    private string? email;
+    private string? ipAddress;
+    private string? path;
+    private string? errorMessage;
+    private bool loading;
+    private int pageNumber = 1;
+
+    protected override async Task OnInitializedAsync() => await LoadPageAsync(1);
+
+    private async Task FilterAsync() => await LoadPageAsync(1);
+
+    private async Task ClearFiltersAsync()
+    {
+        activityType = string.Empty;
+        email = null;
+        ipAddress = null;
+        path = null;
+        await LoadPageAsync(1);
+    }
+
+    private async Task LoadPageAsync(int selectedPage)
+    {
+        if (selectedPage < 1)
+            return;
+
+        loading = true;
+        errorMessage = null;
+        try
+        {
+            activityPage = await Activities.GetPageAsync(
+                selectedPage,
+                PageSize,
+                activityType,
+                email,
+                ipAddress,
+                path);
+            pageNumber = activityPage.PageNumber;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            errorMessage = L["Administrator access is required."];
+        }
+        catch (Exception)
+        {
+            errorMessage = L["Activity data is temporarily unavailable."];
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private int PageCount => activityPage is null || activityPage.TotalCount == 0
+        ? 1
+        : (int)Math.Ceiling(activityPage.TotalCount / (double)PageSize);
+
+    private int GetFirstItem() => activityPage is null || activityPage.TotalCount == 0
+        ? 0
+        : ((activityPage.PageNumber - 1) * PageSize) + 1;
+
+    private int GetLastItem() => activityPage is null
+        ? 0
+        : Math.Min(activityPage.PageNumber * PageSize, activityPage.TotalCount);
+}

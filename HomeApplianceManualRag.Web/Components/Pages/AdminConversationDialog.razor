@@ -1,0 +1,41 @@
+@using HomeApplianceManualRag.Web.Admin
+@using HomeApplianceManualRag.Web.Chat
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="2">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.h6">@Detail.Summary.Title</MudText>
+                <MudChip T="string" Size="Size.Small">@Detail.Summary.Owner</MudChip>
+            </MudStack>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                @L["Updated"] @DateTimeDisplay.FormatUtcPlusEight(Detail.Summary.UpdatedAtUtc)
+            </MudText>
+            <MudDivider />
+            <div class="admin-conversation-messages">
+                @foreach (var message in Detail.Messages)
+                {
+                    <MudPaper Class="pa-3 mb-2" Outlined="true">
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@L[message.Role.ToString()]</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @DateTimeDisplay.FormatUtcPlusEight(message.CreatedAtUtc)
+                            </MudText>
+                        </MudStack>
+                        <MudText Typo="Typo.body2" Class="text-break">@message.Content</MudText>
+                    </MudPaper>
+                }
+            </div>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Close">@L["Close"]</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter, EditorRequired] public AdminConversationDetail Detail { get; set; } = default!;
+
+    private void Close() => MudDialog.Close();
+}

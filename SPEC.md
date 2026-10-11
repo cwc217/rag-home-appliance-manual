@@ -14,10 +14,8 @@ This is a demo, not a billing, enterprise document-management, or OCR product.
 | Query admin public manuals | Yes | No | Yes |
 | Query own manuals | No | Yes | Yes |
 | Register | Yes | N/A | N/A |
-| Upload own manuals | No | Yes, maximum 3 | N/A |
-| Manage own manuals | No | List/delete | N/A |
-| Upload admin manuals | No | No | Unlimited count |
-| Delete/re-index admin manuals | No | No | Yes |
+| Upload manuals | No | Yes, maximum 3 active | Unlimited count |
+| Manage manuals | No | Own list/retry/delete | All documents: list/retry/delete/re-index |
 
 The selected scope is intentional: after login, a normal user searches only their own manuals, not admin manuals.
 
@@ -41,6 +39,10 @@ The selected scope is intentional: after login, a normal user searches only thei
 - Validate extension, declared content type, file signature/magic bytes, and request size on the server.
 - Do not trust the original file name. Generate a storage-safe identifier and retain the display name as metadata.
 - Scanned/image-only PDFs are unsupported in MVP and must reach `Failed` with a user-visible explanation.
+- After text extraction, classify the document as a household appliance manual before
+  chunking or embedding. A high-confidence TypeSafe Jev `appliance_manual`
+  decision continues indexing; other documents reach `Rejected` with a
+  user-visible explanation and do not participate in retrieval.
 
 ### Ownership and quota
 
@@ -48,6 +50,9 @@ The selected scope is intentional: after login, a normal user searches only thei
 - User documents have the authenticated user as owner and are private to that user.
 - Admin document count has no application-level count limit.
 - A user may have at most three documents in `Pending`, `Processing`, or `Ready`.
+- A normal user may have at most one document in `Pending` or `Processing` at a
+  time. A conflicting upload or retry is rejected rather than queued. Admins are
+  exempt from this concurrency limit.
 - `Failed` and deleted documents do not count toward the limit.
 - Enforce the quota transactionally in the application/database boundary to prevent concurrent uploads bypassing the limit.
 - Deleting a document makes it unavailable to retrieval and permits a replacement upload.
@@ -57,39 +62,105 @@ The selected scope is intentional: after login, a normal user searches only thei
 ```text
 Pending -> Processing -> Ready
                      \-> Failed
+                     \-> Rejected
 ```
 
-- Upload stores metadata and the original PDF, then queues background indexing.
+- `Pending`: The document has been uploaded and stored, but background processing has not started.
+- `Processing`: A background worker is extracting text, creating chunks, and generating embeddings.
+- `Ready`: Processing completed successfully and all required chunks and embeddings were persisted. The document is available for retrieval.
+- `Failed`: Processing could not complete. `LastError` stores an actionable failure message, and the document can be retried by the owner or an admin.
+- `Rejected`: Classification determined that the file is not a supported household appliance manual. `LastError` stores the explanation and the document cannot be retried as a processing failure.
+- `Pending`, `Processing`, `Failed`, and `Rejected` documents must not participate in retrieval.
+- `Failed` and `Rejected` documents do not count toward the normal user's active document quota.
+- Accepted manuals extract minimum catalog metadata (`ProductName`,
+  `ApplianceCategory`, `Brand`, `ModelNumber`, and `Language`) before
+  chunking. Metadata extraction records confidence, timestamp, and status;
+  extraction failure must not prevent normal RAG indexing.
+- During Phase 2, upload writes the original PDF to local storage first, then saves
+  the metadata record as `Pending`. Durable queueing and background indexing begin
+  in Phase 3.
+- During Phase 2, delete removes the metadata record and creates a durable pending
+  cleanup record in the same transaction, then deletes the stored file. A hosted
+  cleanup worker retries failed deletions and reconciles unreferenced files after
+  a one-hour grace period.
 - Only `Ready` documents participate in retrieval.
 - Retry is allowed for `Failed` documents by admin or the owning user.
+- The document listing receives server-pushed status updates through the
+  Interactive Server circuit while a document is `Pending` or `Processing` and
+  presents stage-based progress (`Queued`, `Processing`, `Ready`, `Failed`, or
+  `Rejected`)
+  with a loading indicator. The initial listing may load all authorized
+  documents. A low-frequency refresh is retained as a reconnect fallback, and
+  the UI must not claim a numeric percentage unless the worker persists a
+  reliable progress metric.
+  Long processing/parser error messages must remain contained within the
+  document card, wrap safely, and use an internal scroll area rather than
+  overflowing the page.
 - Deleting a document must cancel/ignore outstanding work and remove its chunks from retrieval.
 - Store `LastError` for failed processing; do not silently convert failure to an empty document.
+- Indexing jobs carry a document version. Retrying or re-indexing supersedes
+  older jobs, and a stale worker must not publish chunks for a newer version.
 
 ## 5. RAG pipeline
 
 ### Extraction and chunking
 
-1. Read each PDF page with a text-layer parser.
-2. Preserve page number and document id on every extracted page.
-3. Normalize whitespace without destroying meaningful line breaks.
-4. Split text into deterministic, overlapping chunks.
-5. Store chunk text, page number, ordinal, token/character metadata, and document id.
-6. Generate an embedding for each chunk using the configured Azure OpenAI embedding deployment.
-7. Verify the returned dimension equals `AzureOpenAI__EmbeddingDimensions` before persistence.
-8. Mark the document `Ready` only when all required chunks are embedded and persisted.
+1. Parse the stored PDF through the `IDocumentParser` boundary. The Phase 3
+   implementation uses a pinned Docling Serve container over the internal
+   service network and an application-owned structured JSON contract; the web
+   process does not load Python packages.
+2. Preserve page number, document id, block order, block type, heading path,
+   table/image markers, and source references on every parsed block.
+3. If the first pass is text-poor on the configured share of pages, retry the
+   conversion once with Docling OCR enabled; reject still-empty output with an
+   actionable `Failed` error.
+4. Remove page furniture and exact same-page heading prefixes without
+   destroying meaningful line breaks.
+5. Chunk by heading and block structure, using the multilingual token estimate
+   as a safety ceiling. Preserve table rows and repeat table headers if a table
+   must be split; keep image descriptions in their own chunk type.
+6. Store source content separately from enriched embedding text, normalized
+   search text, page-number arrays, parent headings, content type, token
+   estimate, and parser/chunker/embedding provenance. Link bounded section
+   parents to their searchable child chunks.
+7. Generate an embedding for each searchable chunk using the configured Azure
+   OpenAI embedding deployment; parent context rows are not embedded.
+8. Verify the returned dimension equals `AzureOpenAI__EmbeddingDimensions`
+   before persistence.
+9. Replace a document's chunks atomically only after all embeddings succeed.
+10. Mark the document `Ready` only when all required chunks are embedded and
+    persisted. A stale or deleted job must not reintroduce chunks.
 
-The exact chunk size and overlap may be tuned during implementation, but must be configuration values and covered by unit tests. A chunk must never lose its source page metadata.
+Phase 3 remains PDF-only. The parser requests Docling embedded picture
+artifacts and keeps bounded image bytes in memory alongside page provenance;
+the bytes are not persisted. When enabled, bounded pictures are sent to Azure
+OpenAI multimodal chat for visible text and a semantic description; results are
+indexed as distinct image-description chunks. The analyzer has a per-document
+image cap and timeout, and a failed analysis preserves the normal indexing
+failure/retry behavior. Docling's DOCX and other image input adapters remain
+reserved for later work.
+
+The default maximum chunk size is a configurable estimated-token ceiling, not
+fixed-length chunking. An exact model-tokenizer guarantee is not claimed. A
+chunk must never lose its source page metadata.
 
 ### Retrieval
 
-Use PostgreSQL `pgvector` cosine distance. Retrieval must:
+Use PostgreSQL `pgvector` cosine distance and a generated `tsvector` built with
+the `simple` configuration. The application normalizes multilingual text and
+adds CJK bigrams before indexing; this is not English-only stemming and
+`ts_rank_cd` is not BM25. Retrieval must:
 
 - Filter by `Status = Ready` first.
 - For anonymous requests, include only admin documents.
 - For a normal user, include only documents owned by the current user.
 - For admin requests, use an explicit admin scope; do not accidentally broaden normal user queries.
 - Apply the scope in the database query, not after fetching vectors.
-- Return top-k chunks with document display name, page number, chunk text, and similarity score.
+- Search vector and lexical candidates under identical visibility filters,
+  fuse ranks, and optionally rerank only when measured evaluation justifies the
+  extra latency and cost.
+- Expand a selected child to its bounded section parent when available, and
+  return all source pages and the ordered heading path with the excerpt.
 - Use a vector index when supported by the selected PostgreSQL/pgvector version.
 
 ### Grounded generation
@@ -106,13 +177,27 @@ The application must not claim that an answer is grounded when no chunk was retr
 
 ## 6. Chat Room
 
+- Before invoking the chat model or any tool, classify only the current user
+  question with the configured TypeSafe JEv `noul` checks for appliance
+  relevance, jailbreak/off-topic intent, and prompt injection. Accept only when
+  appliance relevance is at least 0.5 and both risk probabilities are below
+  0.5. A blocked question receives a fixed localized response without model or
+  tool calls. A classifier timeout, service failure, or invalid response fails
+  closed with a localized temporary-unavailable response and an operational
+  error record. This is an additional gate; it does not replace the existing
+  system prompt, authorization, tool validation, or manual visibility filters.
+- Send only the current question to this preflight. Do not classify conversation
+  history or manual excerpts in this step. Keep the existing document-ingestion
+  classifier unchanged.
 - Route: `/`.
 - Anonymous users see the public/admin scope.
 - Authenticated normal users see their own scope.
 - Responses stream to the UI.
-- Each answer displays citations with manual name and page number.
-- Conversation state is scoped to the current page/session and is not persisted across devices.
-- Do not store raw prompts or model responses as permanent history in MVP.
+- Each answer displays only manual/page citations explicitly present in the completed answer and validated against the retrieved context.
+- The browser UI state is scoped to the current page/session and is not persisted across
+  devices. Authenticated conversation messages are persisted server-side for the owning
+  user; anonymous conversation messages are persisted server-side for 30 days and remain
+  isolated by the anonymous access key.
 - Show loading, empty-index, no-results, provider-error, and rate-limit states.
 - If no admin document is `Ready`, anonymous chat shows a setup/empty state instead of pretending retrieval succeeded.
 
@@ -121,8 +206,18 @@ The application must not claim that an answer is grounded when no chunk was retr
 - `/`: Chat Room.
 - `/login`: Identity login.
 - `/register`: User registration.
-- `/my-documents`: authenticated user list, upload, status, retry, and delete.
-- `/admin/documents`: admin list, upload, status, retry, delete, and re-index.
+- `/admin`: admin-only operational dashboard with user, document, indexing, and conversation
+  metrics, plus the latest 10 conversation summaries.
+- `/admin/chat-review`: admin-only table of the latest 20 conversation summaries. Each row
+  can open a read-only detail modal containing the ordered messages and their timestamps.
+- User conversation deletion is a soft delete: the conversation and messages remain in the
+  database for administrative review, while deleted conversations are excluded from the
+  owner's conversation list and history. Loading a conversation scrolls the transcript to
+  the newest message.
+- `/my-documents`: authenticated, role-aware document list, upload, status, retry, and
+  delete. Normal users see only their own documents and have a three-active quota.
+  Admins see all documents with owner information, have unlimited uploads, and can
+  retry, delete, and re-index any document. There is no separate admin document route.
 
 Every upload page must show the 10 MB limit, accepted PDF requirement, current quota, and processing status.
 
@@ -162,12 +257,24 @@ ASP.NET Core Identity user plus normal audit fields as needed.
 - `Id`
 - `DocumentId`
 - `ChunkOrdinal`
-- `PageNumber`
-- `Text`
+- `Content`
+- `EmbeddingText`
+- `SearchText`
+- `SearchVector` (generated `tsvector`)
 - `Embedding` (`vector(N)`)
+- `PageNumbers` (`integer[]`)
+- `ParentHeaders` (`text[]`)
+- `ParentChunkId` (nullable self-reference)
+- `ChunkType`, `LanguageCode`, `TokenCount`
+- `ParserVersion`, `ChunkerVersion`, `EmbeddingModel`
+- `MetadataJson` (nullable JSONB for Docling provenance)
 - `CreatedAtUtc`
 
-Add indexes for document status/owner and chunk document id. Add the pgvector index after the extension and vector column migration are available. The dimension `N` is configured consistently with the Azure deployment.
+Add indexes for document status/owner, document/ordinal, parent id, GIN
+`SearchVector`, and HNSW cosine `Embedding`. `N` remains configured consistently
+with the Azure deployment. The migration preserves the old text and page
+columns as legacy values to support recovery while the full PDF re-index is
+validated; they can be removed in a later cleanup migration.
 
 ## 10. Background processing
 
@@ -221,17 +328,6 @@ Cover PDF validation, chunking/page metadata, quota decisions, scope selection, 
 
 Use PostgreSQL/pgvector test infrastructure. Cover migrations, Identity roles, user quota under concurrency, ownership authorization, anonymous/admin/user retrieval scopes, and document lifecycle persistence.
 
-### UI smoke tests
-
-Playwright must cover:
-
-1. Anonymous visitor opens Chat Room and sees admin/public scope.
-2. Registered user uploads at most three documents and cannot query another user's document.
-3. Admin uploads a 10 MB-or-less PDF, observes processing, and can delete/re-index.
-4. Chat displays streaming output and page citations for a ready document.
-
-Use deterministic fake chat and embedding providers in automated tests. A real Azure OpenAI smoke test is opt-in and never required for the default test suite.
-
 ## 14. Acceptance criteria
 
 - A fresh local setup can start PostgreSQL/pgvector and the .NET 10 app using documented commands.
@@ -242,4 +338,4 @@ Use deterministic fake chat and embedding providers in automated tests. A real A
 - Failed indexing is visible and retryable without corrupting prior ready data.
 - Every grounded chat answer has document/page citations; insufficient context produces an explicit no-answer response.
 - Admin-only actions and cross-user document access are rejected server-side.
-- Unit, integration, and Playwright smoke tests pass without real Azure credentials.
+- Unit and integration tests pass without real Azure credentials.

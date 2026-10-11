@@ -1,0 +1,15 @@
+services:
+  docling:
+    ports: !override []
+
+  postgres:
+    ports: !override []
+
+  web:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+    ports: !override
+      - "8501:8080"
+
+  adminer:
+    ports: !override []

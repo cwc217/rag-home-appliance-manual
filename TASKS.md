@@ -4,70 +4,79 @@
 
 ## Phase 0 — Project foundation
 
-- [ ] Create a .NET 10 Blazor Web App using Interactive Server.
-- [ ] Add EF Core PostgreSQL provider, ASP.NET Core Identity, pgvector support, PDF text extraction library, Azure OpenAI client abstraction, and test projects.
-- [ ] Add Docker Compose PostgreSQL image with pgvector.
-- [ ] Add strongly typed options for database, Azure OpenAI, upload limits, retrieval, rate limiting, and seed admin.
-- [ ] Add safe configuration validation at startup; fail clearly for missing production-required settings.
-- [ ] Add `.env.example` with placeholders only.
-- [ ] Add initial xUnit test project and a deterministic fake chat/embedding provider.
+- [x] Create a .NET 10 Blazor Web App using Interactive Server.
+- [x] Add EF Core PostgreSQL provider, ASP.NET Core Identity, pgvector support, PDF text extraction library, Azure OpenAI client abstraction, and test projects.
+- [x] Add Docker Compose PostgreSQL image with pgvector.
+- [x] Add strongly typed options for database, Azure OpenAI, TypeSafe, upload limits, retrieval, rate limiting, and seed admin.
+- [x] Add safe configuration validation at startup; fail clearly for missing production-required settings.
+- [x] Add `.env.example` with placeholders only.
+- [x] Add initial xUnit test project and a deterministic fake chat/embedding provider.
 
 ## Phase 1 — Identity and roles
 
-- [ ] Create `ApplicationUser` and Identity DbContext.
-- [ ] Add `Admin` and `User` roles.
-- [ ] Implement idempotent admin seed from environment variables.
-- [ ] Implement registration that always creates `User`.
-- [ ] Add login, logout, registration, and localized validation messages.
-- [ ] Add authorization policies and a current-user abstraction.
-- [ ] Test role seed, registration role, login, and unauthorized/forbidden behavior.
+- [x] Create `ApplicationUser` and Identity DbContext.
+- [x] Add `Admin` and `User` roles.
+- [x] Implement idempotent admin seed from environment variables.
+- [x] Implement registration that always creates `User`.
+- [x] Add login, logout, registration, and localized validation messages.
+- [x] Add authorization policies and a current-user abstraction.
+- [x] Test role seed, registration role, login, and unauthorized/forbidden behavior.
 
 ## Phase 2 — Documents and quotas
 
-- [ ] Create `ManualDocument` and `ManualChunk` entities with UTC audit fields.
-- [ ] Add migrations for Identity, documents, chunks, pgvector extension, vector dimension, and indexes.
-- [ ] Implement server-side PDF signature/type validation and 10 MB limit.
-- [ ] Implement safe file storage abstraction; keep local storage as the initial development provider.
-- [ ] Implement transactional user quota enforcement for active/processing documents.
-- [ ] Implement document commands: upload, list, delete, retry, and admin re-index.
-- [ ] Implement status values `Pending`, `Processing`, `Ready`, `Failed`.
-- [ ] Create `/my-documents` and `/admin/documents` with role-appropriate actions.
+- [x] Create `ManualDocument` and `ManualChunk` entities with UTC audit fields.
+- [x] Add migrations for Identity, documents, chunks, pgvector extension, vector dimension, and indexes.
+- [x] Implement server-side PDF signature/type validation and 10 MB limit.
+- [x] Implement safe file storage abstraction; keep local storage as the initial development provider.
+- [x] Implement transactional user quota enforcement for active/processing documents.
+- [x] Restrict normal users to one simultaneously progressing document and reject conflicting uploads/retries.
+- [x] Implement document commands: upload, list, delete, retry, and admin re-index.
+- [x] Implement status values `Pending`, `Processing`, `Ready`, `Failed`, `Rejected`.
+- [x] Create the role-aware `/my-documents` page with normal-user and admin actions.
+- [x] Classify extracted documents with TypeSafe Jev before chunking/embedding; reject non-manual documents.
+- [x] Extract minimum appliance metadata with structured Azure OpenAI output and persist extraction confidence/status.
 - [ ] Add unit and integration tests for file validation, quota concurrency, ownership, and admin permissions.
+- [x] Add storage cleanup/reconciliation for failures between file and database operations.
 
 ## Phase 3 — Indexing worker
 
-- [ ] Add durable indexing job/outbox persistence.
-- [ ] Add hosted worker with bounded retry and cancellation.
-- [ ] Extract text page-by-page from valid PDFs.
-- [ ] Reject empty/textless PDFs with an actionable `Failed` error.
-- [ ] Implement deterministic configurable chunking with overlap and page metadata.
-- [ ] Call Azure embedding through an interface and validate embedding dimensions.
-- [ ] Persist chunks atomically for a document version.
-- [ ] Make retries idempotent and ensure deleted documents are not reintroduced.
-- [ ] Add worker lifecycle, parser failure, dimension mismatch, and retry tests.
+- [x] Add durable indexing job/outbox persistence.
+- [x] Add hosted worker with bounded retry and cancellation.
+- [x] Extract text page-by-page from valid PDFs through a Docling parser boundary.
+- [x] Reject empty/textless PDFs with an actionable `Failed` error.
+- [x] Keep long parser and classification errors contained within the document card UI.
+- [x] Implement deterministic configurable chunking with overlap and page metadata.
+- [x] Call Azure embedding through an interface and validate embedding dimensions.
+- [x] Persist chunks atomically for a document version.
+- [x] Make retries idempotent and ensure deleted documents are not reintroduced.
+- [x] Add worker lifecycle, parser failure, dimension mismatch, stale-version, and retry-focused tests.
+- [x] Document Docling as the local PDF parser; defer DOCX/image/OCR adapters.
 
 ## Phase 4 — Retrieval and chat
 
-- [ ] Implement pgvector cosine similarity query.
-- [ ] Implement explicit retrieval scopes: anonymous admin-public, normal-user-own, admin-admin scope.
-- [ ] Ensure status and ownership/visibility filters execute in SQL before similarity ranking.
-- [ ] Build grounded prompt with retrieved context and citation metadata.
-- [ ] Add Azure chat client abstraction and streaming response adapter.
-- [ ] Add no-context/no-answer behavior and provider error mapping.
-- [ ] Add `/` Chat Room with anonymous and authenticated scope behavior.
-- [ ] Render citations as manual name + page number.
-- [ ] Add basic per-user chat rate limit and localized `429` state.
-- [ ] Test scope isolation, prompt rules, streaming adapter, citations, and no-result behavior.
+- [x] Implement pgvector cosine similarity query.
+- [x] Implement explicit retrieval scopes: anonymous admin-public, normal-user-own, admin-admin scope.
+- [x] Ensure status and ownership/visibility filters execute in SQL before similarity ranking.
+- [x] Build grounded prompt with retrieved context and citation metadata.
+- [x] Add Azure chat client abstraction and streaming response adapter.
+- [x] Add no-context/no-answer behavior and provider error mapping.
+- [x] Add `/` Chat Room with anonymous and authenticated scope behavior.
+- [x] Render citations as manual name + page number.
+- [x] Add basic per-user chat rate limit and localized `429` state.
+- [x] Test scope isolation, prompt rules, streaming adapter, citations, and no-result behavior.
+- [x] Persist multiple authenticated and anonymous conversations/messages with ownership-safe access; clean anonymous conversations after 30 days.
+- [x] Add admin conversation summaries, latest-conversation review table, and read-only detail modal with message timestamps.
+- [x] Add admin dashboard metrics and latest-conversation activity listing.
 
 ## Phase 5 — Localization and UX quality
 
-- [ ] Add `en` and `zh-Hant` resource files.
-- [ ] Add browser-culture default and language selector.
-- [ ] Localize navigation, validation, status, errors, empty states, quota messages, and chat states.
-- [ ] Add empty state when no admin document is ready.
-- [ ] Add processing progress/status refresh without exposing internal errors or secrets.
-- [ ] Add responsive layout and keyboard-accessible controls.
-- [ ] Add Playwright smoke flows for anonymous, user, and admin journeys.
+- [x] Add `en` and `zh-Hant` resource files.
+- [x] Add browser-culture default and language selector.
+- [x] Localize navigation, validation, status, errors, empty states, quota messages, and chat states.
+- [x] Add role-aware empty states when no admin document is ready.
+- [x] Add processing progress/status refresh with bounded error details and no secret exposure.
+- [x] Add responsive messaging layout and keyboard-accessible controls.
+- [x] Adopt a shared MudBlazor theme and responsive component-based UI across the application shell and pages.
 
 ## Phase 6 — Operational readiness
 
@@ -77,7 +86,7 @@
 - [ ] Add Azure App Service and Azure Database for PostgreSQL deployment instructions.
 - [ ] Add opt-in real Azure OpenAI smoke-test instructions; default tests must use fakes.
 - [ ] Verify migrations from an empty database.
-- [ ] Run unit, integration, and Playwright smoke suites.
+- [ ] Run unit and integration test suites.
 - [ ] Check every acceptance criterion in `SPEC.md`.
 
 ## Definition of done

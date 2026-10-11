@@ -1,0 +1,205 @@
+@inject ChatHistoryService History
+@inject ChatConversationState ConversationState
+@inject IDialogService DialogService
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<MudNavMenu Class="pa-3 nav-menu">
+    <MudText Typo="Typo.overline" Color="Color.Secondary" Class="px-3">RAG</MudText>
+    <form method="post" action="/culture" class="nav-language-form" data-enhance="false">
+        <AntiforgeryToken />
+        <input type="hidden" name="returnUrl" value="@CurrentLocalReturnUrl" />
+        <label for="culture-select">@L["Language"]</label>
+        <select id="culture-select" name="culture" aria-label="@L["Language"]"
+                onchange="this.form.submit()">
+            <option value="en" selected="@(CurrentCulture == "en")">@L["English"]</option>
+            <option value="zh-Hant" selected="@(CurrentCulture.StartsWith("zh", StringComparison.OrdinalIgnoreCase))">
+                @L["Traditional Chinese"]
+            </option>
+        </select>
+    </form>
+    <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Add"
+                Class="nav-new-conversation" OnClick="NewConversation">
+        @L["New chat"]
+    </MudNavLink>
+    @if (isAuthenticated)
+    {
+        <details class="nav-conversations-collapse" open>
+            <summary>
+                <MudIcon Icon="@Icons.Material.Filled.Chat" Size="Size.Small" />
+                <span>@L["Conversations ({0}/{1})", activeConversationCount, ChatHistoryService.MaxActiveConversations]</span>
+            </summary>
+            <div class="nav-conversations" aria-label="@L["Conversation rooms"]">
+                @if (!conversationsLoaded)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-3">@L["Loading chats…"]</MudText>
+                }
+                else if (!string.IsNullOrWhiteSpace(conversationsError))
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Error" Class="px-3">@conversationsError</MudText>
+                }
+                else if (conversations.Where(x => x.Title != "New chat").Take(8).Count() == 0)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-3">@L["No conversations yet"]</MudText>
+                }
+                else
+                {
+                    @foreach (var conversation in conversations.Where(x => x.Title != "New chat").Take(8))
+                    {
+                        <div class="nav-conversation-row">
+                            <MudNavLink Href="@($"/?conversationId={conversation.Id}")"
+                                        Icon="@Icons.Material.Filled.Forum"
+                                        Class="nav-conversation-link">
+                                @GetConversationTitle(conversation)
+                            </MudNavLink>
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                           Color="Color.Error"
+                                           Size="Size.Small"
+                                           title="@L["Delete conversation {0}", GetConversationTitle(conversation)]"
+                                           OnClick="@(() => ConfirmDelete(conversation))" />
+                        </div>
+                    }
+                }
+            </div>
+        </details>
+    }
+    <AuthorizeView>
+            <NotAuthorized>
+                <MudNavLink Href="/login" Icon="@Icons.Material.Filled.Login">@L["Login"]</MudNavLink>
+                <MudNavLink Href="/register" Icon="@Icons.Material.Filled.PersonAdd">@L["Register"]</MudNavLink>
+            </NotAuthorized>
+            <Authorized>
+                <AuthorizeView Roles="@ApplicationRoles.Admin" Context="dashboardContext">
+                    <MudNavLink Href="/admin" Icon="@Icons.Material.Filled.Dashboard">@L["Admin dashboard"]</MudNavLink>
+                </AuthorizeView>
+                <MudNavLink Href="/my-documents" Icon="@Icons.Material.Filled.Description">@L["My documents"]</MudNavLink>
+                <AuthorizeView Roles="@ApplicationRoles.Admin" Context="adminContext">
+                    <MudNavLink Href="/admin/chat-review" Icon="@Icons.Material.Filled.Visibility">@L["Chat review"]</MudNavLink>
+                    <MudNavLink Href="/admin/indexing-jobs" Icon="@Icons.Material.Filled.Work">@L["Indexing jobs"]</MudNavLink>
+                    <MudNavLink Href="/admin/error-logs" Icon="@Icons.Material.Filled.ErrorOutline">@L["System errors"]</MudNavLink>
+                    <MudNavLink Href="/admin/users" Icon="@Icons.Material.Filled.People">@L["Users"]</MudNavLink>
+                    <MudNavLink Href="/admin/activity" Icon="@Icons.Material.Filled.History">@L["User activity"]</MudNavLink>
+                </AuthorizeView>
+                <form method="post" action="/account/logout" data-enhance="false">
+                    <AntiforgeryToken />
+                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Text"
+                               StartIcon="@Icons.Material.Filled.Logout" Class="nav-logout">
+                        @L["Logout"]
+                    </MudButton>
+                </form>
+            </Authorized>
+        </AuthorizeView>
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-3 nav-build-version"
+             title="@L["Application build time"]">
+        @L["Build {0}", BuildTime]
+    </MudText>
+</MudNavMenu>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+    private readonly List<ChatConversation> conversations = [];
+    private int activeConversationCount;
+    private bool isAuthenticated;
+    private bool conversationsLoaded;
+    private string? conversationsError;
+
+    [Parameter] public EventCallback OnNavigationRequested { get; set; }
+
+    protected override void OnInitialized()
+    {
+        ConversationState.Changed += OnConversationStateChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        try
+        {
+            isAuthenticated = (await AuthenticationStateTask!).User.Identity?.IsAuthenticated == true;
+            if (isAuthenticated)
+                await LoadConversations();
+        }
+        catch
+        {
+            conversationsError = L["Conversation history unavailable."];
+        }
+        finally
+        {
+            conversationsLoaded = true;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task NewConversation()
+    {
+        await OnNavigationRequested.InvokeAsync();
+    }
+
+    private async Task ConfirmDelete(ChatConversation conversation)
+    {
+        var title = GetConversationTitle(conversation);
+        var confirmed = await DialogService.ShowMessageBox(
+            L["Delete conversation?"],
+            L["Delete \"{0}\"? The conversation will be hidden but retained for records.", title],
+            yesText: L["Delete"],
+            cancelText: L["Cancel"],
+            options: new DialogOptions { CloseOnEscapeKey = true });
+        if (confirmed != true)
+            return;
+
+        await History.DeleteConversationAsync(conversation.Id);
+        conversations.RemoveAll(item => item.Id == conversation.Id);
+        ConversationState.NotifyChanged();
+        if (Navigation.ToAbsoluteUri(Navigation.Uri).Query.Contains(conversation.Id.ToString(), StringComparison.OrdinalIgnoreCase))
+            Navigation.NavigateTo("/");
+        else
+            await InvokeAsync(StateHasChanged);
+    }
+
+    private async void OnConversationStateChanged(object? sender, EventArgs args)
+    {
+        if (!isAuthenticated)
+            return;
+
+        await InvokeAsync(async () =>
+        {
+            await LoadConversations();
+            StateHasChanged();
+        });
+    }
+
+    private async Task LoadConversations()
+    {
+        conversations.Clear();
+        conversations.AddRange(await History.GetConversationsAsync(null));
+        activeConversationCount = await History.GetActiveConversationCountAsync();
+    }
+
+    public void Dispose()
+    {
+        ConversationState.Changed -= OnConversationStateChanged;
+    }
+
+    private string GetConversationTitle(ChatConversation conversation) =>
+        conversation.Title == "New chat" ? L["Current chat"] : conversation.Title;
+
+    private string CurrentCulture => CultureInfo.CurrentUICulture.Name;
+    private string CurrentLocalReturnUrl => "/" + Navigation.ToBaseRelativePath(Navigation.Uri);
+
+    private static string BuildTime
+    {
+        get
+        {
+            var assemblyPath = typeof(Program).Assembly.Location;
+            if (string.IsNullOrWhiteSpace(assemblyPath))
+                return "unknown";
+
+            var timestamp = File.GetLastWriteTimeUtc(assemblyPath);
+            if (timestamp == DateTime.MinValue)
+                return "unknown";
+
+            return DateTimeDisplay.FormatUtcPlusEight(timestamp);
+        }
+    }
+}

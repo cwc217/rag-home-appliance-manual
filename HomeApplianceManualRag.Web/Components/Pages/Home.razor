@@ -1,0 +1,630 @@
+@page "/"
+@rendermode InteractiveServer
+@inject ChatService Chat
+@inject ChatToolsService ChatTools
+@inject ChatHistoryService History
+@inject ChatConversationState ConversationState
+@inject ILogger<Home> Logger
+@inject IJSRuntime JS
+@using HomeApplianceManualRag.Web.Data
+@using HomeApplianceManualRag.Web.Chat
+@using HomeApplianceManualRag.Web.Resources
+@using System.Globalization
+@using System.Text.Json
+@using Microsoft.JSInterop
+@implements IDisposable
+
+<PageTitle>@L["Chat Room"]</PageTitle>
+<main class="chat-shell">
+    <section class="chat-transcript" aria-label="@L["Conversation"]">
+        @if (loadingHistory)
+        {
+            <MudText Class="chat-state" Color="Color.Secondary">@L["Loading conversation history…"]</MudText>
+        }
+        else if (!loadingHistory && manualsLoaded && manualsError is null && availableManuals.Count == 0)
+        {
+            <div class="chat-empty-state">
+                <MudText Typo="Typo.h6">
+                    @ChatMessages.NoReadyManualsTitle(CultureInfo.CurrentUICulture.Name, IsAuthenticated)
+                </MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    @ChatMessages.NoReadyManualsDescription(CultureInfo.CurrentUICulture.Name, IsAuthenticated)
+                </MudText>
+                <MudStack Row="true" Justify="Justify.Center" Spacing="2" Class="chat-empty-state-actions">
+                    <MudButton Href="@(IsAuthenticated ? "/my-documents" : "/login")"
+                               Variant="Variant.Filled" Color="Color.Primary">
+                        @ChatMessages.NoReadyManualsAction(CultureInfo.CurrentUICulture.Name, IsAuthenticated)
+                    </MudButton>
+                    @if (!IsAuthenticated)
+                    {
+                        <MudButton Href="/register" Variant="Variant.Outlined" Color="Color.Primary">
+                            @ChatMessages.RegisterAction(CultureInfo.CurrentUICulture.Name)
+                        </MudButton>
+                    }
+                </MudStack>
+            </div>
+        }
+        else if (messages.Count == 0)
+        {
+            <MudText Class="chat-state" Color="Color.Secondary">
+                @L["Ask a question and get an answer grounded in your available manuals."]
+            </MudText>
+        }
+        @foreach (var message in messages)
+        {
+            <article class="chat-message @(message.Role == ChatMessageRole.User ? "chat-message-user" : "chat-message-assistant")">
+                <MudText Class="sr-only">@(message.Role == ChatMessageRole.User ? L["You"] : L["Assistant"])</MudText>
+                <MudPaper Class="chat-bubble pa-3" Elevation="1">@message.Content</MudPaper>
+                <MudText Class="chat-message-time" Typo="Typo.caption">
+                    @DateTimeDisplay.FormatUtcPlusEight(message.CreatedAtUtc)
+                </MudText>
+                @if (message.Citations.Count > 0)
+                {
+                    <div class="chat-citations">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@L["Sources"]</MudText>
+                        <ul>
+                            @foreach (var citation in message.Citations)
+                            {
+                                <li>@citation.Label</li>
+                            }
+                        </ul>
+                    </div>
+                }
+            </article>
+        }
+        @if (busy)
+        {
+            <MudText Class="chat-state" Color="Color.Secondary">@L["Thinking…"]</MudText>
+        }
+        @if (!string.IsNullOrWhiteSpace(error))
+        {
+            <MudAlert Severity="Severity.Error">@error</MudAlert>
+        }
+        @if (!loadingHistory && IsNewConversationBlocked)
+        {
+            <MudAlert Severity="Severity.Warning">
+                @L["You have reached the limit of {0} active conversations.", ChatHistoryService.MaxActiveConversations]
+                @L["Delete an existing conversation to start a new one. Existing conversations remain available."]
+            </MudAlert>
+        }
+        @if (!loadingHistory && IsConversationAtLimit)
+        {
+            <MudAlert Severity="Severity.Warning">
+                @L["This conversation has reached its limit of {0} question-and-answer exchanges.", ChatHistoryService.MaxConversationExchanges]
+                @L["Start a new conversation to continue."]
+            </MudAlert>
+        }
+    </section>
+
+    <EditForm Model="form" OnValidSubmit="Ask" class="chat-composer">
+        <MudStack Row="true" Spacing="1" Class="manual-chip-list"
+                  aria-label="@L["Select manuals for this answer"]">
+            @if (manualsLoading)
+            {
+                <MudChip T="string" Disabled="true" Variant="Variant.Outlined">@L["Loading manuals…"]</MudChip>
+            }
+            else if (!string.IsNullOrWhiteSpace(manualsError))
+            {
+                <MudChip T="string" Disabled="true" Color="Color.Error" Variant="Variant.Outlined">
+                    @L["Manuals unavailable"]
+                </MudChip>
+                <MudAlert Severity="Severity.Error" Dense="true">@manualsError</MudAlert>
+            }
+            else if (availableManuals.Count == 0)
+            {
+                <MudChip T="string" Disabled="true" Variant="Variant.Outlined">
+                    @ChatMessages.NoReadyManualsChip(CultureInfo.CurrentUICulture.Name)
+                </MudChip>
+            }
+            else
+            {
+                @foreach (var manual in availableManuals)
+                {
+                    var isSelected = selectedManualIds.Contains(manual.ApplianceId);
+                    <MudChip T="Guid" @key="manual.ApplianceId" Value="@manual.ApplianceId"
+                             OnClick="@(() => ToggleManual(manual.ApplianceId))"
+                             Color="@(isSelected ? Color.Primary : Color.Default)"
+                             Variant="@(isSelected ? Variant.Filled : Variant.Outlined)"
+                             Disabled="@busy"
+                             UserAttributes="@(new Dictionary<string, object>
+                             {
+                                 ["aria-label"] = ManualLabelFormatter.Format(manual),
+                                 ["aria-pressed"] = isSelected
+                             })">
+                        @(isSelected ? "✓ " : "")@ManualLabelFormatter.Format(manual)
+                    </MudChip>
+                }
+            }
+        </MudStack>
+        <MudTextField T="string" @bind-Value="form.Question" Label="@L["Question"]" Variant="Variant.Outlined"
+                      Placeholder="@L["How do I clean the filter?"]" Lines="2" Disabled="@IsComposerDisabled"
+                      FullWidth="true" />
+        <div class="composer-actions">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                @if (availableManuals.Count > 0)
+                {
+                    <span>
+                        @(selectedManualIds.Count == 0 || selectedManualIds.Count == availableManuals.Count
+                            ? L["Searching all available manuals."]
+                            : L["Searching {0} selected manual(s).", selectedManualIds.Count])
+                    </span>
+                }
+                @L["Content is AI-generated for reference only and may not be fully accurate."]
+            </MudText>
+            @if (selectedConversationId is null && conversationCountLoaded)
+            {
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    @L["Active conversations: {0}/{1}", activeConversationCount, ChatHistoryService.MaxActiveConversations]
+                </MudText>
+            }
+            else if (selectedConversationId is not null)
+            {
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    @L["Exchanges: {0}/{1}", Math.Min(messages.Count / 2, ChatHistoryService.MaxConversationExchanges), ChatHistoryService.MaxConversationExchanges]
+                </MudText>
+            }
+            <MudSelect T="int" Value="@contextExchangeCount" ValueChanged="OnContextExchangeCountChangedAsync"
+                       Label="@L["Prior Q&A pairs"]" Variant="Variant.Outlined" Margin="Margin.Dense"
+                       Disabled="@(busy || !contextExchangeCountLoaded)">
+                @for (var count = ChatHistoryService.MinContextExchangeCount;
+                     count <= ChatHistoryService.MaxContextExchangeCount;
+                     count++)
+                {
+                    var exchangeCount = count;
+                    <MudSelectItem T="int" Value="@exchangeCount">@exchangeCount</MudSelectItem>
+                }
+            </MudSelect>
+            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary"
+                       Disabled="@IsComposerDisabled">
+                @if (busy)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-2" />
+                    <span>@L["Thinking…"]</span>
+                }
+                else
+                {
+                    <span>@L["Ask"]</span>
+                }
+            </MudButton>
+        </div>
+    </EditForm>
+</main>
+
+@code {
+    private const string ContextExchangeCountStorageKey = "chat-prior-exchange-count";
+
+    private readonly ChatForm form = new();
+    private readonly List<UiMessage> messages = [];
+    private string? error;
+    private bool busy;
+    private bool loadingHistory = true;
+    private bool initialized;
+    private bool scrollToLatest;
+    private int activeConversationCount;
+    private bool conversationCountLoaded;
+    private int contextExchangeCount = ChatHistoryService.DefaultContextExchangeCount;
+    private bool contextExchangeCountLoaded;
+    private Guid? selectedConversationId;
+    private string? anonymousAccessKey;
+    private readonly List<ChatConversation> rooms = [];
+    private readonly List<ApplianceManualInfo> availableManuals = [];
+    private readonly HashSet<Guid> selectedManualIds = [];
+    private bool manualsLoading = true;
+    private bool manualsLoaded;
+    private string? manualsError;
+
+    [SupplyParameterFromQuery(Name = "conversationId")]
+    private Guid? ConversationId { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!initialized)
+            return;
+
+        if (ConversationId is not Guid id)
+        {
+            selectedConversationId = null;
+            messages.Clear();
+            error = null;
+            ResetManualSelection();
+            return;
+        }
+
+        if (id == selectedConversationId || !rooms.Any(x => x.Id == id))
+            return;
+
+        selectedConversationId = id;
+        ResetManualSelection();
+        await LoadSelected();
+    }
+
+    protected override void OnInitialized()
+    {
+        ConversationState.Changed += OnConversationStateChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (scrollToLatest)
+        {
+            scrollToLatest = false;
+            await JS.InvokeVoidAsync("chatScrollToLatest");
+        }
+        if (!firstRender || initialized) return;
+        initialized = true;
+        try
+        {
+            await LoadContextExchangeCountPreferenceAsync();
+            if (!OperatingSystem.IsBrowser())
+                anonymousAccessKey = await JS.InvokeAsync<string?>("localStorage.getItem", "chat-anonymous-access-key");
+            if (string.IsNullOrWhiteSpace(anonymousAccessKey) && !IsAuthenticated)
+            {
+                anonymousAccessKey = Guid.NewGuid().ToString("N");
+                await JS.InvokeVoidAsync("localStorage.setItem", "chat-anonymous-access-key", anonymousAccessKey);
+            }
+            await LoadRooms();
+        }
+        catch
+        {
+            error = L["Conversation history is temporarily unavailable."];
+        }
+        finally
+        {
+            loadingHistory = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    [CascadingParameter] private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+    private bool IsAuthenticated { get; set; }
+    private async Task LoadRooms()
+    {
+        IsAuthenticated = (await AuthenticationStateTask!).User.Identity?.IsAuthenticated == true;
+        rooms.Clear();
+        rooms.AddRange(await History.GetConversationsAsync(IsAuthenticated ? null : anonymousAccessKey));
+        activeConversationCount = await History.GetActiveConversationCountAsync(
+            IsAuthenticated ? null : anonymousAccessKey);
+        conversationCountLoaded = true;
+        await LoadAvailableManuals();
+        selectedConversationId = ConversationId is Guid requestedId && rooms.Any(x => x.Id == requestedId)
+            ? requestedId
+            : null;
+        if (selectedConversationId is not null)
+        {
+            await LoadSelected();
+            scrollToLatest = true;
+        }
+    }
+
+    private async Task LoadAvailableManuals()
+    {
+        manualsLoading = true;
+        manualsError = null;
+        try
+        {
+            availableManuals.Clear();
+            availableManuals.AddRange(await ChatTools.ListAvailableManualsAsync());
+            ResetManualSelection();
+            manualsLoaded = true;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Unable to load available manuals for chat.");
+            manualsError = L["Manuals could not be loaded. Refresh the page and try again."];
+        }
+        finally
+        {
+            manualsLoading = false;
+        }
+    }
+
+    private async Task LoadContextExchangeCountPreferenceAsync()
+    {
+        try
+        {
+            var storedValue = await JS.InvokeAsync<string?>(
+                "localStorage.getItem", ContextExchangeCountStorageKey);
+            if (storedValue is null)
+                return;
+
+            if (ChatHistoryService.TryParseContextExchangeCount(storedValue, out var storedCount))
+                contextExchangeCount = storedCount;
+            else
+                Logger.LogWarning("Ignoring invalid Prior Q&A pairs preference in localStorage.");
+        }
+        catch (JSException ex)
+        {
+            Logger.LogWarning(ex, "Unable to load Prior Q&A pairs preference from localStorage.");
+        }
+        finally
+        {
+            contextExchangeCountLoaded = true;
+        }
+    }
+
+    private async Task OnContextExchangeCountChangedAsync(int count)
+    {
+        if (count is < ChatHistoryService.MinContextExchangeCount or
+            > ChatHistoryService.MaxContextExchangeCount)
+        {
+            error = L["Choose between {0} and {1} prior Q&A pairs.",
+                ChatHistoryService.MinContextExchangeCount,
+                ChatHistoryService.MaxContextExchangeCount];
+            return;
+        }
+
+        contextExchangeCount = count;
+        try
+        {
+            await JS.InvokeVoidAsync(
+                "localStorage.setItem",
+                ContextExchangeCountStorageKey,
+                count.ToString(CultureInfo.InvariantCulture));
+        }
+        catch (JSException ex)
+        {
+            Logger.LogWarning(ex, "Unable to save Prior Q&A pairs preference to localStorage.");
+            error = L["The Prior Q&A pairs setting could not be saved in this browser."];
+        }
+    }
+
+    private void ResetManualSelection()
+    {
+        selectedManualIds.Clear();
+        foreach (var manual in availableManuals)
+            selectedManualIds.Add(manual.ApplianceId);
+    }
+
+    private void ToggleManual(Guid documentId)
+    {
+        if (busy || !availableManuals.Any(manual => manual.ApplianceId == documentId))
+            return;
+
+        if (!selectedManualIds.Add(documentId))
+            selectedManualIds.Remove(documentId);
+    }
+
+    private async Task LoadSelected()
+    {
+        messages.Clear();
+        if (selectedConversationId is not Guid id)
+            return;
+
+        var history = await History.GetHistoryAsync(id, IsAuthenticated ? null : anonymousAccessKey);
+        if (history.Count > 0)
+        {
+            foreach (var message in history)
+                messages.Add(new UiMessage(message.Role, message.Content, message.Citations, message.CreatedAtUtc));
+            scrollToLatest = true;
+            await SaveAnonymousCache(id);
+            return;
+        }
+
+        if (!IsAuthenticated)
+        {
+            foreach (var message in await LoadAnonymousCache(id))
+                messages.Add(message);
+        }
+    }
+
+    private async Task Ask()
+    {
+        if (IsComposerDisabled || string.IsNullOrWhiteSpace(form.Question)) return;
+        if (contextExchangeCount is < ChatHistoryService.MinContextExchangeCount or
+            > ChatHistoryService.MaxContextExchangeCount)
+        {
+            error = L["Choose between {0} and {1} prior Q&A pairs.",
+                ChatHistoryService.MinContextExchangeCount,
+                ChatHistoryService.MaxContextExchangeCount];
+            return;
+        }
+
+        busy = true;
+        error = null;
+        var question = form.Question.Trim();
+        var isNewConversation = selectedConversationId is null;
+        var originalMessageCount = messages.Count;
+        messages.Add(new UiMessage(ChatMessageRole.User, question, [], DateTime.UtcNow));
+        form.Question = string.Empty;
+        try
+        {
+            var conversationId = selectedConversationId ?? Guid.Empty;
+            if (selectedConversationId is not Guid)
+            {
+                var created = await History.CreateConversationAsync(
+                    IsAuthenticated ? null : anonymousAccessKey);
+                rooms.Insert(0, created);
+                selectedConversationId = created.Id;
+                conversationId = created.Id;
+                ConversationState.NotifyChanged();
+            }
+
+            var result = await Chat.StartAsync(
+                question,
+                selectedDocumentIds: selectedManualIds.ToArray(),
+                conversationId: conversationId,
+                anonymousAccessKey: IsAuthenticated ? null : anonymousAccessKey,
+                contextExchangeCount: contextExchangeCount);
+            if (result.Stream is null)
+            {
+                var noContextMessage = result.Response.NoContextMessage
+                    ?? ChatMessages.NoContext(CultureInfo.CurrentUICulture.Name);
+                var noContextCitations = CitationSelector.SelectReferenced(noContextMessage, result.Response.Citations);
+                messages.Add(new UiMessage(ChatMessageRole.Assistant, noContextMessage, noContextCitations, DateTime.UtcNow));
+                await History.PersistExchangeAsync(conversationId, question, noContextMessage, noContextCitations,
+                    IsAuthenticated ? null : anonymousAccessKey);
+                RecordPersistedConversation(isNewConversation);
+                ConversationState.NotifyChanged();
+                await SaveAnonymousCache(conversationId);
+                return;
+            }
+
+            var assistant = new UiMessage(ChatMessageRole.Assistant, string.Empty, [], DateTime.UtcNow);
+            messages.Add(assistant);
+            scrollToLatest = true;
+            await foreach (var token in result.Stream!)
+            {
+                assistant.Content += token;
+                scrollToLatest = true;
+                await InvokeAsync(StateHasChanged);
+            }
+            assistant.Citations = CitationSelector.SelectReferenced(
+                assistant.Content, result.Response.Citations);
+            assistant.Content = CitationSelector.RemoveMarkers(
+                assistant.Content, assistant.Citations).TrimEnd();
+            await History.PersistExchangeAsync(conversationId, question, assistant.Content, assistant.Citations,
+                IsAuthenticated ? null : anonymousAccessKey);
+            RecordPersistedConversation(isNewConversation);
+            ConversationState.NotifyChanged();
+            await SaveAnonymousCache(conversationId);
+        }
+        catch (ConversationLimitExceededException ex)
+        {
+            messages.RemoveRange(originalMessageCount, messages.Count - originalMessageCount);
+            form.Question = question;
+            selectedConversationId = null;
+            activeConversationCount = ChatHistoryService.MaxActiveConversations;
+            conversationCountLoaded = true;
+            error = ex.Message;
+            ConversationState.NotifyChanged();
+        }
+        catch (ConversationMessageLimitExceededException ex)
+        {
+            messages.RemoveRange(originalMessageCount, messages.Count - originalMessageCount);
+            form.Question = question;
+            error = ex.Message;
+        }
+        catch (ChatRateLimitException ex)
+        {
+            messages.RemoveAt(messages.Count - 1);
+            error = ChatMessages.RateLimited(CultureInfo.CurrentUICulture.Name,
+                Math.Max(1, (int)Math.Ceiling(ex.RetryAfter.TotalSeconds)));
+        }
+        catch (ChatProviderException)
+        {
+            messages.RemoveAt(messages.Count - 1);
+            error = L["The answer service is temporarily unavailable. Please try again."];
+        }
+        catch (ArgumentException ex)
+        {
+            messages.RemoveAt(messages.Count - 1);
+            form.Question = question;
+            error = ex.Message;
+        }
+        catch
+        {
+            error = L["Your answer was generated, but it could not be saved. Please try again."];
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private bool IsNewConversationBlocked =>
+        conversationCountLoaded &&
+        selectedConversationId is null &&
+        activeConversationCount >= ChatHistoryService.MaxActiveConversations;
+    private bool IsConversationAtLimit =>
+        selectedConversationId is not null &&
+        messages.Count >= ChatHistoryService.MaxConversationMessages;
+    private bool IsComposerDisabled =>
+        busy || loadingHistory || !conversationCountLoaded || IsNewConversationBlocked || IsConversationAtLimit ||
+        manualsLoading || !manualsLoaded || manualsError is not null ||
+        availableManuals.Count == 0;
+
+    private void RecordPersistedConversation(bool isNewConversation)
+    {
+        if (isNewConversation)
+            activeConversationCount = Math.Min(
+                activeConversationCount + 1,
+                ChatHistoryService.MaxActiveConversations);
+    }
+
+    private async void OnConversationStateChanged(object? sender, EventArgs args)
+    {
+        if (!initialized)
+            return;
+
+        await InvokeAsync(async () =>
+        {
+            try
+            {
+                activeConversationCount = await History.GetActiveConversationCountAsync(
+                    IsAuthenticated ? null : anonymousAccessKey);
+                conversationCountLoaded = true;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Unable to refresh the active conversation count.");
+                conversationCountLoaded = false;
+                error = L["Conversation history is temporarily unavailable."];
+            }
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        ConversationState.Changed -= OnConversationStateChanged;
+    }
+
+    private sealed class ChatForm { public string Question { get; set; } = string.Empty; }
+    private sealed record CachedMessage(
+        ChatMessageRole Role,
+        string Content,
+        IReadOnlyList<ChatCitation> Citations,
+        DateTime CreatedAtUtc);
+    private sealed class UiMessage(
+        ChatMessageRole role,
+        string content,
+        IReadOnlyList<ChatCitation> citations,
+        DateTime createdAtUtc)
+    {
+        public ChatMessageRole Role { get; } = role;
+        public string Content { get; set; } = content;
+        public IReadOnlyList<ChatCitation> Citations { get; set; } = citations;
+        public DateTime CreatedAtUtc { get; } = createdAtUtc;
+    }
+
+    private async Task SaveAnonymousCache(Guid conversationId)
+    {
+        if (IsAuthenticated || string.IsNullOrWhiteSpace(anonymousAccessKey))
+            return;
+
+        var cache = messages.Select(x => new CachedMessage(
+            x.Role, x.Content, x.Citations, x.CreatedAtUtc)).ToArray();
+        await JS.InvokeVoidAsync("localStorage.setItem", CacheKey(conversationId), JsonSerializer.Serialize(cache));
+    }
+
+    private async Task<IReadOnlyList<UiMessage>> LoadAnonymousCache(Guid conversationId)
+    {
+        if (IsAuthenticated || string.IsNullOrWhiteSpace(anonymousAccessKey))
+            return [];
+
+        var json = await JS.InvokeAsync<string?>("localStorage.getItem", CacheKey(conversationId));
+        if (string.IsNullOrWhiteSpace(json))
+            return [];
+
+        try
+        {
+            var cache = JsonSerializer.Deserialize<CachedMessage[]>(json) ?? [];
+            return cache.Select(x =>
+            {
+                var citations = x.Citations ?? [];
+                return new UiMessage(
+                    x.Role,
+                    CitationSelector.RemoveMarkers(x.Content, citations).TrimEnd(),
+                    citations,
+                    x.CreatedAtUtc == default ? DateTime.UtcNow : x.CreatedAtUtc);
+            }).ToArray();
+        }
+        catch (JsonException)
+        {
+            await JS.InvokeVoidAsync("localStorage.removeItem", CacheKey(conversationId));
+            return [];
+        }
+    }
+
+    private static string CacheKey(Guid conversationId) => $"chat-cache-{conversationId:N}";
+}

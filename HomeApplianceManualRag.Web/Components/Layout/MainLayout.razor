@@ -1,0 +1,87 @@
+﻿@inherits LayoutComponentBase
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@implements IDisposable
+
+<MudThemeProvider Theme="_theme" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<a class="skip-link" href="#main-content">@L["Skip to main content"]</a>
+
+<MudLayout Class="app-layout">
+    <MudAppBar Elevation="1" Color="Color.Primary">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit"
+                       Edge="Edge.Start" OnClick="ToggleDrawer"
+                       UserAttributes="@(new Dictionary<string, object> { ["aria-label"] = "Toggle navigation" })" />
+        <MudText Typo="Typo.h6">@L["Home Appliance Manual"]</MudText>
+        <MudSpacer />
+        <MudLink Href="https://github.com/cwc217/rag-home-appliance-manual/" Target="_blank"
+                 Color="Color.Inherit" Underline="Underline.None">@L["About"]</MudLink>
+    </MudAppBar>
+    <MudDrawer @bind-Open="_drawerOpen" Variant="DrawerVariant.Responsive"
+               Breakpoint="Breakpoint.Md" OverlayAutoClose="true"
+               Class="app-drawer" Elevation="1">
+        <NavMenu OnNavigationRequested="CloseDrawer" />
+    </MudDrawer>
+    <MudMainContent Class="app-content">
+        <MudContainer MaxWidth="MaxWidth.False" Class="pa-4 pa-md-6 app-content-container">
+            <div id="main-content" tabindex="-1">
+                @Body
+            </div>
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
+
+<div id="blazor-error-ui" data-nosnippet>
+    @L["An unhandled error has occurred."]
+    <a href="." class="reload">@L["Reload"]</a>
+    <span class="dismiss" aria-label="@L["Dismiss"]">🗙</span>
+</div>
+
+@code {
+    private bool _drawerOpen = true;
+    private readonly MudTheme _theme = new()
+    {
+        PaletteLight = new PaletteLight
+        {
+            Primary = "#2563eb",
+            Secondary = "#0f766e",
+            Background = "#f8fafc",
+            Surface = "#ffffff",
+            AppbarBackground = "#1e3a8a"
+        },
+        LayoutProperties = new LayoutProperties { DefaultBorderRadius = "10px" }
+    };
+
+    private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+
+    protected override void OnInitialized()
+    {
+        Navigation.LocationChanged += OnLocationChanged;
+    }
+
+    private async void OnLocationChanged(object? sender, LocationChangedEventArgs args)
+    {
+        try
+        {
+            var path = Navigation.ToAbsoluteUri(args.Location).AbsolutePath;
+            await JS.InvokeVoidAsync("logPageView", path);
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+
+    private async Task CloseDrawer()
+    {
+        _drawerOpen = false;
+        await InvokeAsync(StateHasChanged);
+    }
+}

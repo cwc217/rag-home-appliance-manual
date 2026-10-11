@@ -1,0 +1,92 @@
+@page "/admin/chat-review"
+@attribute [Authorize(Policy = ApplicationPolicies.AdminOnly)]
+@using HomeApplianceManualRag.Web.Admin
+@inject AdminConversationService Conversations
+@inject IDialogService DialogService
+
+<PageTitle>@L["Chat review"]</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="pa-6">
+    <MudText Typo="Typo.h4">@L["Chat review"]</MudText>
+    <MudText Color="Color.Secondary" Class="mb-4">
+        @L["Review the latest 20 authenticated and anonymous conversations."]
+    </MudText>
+
+    @if (items is null && errorMessage is null)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+    else if (errorMessage is not null)
+    {
+        <MudAlert Severity="Severity.Error">@errorMessage</MudAlert>
+    }
+    else if (items is { Count: 0 })
+    {
+        <MudText Typo="Typo.body2" Color="Color.Secondary">@L["No conversations yet."]</MudText>
+    }
+    else if (items is not null)
+    {
+        <MudTable T="AdminConversationSummary" Items="@items" Hover="true" Dense="true"
+                  Breakpoint="Breakpoint.Sm">
+            <HeaderContent>
+                <MudTh>@L["Conversation"]</MudTh>
+                <MudTh>@L["Owner"]</MudTh>
+                <MudTh>@L["Messages"]</MudTh>
+                <MudTh>@L["Updated"]</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="@L["Conversation"]">
+                    <MudText Typo="Typo.body2" Class="text-break">@context.Title</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        @L["Created"] @DateTimeDisplay.FormatUtcPlusEight(context.CreatedAtUtc)
+                    </MudText>
+                </MudTd>
+                <MudTd DataLabel="@L["Owner"]">@context.Owner</MudTd>
+                <MudTd DataLabel="@L["Messages"]">@context.MessageCount</MudTd>
+                <MudTd DataLabel="@L["Updated"]">
+                    @DateTimeDisplay.FormatUtcPlusEight(context.UpdatedAtUtc)
+                </MudTd>
+                <MudTd DataLabel="@L["Actions"]">
+                    <MudButton Size="Size.Small" Variant="Variant.Text"
+                               OnClick="() => ShowConversationAsync(context.Id)">
+                        @L["Detail"]
+                    </MudButton>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+</MudContainer>
+
+@code {
+    private IReadOnlyList<AdminConversationSummary>? items;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            items = await Conversations.GetRecentSummariesAsync(20);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            errorMessage = L["Administrator access is required."];
+        }
+        catch (Exception)
+        {
+            errorMessage = L["Conversation history unavailable."];
+        }
+    }
+
+    private async Task ShowConversationAsync(Guid conversationId)
+    {
+        var detail = await Conversations.GetDetailAsync(conversationId);
+        if (detail is null)
+            return;
+
+        await DialogService.ShowAsync<AdminConversationDialog>(
+            L["Conversation detail"],
+            new DialogParameters { ["Detail"] = detail },
+            new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Large, FullWidth = true });
+    }
+}
