@@ -47,11 +47,13 @@ public sealed class DocumentParseException(
     string message,
     bool retryable = false,
     Exception? inner = null,
-    int? httpStatusCode = null)
+    int? httpStatusCode = null,
+    string? diagnosticDetails = null)
     : InvalidOperationException(message, inner)
 {
     public bool Retryable { get; } = retryable;
     public int? HttpStatusCode { get; } = httpStatusCode;
+    public string? DiagnosticDetails { get; } = diagnosticDetails;
 }
 
 public interface IDocumentParser
@@ -124,7 +126,8 @@ public sealed class DoclingHttpParser(
                 throw new DocumentParseException(
                     $"Docling service returned HTTP {(int)response.StatusCode}: {TrimError(body)}",
                     retryable: (int)response.StatusCode >= 500,
-                    httpStatusCode: (int)response.StatusCode);
+                    httpStatusCode: (int)response.StatusCode,
+                    diagnosticDetails: TrimError(body));
 
             var parsed = DeserializeResponse(body);
             if (!string.Equals(parsed.Status, "success", StringComparison.OrdinalIgnoreCase) &&
