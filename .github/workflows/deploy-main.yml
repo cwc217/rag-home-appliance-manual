@@ -2,9 +2,14 @@ name: Deploy Production via Docker Compose
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - 'v*'
   workflow_dispatch:
+    inputs:
+      version:
+        description: Release tag to deploy (for example, v1.2.3)
+        required: true
+        type: string
 
 concurrency:
   group: deploy-main
@@ -24,10 +29,40 @@ jobs:
       DEPLOY_ENV_FILE: ${{ github.workspace }}/deployment.env
 
     steps:
-      - name: Checkout main
+      - name: Checkout release tag
         uses: actions/checkout@v5
         with:
-          ref: main
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref }}
+          fetch-depth: 0
+
+      - name: Verify release version and main ancestry
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+        run: |
+          if ($env:RELEASE_VERSION -notmatch '^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$') {
+            throw "Release version must be a semantic version tag such as v1.2.3."
+          }
+
+          $releaseCommit = git rev-parse "refs/tags/$($env:RELEASE_VERSION)^{commit}"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Release tag $($env:RELEASE_VERSION) could not be resolved."
+          }
+
+          $checkedOutCommit = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $checkedOutCommit -ne $releaseCommit) {
+            throw "The checked out commit does not match release tag $($env:RELEASE_VERSION)."
+          }
+
+          git fetch origin main:refs/remotes/origin/main --no-tags
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not fetch main to verify the release tag."
+          }
+
+          git merge-base --is-ancestor $releaseCommit refs/remotes/origin/main
+          if ($LASTEXITCODE -ne 0) {
+            throw "Release tag $($env:RELEASE_VERSION) must point to a commit on main."
+          }
 
       - name: Verify Docker
         run: |

@@ -92,9 +92,9 @@ GitHub Actions 使用兩個環境：
 | 分支／觸發 | GitHub Environment | Runner | 部署設定 |
 | --- | --- | --- | --- |
 | `dev` push 或手動執行 `deploy-dev.yml` | `dev` | `self-hosted`, `dev` | 一般 Compose，網站 port `8500` |
-| `main` push 或手動執行 `deploy-main.yml` | `production` | `self-hosted`, `qnap` | Production Compose，網站 port `8501` |
+| Push version tag on `main` 或手動執行 `deploy-main.yml` | `production` | `self-hosted`, `qnap` | Production Compose，網站 port `8501` |
 
-Production workflow 固定部署 `main`；`dev` 變更須先合併到 `main`。兩個 GitHub Environment 都需設定以下項目：
+Production 只部署符合 `vMAJOR.MINOR.PATCH`（例如 `v1.2.3`）且指向 `main` 歷史的 tag。手動執行亦須輸入版本 tag。發佈前先將變更合併至 `main`，再建立並推送 tag；`dev` 不需要版本 tag。兩個 GitHub Environment 都需設定以下項目：
 
 - **Variables**：`POSTGRES_DB`（可選，預設 `manuals`）、`POSTGRES_USER`（可選，預設 `postgres`）、`AzureOpenAI__EmbeddingDimensions`（可選，預設 `1536`）。
 - **Secrets**：`POSTGRES_PASSWORD`、`AzureOpenAI__Endpoint`、`AzureOpenAI__ApiKey`、`AzureOpenAI__ChatDeployment`、`AzureOpenAI__EmbeddingDeployment`、`AzureOpenAI__ApiVersion`、`SeedAdmin__Email`、`SeedAdmin__Password`、`TypeSafe__ApiKey`。
