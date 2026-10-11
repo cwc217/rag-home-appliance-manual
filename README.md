@@ -1,33 +1,83 @@
 # Home Appliance Manual RAG
 
-家庭電器使用手冊問答網站：使用 .NET 10、Blazor Interactive Server、PostgreSQL/pgvector、Docling 和 Azure OpenAI。
+A home-appliance manual Q&A website built with .NET 10, Blazor Interactive Server, PostgreSQL/pgvector, Docling, and Azure OpenAI.
 
-## 功能概覽
+This project was vibe-coded using GitHub Copilot App and GPT-6 Luna (`gpt-6-luna`).
 
-- 訪客查詢管理員公開的手冊；登入使用者只查詢自己的手冊；管理員可管理所有文件及索引工作。
-- PDF 上傳、索引、語意與多語詞彙檢索，以及附頁碼來源的串流回答。
-- 支援英文及繁體中文；聊天記錄依使用者或匿名存取金鑰隔離。
-- `SPEC.md` 列出完整需求、權限、資料模型及安全規則；`TASKS.md` 列出實作進度。
+## Features
 
-## 本機啟動
+- Visitors can query public manuals; signed-in users can query their own manuals; administrators can manage all documents and indexing jobs.
+- PDF upload and indexing, semantic and multilingual lexical retrieval, and streamed answers with page citations.
+- English and Traditional Chinese UI; chat history is isolated by account or anonymous access key.
+- See [SPEC.md](SPEC.md) for requirements, authorization, data model, and security details, and [TASKS.md](TASKS.md) for implementation status.
 
-### 需求
+## System flow
+
+The diagram shows the PDF ingestion and grounded question-answering paths. Retrieval scopes are enforced server-side.
+
+```mermaid
+flowchart TD
+  subgraph Ingestion["PDF ingestion and indexing"]
+    Upload["Admin or user uploads PDF"] --> Validate{"Authorized and valid PDF?"}
+    Validate -->|No| UploadRejected["Reject upload"]
+    Validate -->|Yes| Save["Store PDF and Pending document"]
+    Save --> Job["Create durable indexing job"]
+    Job --> Parse["Docling extracts page-aware content; OCR fallback when needed"]
+    Parse --> Classify["TypeSafe Jev classifies appliance manual"]
+    Classify -->|Not a manual| Rejected["Mark Rejected; exclude from retrieval"]
+    Classify -->|Classifier unavailable| IndexFailed["Mark Failed with actionable error; allow retry"]
+    Classify -->|Manual| Metadata["Extract appliance metadata"]
+    Metadata --> Chunk["Create structure-aware chunks with page provenance"]
+    Chunk --> Embed["Generate Azure OpenAI embeddings"]
+    Embed --> Dimension{"Embedding dimensions match?"}
+    Dimension -->|No| IndexFailed
+    Dimension -->|Yes| Persist["Atomically replace chunks and mark Ready"]
+    Parse -->|Parse failure| IndexFailed
+    Embed -->|Provider failure| IndexFailed
+    Metadata -.->|Extraction failure is non-blocking| Chunk
+  end
+
+  subgraph Chat["Question and answer"]
+    Ask["Visitor or signed-in user asks a question"] --> Preflight["TypeSafe Jev checks current question"]
+    Preflight -->|Blocked| Blocked["Return localized blocked response"]
+    Preflight -->|Unavailable or invalid| PreflightError["Fail closed; return temporary error and record diagnostic"]
+    Preflight -->|Accepted| Scope{"Choose authorized document scope"}
+    Scope -->|Anonymous| Public["Admin public manuals"]
+    Scope -->|Normal user| Owned["Current user's manuals"]
+    Scope -->|Admin| AllDocs["Explicit admin scope"]
+    Public --> Search["SQL filters by Ready status and scope; vector and lexical search"]
+    Owned --> Search
+    AllDocs --> Search
+    Search --> Fuse["Fuse candidate ranks"]
+    Fuse --> HasContext{"Relevant context found?"}
+    HasContext -->|No| NoAnswer["Prepare explicit no-answer response"]
+    HasContext -->|Yes| Generate["Azure OpenAI streams a grounded answer"]
+    Generate --> Verify["Validate answer citations against retrieved context"]
+    Verify --> Respond["Display final answer and validated citations, if any"]
+    NoAnswer --> Respond
+    Respond --> History["Persist conversation messages for the owner or anonymous access key"]
+  end
+```
+
+## Local setup
+
+### Prerequisites
 
 - Docker Desktop
-- .NET 10 SDK（只在主機直接執行網站時需要）
-- Azure OpenAI 及 TypeSafe API 設定，才能使用完整索引與聊天功能
+- .NET 10 SDK (only if running the web app directly on the host)
+- Azure OpenAI and TypeSafe configuration for full indexing and chat functionality
 
-### Docker Compose
+### Run with Docker Compose
 
 ```powershell
 Copy-Item .env.example .env
-# 在 .env 設定實際的密碼及服務金鑰，不要提交此檔案。
+# Set real passwords and service keys in .env. Do not commit this file.
 docker compose up --build
 ```
 
-開啟 `http://localhost:8500`。Compose 會啟動 PostgreSQL/pgvector、Docling 和網站；網站啟動時會套用 EF Core migrations 並建立設定中的管理員帳戶。
+Open `http://localhost:8500`. Compose starts PostgreSQL/pgvector, Docling, and the web app. On startup, the app applies EF Core migrations and creates the configured administrator account.
 
-主要 `.env` 設定：
+Key `.env` settings:
 
 ```text
 POSTGRES_PASSWORD
@@ -42,19 +92,19 @@ SeedAdmin__Email
 SeedAdmin__Password
 ```
 
-`POSTGRES_DB` 和 `POSTGRES_USER` 預設為 `manuals`、`postgres`。`AzureOpenAI__EmbeddingDimensions` 必須符合目前資料庫向量欄位的 1536 維設定。管理員和註冊密碼至少 8 個字元。ASP.NET Core 不會自行載入 `.env`；此檔由 Docker Compose 讀取。
+`POSTGRES_DB` and `POSTGRES_USER` default to `manuals` and `postgres`. `AzureOpenAI__EmbeddingDimensions` must match the database vector column, currently 1536 dimensions. Administrator and registration passwords must be at least 8 characters. ASP.NET Core does not load `.env` files; Docker Compose reads this file.
 
-停止服務：
+Stop the services:
 
 ```powershell
 docker compose down
 ```
 
-`docker compose down -v` 會連資料庫 volume 一併刪除。PDF 和資料庫分別儲存在 `document-data` 與 `postgres-data` volumes。
+`docker compose down -v` also deletes the database volume. PDFs and the database are stored separately in the `document-data` and `postgres-data` volumes.
 
-### 主機直接執行網站
+### Run the web app on the host
 
-先依 `.env.example` 設定 Docker Compose 所需服務，再使用 User Secrets 設定主機上的網站連線及秘密：
+Configure the Compose services using `.env.example`, then set the host app's database connection and secrets with User Secrets:
 
 ```powershell
 dotnet user-secrets set "ConnectionStrings:Default" "Host=localhost;Port=5432;Database=manuals;Username=postgres;Password=<password>" --project HomeApplianceManualRag.Web
@@ -65,17 +115,17 @@ docker compose up -d postgres docling
 dotnet run --project HomeApplianceManualRag.Web
 ```
 
-另以 User Secrets 設定 Azure OpenAI 與 TypeSafe 的 endpoint、deployment 和 API keys。不要把真實秘密放入設定檔或提交至 Git。
+Set Azure OpenAI and TypeSafe endpoints, deployments, and API keys in User Secrets as well. Never put real secrets in configuration files or commit them to Git.
 
-## 測試
+## Tests
 
-執行一般測試（不需要 Azure credentials）：
+Run the regular test suite (no Azure credentials required):
 
 ```powershell
 dotnet test HomeApplianceManualRag.Tests\HomeApplianceManualRag.Tests.csproj
 ```
 
-PostgreSQL/pgvector 整合測試需使用專用 PostgreSQL 17 測試資料庫。測試會建立暫存資料庫、執行 migrations 和檢索測試，完成後刪除暫存資料庫；連線角色必須有建立及刪除資料庫的權限。**不可使用 Production 資料庫。**
+PostgreSQL/pgvector integration tests are opt-in and require a dedicated PostgreSQL 17 test database. They create a temporary database, apply migrations, run retrieval tests, and drop the temporary database afterward. The configured role must be allowed to create and drop databases. **Never use a production database.**
 
 ```powershell
 $env:POSTGRES_INTEGRATION_TEST_CONNECTION_STRING = "Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=<password>"
@@ -83,30 +133,39 @@ dotnet test HomeApplianceManualRag.Tests\HomeApplianceManualRag.Tests.csproj --f
 Remove-Item Env:POSTGRES_INTEGRATION_TEST_CONNECTION_STRING
 ```
 
-未設定連線字串時，PostgreSQL 整合測試會略過。
+PostgreSQL integration tests are skipped when the connection string is not set.
 
-## 部署
+## Deployment
 
-GitHub Actions 使用兩個環境：
+GitHub Actions uses two environments:
 
-| 分支／觸發 | GitHub Environment | Runner | 部署設定 |
+| Trigger | GitHub Environment | Runner | Deployment |
 | --- | --- | --- | --- |
-| `dev` push 或手動執行 `deploy-dev.yml` | `dev` | `self-hosted`, `dev` | 一般 Compose，網站 port `8500` |
-| Push version tag on `main` 或手動執行 `deploy-main.yml` | `production` | `self-hosted`, `qnap` | Production Compose，網站 port `8501` |
+| Push to `dev` or manually run `deploy-dev.yml` | `dev` | `self-hosted`, `dev` | Standard Compose; web port `8500` |
+| Push a version tag on `main` or manually run `deploy-main.yml` | `production` | `self-hosted`, `qnap` | Production Compose; web port `8501` |
 
-Production 只部署符合 `vMAJOR.MINOR.PATCH`（例如 `v1.2.3`）且指向 `main` 歷史的 tag。手動執行亦須輸入版本 tag。發佈前先將變更合併至 `main`，再建立並推送 tag；`dev` 不需要版本 tag。兩個 GitHub Environment 都需設定以下項目：
+Production only deploys tags matching `vMAJOR.MINOR.PATCH` (for example, `v1.2.3`) whose commit is on the `main` branch. Manual runs must also provide a version tag. Merge changes into `main` before creating and pushing a tag; `dev` does not require a version tag.
 
-- **Variables**：`POSTGRES_DB`（可選，預設 `manuals`）、`POSTGRES_USER`（可選，預設 `postgres`）、`AzureOpenAI__EmbeddingDimensions`（可選，預設 `1536`）。
-- **Secrets**：`POSTGRES_PASSWORD`、`AzureOpenAI__Endpoint`、`AzureOpenAI__ApiKey`、`AzureOpenAI__ChatDeployment`、`AzureOpenAI__EmbeddingDeployment`、`AzureOpenAI__ApiVersion`、`SeedAdmin__Email`、`SeedAdmin__Password`、`TypeSafe__ApiKey`。
+```powershell
+git switch main
+git pull
+git tag -a v1.2.3 -m "Release v1.2.3"
+git push origin v1.2.3
+```
 
-Production Compose 不對外公開 PostgreSQL、Docling 或 Adminer。正式公開服務前，應由 TLS reverse proxy 提供 HTTPS，並確認它支援 WebSocket upgrade，供 Blazor Interactive Server 使用。
+Configure both GitHub Environments:
 
-## 選用工具
+- **Variables:** `POSTGRES_DB` (optional; defaults to `manuals`), `POSTGRES_USER` (optional; defaults to `postgres`), `AzureOpenAI__EmbeddingDimensions` (optional; defaults to `1536`).
+- **Secrets:** `POSTGRES_PASSWORD`, `AzureOpenAI__Endpoint`, `AzureOpenAI__ApiKey`, `AzureOpenAI__ChatDeployment`, `AzureOpenAI__EmbeddingDeployment`, `AzureOpenAI__ApiVersion`, `SeedAdmin__Email`, `SeedAdmin__Password`, `TypeSafe__ApiKey`.
 
-只在需要檢視資料庫時啟動 Adminer（本機 `http://localhost:8581`）：
+Production Compose does not expose PostgreSQL, Docling, or Adminer publicly. Before exposing the service to the internet, configure a TLS reverse proxy for HTTPS and ensure it supports WebSocket upgrades for Blazor Interactive Server.
+
+## Optional tools
+
+Start Adminer only when you need to inspect the database (available locally at `http://localhost:8581`):
 
 ```powershell
 docker compose --profile tools up
 ```
 
-Adminer 只綁定 localhost。Docling Serve 固定使用 `v1.34.0`，避免未檢查相容性便改用 `latest`。完成 PDF 索引後，若程式或 parser 有更新，請重新 build web image。
+Adminer is bound to localhost. Docling Serve is pinned to `v1.34.0`; do not change it to `latest` without checking compatibility. Rebuild the web image after changing application or parser code.
