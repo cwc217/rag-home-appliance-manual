@@ -1,6 +1,8 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Globalization;
+using System.Text.RegularExpressions;
 using HomeApplianceManualRag.Web.Configuration;
 using HomeApplianceManualRag.Web.Data;
 using HomeApplianceManualRag.Web.Providers;
@@ -46,6 +48,7 @@ public sealed class AzureOpenAiManualMetadataExtractor(
         if (string.IsNullOrWhiteSpace(sourceText))
             return Failed();
 
+        var citationSuffix = CreateCitationSuffixPattern(displayName, document.Pages);
         var prompt = $$"""
             Extract appliance metadata from the document text below.
             Return JSON only, with exactly these fields:
@@ -64,7 +67,7 @@ public sealed class AzureOpenAiManualMetadataExtractor(
         try
         {
             var response = new StringBuilder();
-            await foreach (var part in chatProvider.StreamAsync(prompt, cancellationToken))
+            await foreach (var part in chatProvider.StreamMetadataAsync(prompt, cancellationToken))
                 response.Append(part);
 
             var metadata = JsonSerializer.Deserialize<ManualMetadataResponse>(
@@ -77,11 +80,11 @@ public sealed class AzureOpenAiManualMetadataExtractor(
                 ? MetadataExtractionStatus.Completed
                 : MetadataExtractionStatus.NeedsReview;
             return new(
-                Clean(metadata.ProductName),
-                Clean(metadata.ApplianceCategory),
-                Clean(metadata.Brand),
-                Clean(metadata.ModelNumber),
-                Clean(metadata.Language),
+                Clean(metadata.ProductName, citationSuffix),
+                Clean(metadata.ApplianceCategory, citationSuffix),
+                Clean(metadata.Brand, citationSuffix),
+                Clean(metadata.ModelNumber, citationSuffix),
+                Clean(metadata.Language, citationSuffix),
                 confidence,
                 status);
         }
@@ -121,8 +124,35 @@ public sealed class AzureOpenAiManualMetadataExtractor(
         return start >= 0 && end > start ? response[start..(end + 1)] : response;
     }
 
-    private static string? Clean(string? value) =>
-        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    private static string? Clean(string? value, Regex citationSuffix)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var cleaned = value.Trim();
+        Match match;
+        while ((match = citationSuffix.Match(cleaned)).Success)
+            cleaned = cleaned[..match.Index].TrimEnd();
+        return string.IsNullOrWhiteSpace(cleaned) ? null : cleaned;
+    }
+
+    private static Regex CreateCitationSuffixPattern(
+        string displayName,
+        IEnumerable<ParsedPage> pages)
+    {
+        var pageNumbers = pages
+            .Select(page => page.PageNumber)
+            .Distinct()
+            .Order()
+            .Select(page => page.ToString(CultureInfo.InvariantCulture))
+            .ToArray();
+        if (pageNumbers.Length == 0)
+            return new Regex(@"(?!)", RegexOptions.CultureInvariant);
+
+        return new Regex(
+            $@"\s*\[\s*{Regex.Escape(displayName)}\s*,\s*p\.\s*(?:{string.Join("|", pageNumbers)})\s*\]\s*$",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    }
 
     private static string Limit(string value, int maxCharacters) =>
         value.Length <= maxCharacters ? value : value[..maxCharacters];

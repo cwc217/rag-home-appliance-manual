@@ -8,6 +8,7 @@
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.AspNetCore.Components
 @using HomeApplianceManualRag.Web.Documents
+@using HomeApplianceManualRag.Web.Localization
 @implements IAsyncDisposable
 
 <PageTitle>@(isAdmin ? L["All documents"] : L["My documents"])</PageTitle>
@@ -140,12 +141,14 @@
     private bool busy;
     private int? uploadProgressPercent;
     private bool refreshStopped;
+    private CultureInfo uiCulture = CultureInfo.CurrentUICulture;
     [SupplyParameterFromQuery(Name = "error")]
     private string? errorMessage { get; set; }
     private bool isAdmin => CurrentUser.IsInRole(ApplicationRoles.Admin);
     private int activeCount => documents.Count(IsActive);
     protected override async Task OnInitializedAsync()
     {
+        uiCulture = CultureInfo.CurrentUICulture;
         progressSubscription = ProgressNotifier.Subscribe(
             CurrentUser.UserId,
             isAdmin,
@@ -337,6 +340,10 @@
     }
     private async Task FallbackRefreshAsync(CancellationToken ct)
     {
+        await UiCultureExecution.RunAsync(uiCulture, () => RunFallbackRefreshAsync(ct));
+    }
+    private async Task RunFallbackRefreshAsync(CancellationToken ct)
+    {
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(3));
         while (await timer.WaitForNextTickAsync(ct))
         {
@@ -367,7 +374,7 @@
     {
         try
         {
-            await InvokeAsync(async () =>
+            await UiCultureExecution.RunAsync(uiCulture, () => InvokeAsync(async () =>
             {
                 if (update.Status == DocumentStatus.Ready)
                 {
@@ -401,7 +408,7 @@
                 document.UpdatedAtUtc = DateTime.UtcNow;
                 refreshStopped = false;
                 StateHasChanged();
-            });
+            }));
         }
         catch (DocumentForbiddenException)
         {

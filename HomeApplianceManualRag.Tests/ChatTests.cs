@@ -1174,6 +1174,11 @@ public sealed class ChatTests
             yield break;
         }
 
+        public IAsyncEnumerable<string> StreamMetadataAsync(
+            string prompt,
+            CancellationToken cancellationToken = default) =>
+            StreamAsync(prompt, cancellationToken);
+
         public async IAsyncEnumerable<ChatProviderUpdate> StreamWithToolsAsync(
             string prompt,
             IReadOnlyList<ChatToolDefinition> tools,
@@ -1212,6 +1217,11 @@ public sealed class ChatTests
             yield break;
         }
 
+        public IAsyncEnumerable<string> StreamMetadataAsync(
+            string prompt,
+            CancellationToken cancellationToken = default) =>
+            StreamAsync(prompt, cancellationToken);
+
         public async IAsyncEnumerable<ChatProviderUpdate> StreamWithToolsAsync(
             string prompt,
             IReadOnlyList<ChatToolDefinition> tools,
@@ -1242,6 +1252,11 @@ public sealed class ChatTests
             await Task.CompletedTask;
             yield break;
         }
+
+        public IAsyncEnumerable<string> StreamMetadataAsync(
+            string prompt,
+            CancellationToken cancellationToken = default) =>
+            StreamAsync(prompt, cancellationToken);
 
         public async IAsyncEnumerable<ChatProviderUpdate> StreamWithToolsAsync(
             string prompt,

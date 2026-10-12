@@ -567,11 +567,12 @@ public sealed class IndexingTests
     [Fact]
     public async Task Metadata_extractor_parses_structured_response_and_prioritizes_first_pages()
     {
+        var provider = new FixedChatProvider("""
+            Here is the result:
+            {"productName":"Smart Washer","applianceCategory":"Washing Machine","brand":"Acme","modelNumber":"AC-100","language":"en","confidence":0.93}
+            """);
         var extractor = new AzureOpenAiManualMetadataExtractor(
-            new FixedChatProvider("""
-                Here is the result:
-                {"productName":"Smart Washer","applianceCategory":"Washing Machine","brand":"Acme","modelNumber":"AC-100","language":"en","confidence":0.93}
-                """),
+            provider,
             Options.Create(new MetadataExtractionOptions { MinimumConfidence = 0.85 }),
             NullLogger<AzureOpenAiManualMetadataExtractor>.Instance);
 
@@ -588,6 +589,33 @@ public sealed class IndexingTests
         Assert.Equal("AC-100", result.ModelNumber);
         Assert.Equal(MetadataExtractionStatus.Completed, result.Status);
         Assert.Equal(0.93, result.Confidence);
+        Assert.True(provider.MetadataStreamRequested);
+    }
+
+    [Fact]
+    public async Task Metadata_extractor_removes_matching_source_citations_but_preserves_value_brackets()
+    {
+        const string fileName = "WM-100.pdf";
+        var extractor = new AzureOpenAiManualMetadataExtractor(
+            new FixedChatProvider("""
+                {"productName":"Smart Washer [Series A] [WM-100.pdf, p. 1]","applianceCategory":"Washing Machine [WM-100.pdf, p. 1] [WM-100.pdf, p. 20]","brand":"Acme [WM-100.pdf, p. 1]","modelNumber":"WM-100 [Rev. 2]","language":"en","confidence":0.93}
+                """),
+            Options.Create(new MetadataExtractionOptions { MinimumConfidence = 0.85 }),
+            NullLogger<AzureOpenAiManualMetadataExtractor>.Instance);
+
+        var result = await extractor.ExtractAsync(
+            fileName,
+            new ParsedDocument(
+                [
+                    new ParsedPage(1, [new ParsedBlock("Acme Smart Washer", "text", 0)]),
+                    new ParsedPage(20, [new ParsedBlock("Model WM-100", "text", 0)])
+                ],
+                "fixture"));
+
+        Assert.Equal("Smart Washer [Series A]", result.ProductName);
+        Assert.Equal("Washing Machine", result.ApplianceCategory);
+        Assert.Equal("Acme", result.Brand);
+        Assert.Equal("WM-100 [Rev. 2]", result.ModelNumber);
     }
 
     [Fact]
@@ -859,6 +887,8 @@ public sealed class IndexingTests
 
     private sealed class FixedChatProvider(string response) : IChatProvider
     {
+        public bool MetadataStreamRequested { get; private set; }
+
         public async IAsyncEnumerable<string> StreamAsync(
             string prompt,
             [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
@@ -866,6 +896,14 @@ public sealed class IndexingTests
             cancellationToken.ThrowIfCancellationRequested();
             await Task.Yield();
             yield return response;
+        }
+
+        public IAsyncEnumerable<string> StreamMetadataAsync(
+            string prompt,
+            CancellationToken cancellationToken = default)
+        {
+            MetadataStreamRequested = true;
+            return StreamAsync(prompt, cancellationToken);
         }
 
         public async IAsyncEnumerable<ChatProviderUpdate> StreamWithToolsAsync(
