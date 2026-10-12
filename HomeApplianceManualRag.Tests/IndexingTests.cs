@@ -15,6 +15,12 @@ namespace HomeApplianceManualRag.Tests;
 public sealed class IndexingTests
 {
     [Fact]
+    public void Docling_timeout_defaults_to_ten_minutes()
+    {
+        Assert.Equal(600, new DoclingOptions().TimeoutSeconds);
+    }
+
+    [Fact]
     public void Indexing_error_presenter_uses_bounded_safe_messages()
     {
         var cases = new (Exception Exception, string Expected)[]

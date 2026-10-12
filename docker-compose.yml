@@ -8,7 +8,8 @@ services:
       DOCLING_SERVE_LOG_FORMAT: json
       DOCLING_SERVE_LOAD_MODELS_AT_BOOT: "true"
       DOCLING_SERVE_MAX_FILE_SIZE: 10485760
-      DOCLING_SERVE_MAX_DOCUMENT_TIMEOUT: 300
+      DOCLING_SERVE_MAX_SYNC_WAIT: 600
+      DOCLING_SERVE_MAX_DOCUMENT_TIMEOUT: 600
     ports:
       - "127.0.0.1:5001:5001"
     volumes:
@@ -51,7 +52,7 @@ services:
       ASPNETCORE_HTTP_PORTS: 8080
       HttpsRedirection__Enabled: "false"
       Docling__ServiceUrl: http://docling:5001
-      Docling__TimeoutSeconds: 300
+      Docling__TimeoutSeconds: 600
       Docling__MaxConcurrentJobs: 1
       TypeSafe__Endpoint: ${TypeSafe__Endpoint:-https://api.typesafe.ai}
       TypeSafe__ApiKey: ${TypeSafe__ApiKey:-development-placeholder}
