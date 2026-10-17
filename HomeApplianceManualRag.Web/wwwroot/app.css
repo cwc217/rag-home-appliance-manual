@@ -363,6 +363,8 @@ body {
     flex-wrap: wrap;
     margin-bottom: .5rem;
     min-width: 0;
+    column-gap: .5rem;
+    row-gap: .5rem;
 }
 
 .manual-chip-list .mud-chip {
@@ -494,11 +496,24 @@ body {
 
     .composer-toolbar {
         gap: .375rem;
+        justify-content: flex-end;
     }
 
     .composer-search-scope,
+    .composer-active-conversations {
+        display: none;
+    }
+
     .composer-conversation-count {
         font-size: .75rem;
+    }
+
+    .manual-chip-list {
+        row-gap: .25rem;
+    }
+
+    .manual-chip-list .mud-chip {
+        margin: 0;
     }
 
     .composer-toolbar > .mud-select {
@@ -514,7 +529,6 @@ body {
     .chat-citations ul {
         padding-left: 1rem;
     }
-
 }
 
 @media (max-width: 359px) {

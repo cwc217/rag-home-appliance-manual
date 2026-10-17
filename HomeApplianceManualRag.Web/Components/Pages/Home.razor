@@ -97,7 +97,7 @@
     </section>
 
     <EditForm Model="form" OnValidSubmit="Ask" class="chat-composer">
-        <MudStack Row="true" Spacing="1" Class="manual-chip-list"
+        <MudStack Row="true" Spacing="0" Class="manual-chip-list"
                   aria-label="@L["Select manuals for this answer"]">
             @if (manualsLoading)
             {
@@ -172,7 +172,8 @@
                 }
                 @if (selectedConversationId is null && conversationCountLoaded)
                 {
-                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="composer-conversation-count">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary"
+                             Class="composer-conversation-count composer-active-conversations">
                         @L["Active conversations: {0}/{1}", activeConversationCount, ChatHistoryService.MaxActiveConversations]
                     </MudText>
                 }
