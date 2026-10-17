@@ -136,56 +136,67 @@
                 }
             }
         </MudStack>
-        <MudTextField T="string" @bind-Value="form.Question" Label="@L["Question"]" Variant="Variant.Outlined"
-                      Placeholder="@L["How do I clean the filter?"]" Lines="2" Disabled="@IsComposerDisabled"
-                      FullWidth="true" />
-        <div class="composer-actions">
-            <MudText Typo="Typo.caption" Color="Color.Secondary">
-                @if (availableManuals.Count > 0)
-                {
-                    <span>
-                        @(selectedManualIds.Count == 0 || selectedManualIds.Count == availableManuals.Count
-                            ? L["Searching all available manuals."]
-                            : L["Searching {0} selected manual(s).", selectedManualIds.Count])
-                    </span>
-                }
-                @L["Content is AI-generated for reference only and may not be fully accurate."]
-            </MudText>
-            @if (selectedConversationId is null && conversationCountLoaded)
-            {
-                <MudText Typo="Typo.caption" Color="Color.Secondary">
-                    @L["Active conversations: {0}/{1}", activeConversationCount, ChatHistoryService.MaxActiveConversations]
-                </MudText>
-            }
-            else if (selectedConversationId is not null)
-            {
-                <MudText Typo="Typo.caption" Color="Color.Secondary">
-                    @L["Exchanges: {0}/{1}", Math.Min(messages.Count / 2, ChatHistoryService.MaxConversationExchanges), ChatHistoryService.MaxConversationExchanges]
-                </MudText>
-            }
-            <MudSelect T="int" Value="@contextExchangeCount" ValueChanged="OnContextExchangeCountChangedAsync"
-                       Label="@L["Prior Q&A pairs"]" Variant="Variant.Outlined" Margin="Margin.Dense"
-                       Disabled="@(busy || !contextExchangeCountLoaded)">
-                @for (var count = ChatHistoryService.MinContextExchangeCount;
-                     count <= ChatHistoryService.MaxContextExchangeCount;
-                     count++)
-                {
-                    var exchangeCount = count;
-                    <MudSelectItem T="int" Value="@exchangeCount">@exchangeCount</MudSelectItem>
-                }
-            </MudSelect>
+        <div class="chat-input-bar">
+            <MudTextField T="string" @bind-Value="form.Question" Variant="Variant.Text"
+                          Placeholder="@L["How do I clean the filter?"]" Lines="1"
+                          Disabled="@IsComposerDisabled" Class="chat-input-field"
+                          UserAttributes="@(new Dictionary<string, object>
+                          {
+                              ["aria-label"] = L["Question"].Value
+                          })" />
             <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary"
-                       Disabled="@IsComposerDisabled">
+                       Disabled="@IsComposerDisabled" Class="chat-send-button"
+                       UserAttributes="@(new Dictionary<string, object>
+                       {
+                           ["aria-label"] = L["Ask"].Value
+                       })">
                 @if (busy)
                 {
-                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-2" />
-                    <span>@L["Thinking…"]</span>
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" />
                 }
                 else
                 {
-                    <span>@L["Ask"]</span>
+                    <MudIcon Icon="@Icons.Material.Filled.ArrowUpward" />
                 }
             </MudButton>
+        </div>
+        <div class="composer-footer">
+            <div class="composer-toolbar">
+                @if (availableManuals.Count > 0)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="composer-search-scope">
+                        @(selectedManualIds.Count == 0 || selectedManualIds.Count == availableManuals.Count
+                            ? L["Searching all available manuals."]
+                            : L["Searching {0} selected manual(s).", selectedManualIds.Count])
+                    </MudText>
+                }
+                @if (selectedConversationId is null && conversationCountLoaded)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="composer-conversation-count">
+                        @L["Active conversations: {0}/{1}", activeConversationCount, ChatHistoryService.MaxActiveConversations]
+                    </MudText>
+                }
+                else if (selectedConversationId is not null)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="composer-conversation-count">
+                        @L["Exchanges: {0}/{1}", Math.Min(messages.Count / 2, ChatHistoryService.MaxConversationExchanges), ChatHistoryService.MaxConversationExchanges]
+                    </MudText>
+                }
+                <MudSelect T="int" Value="@contextExchangeCount" ValueChanged="OnContextExchangeCountChangedAsync"
+                           Label="@L["Prior Q&A pairs"]" Variant="Variant.Outlined" Margin="Margin.Dense"
+                           Disabled="@(busy || !contextExchangeCountLoaded)" Class="composer-context-select">
+                    @for (var count = ChatHistoryService.MinContextExchangeCount;
+                         count <= ChatHistoryService.MaxContextExchangeCount;
+                         count++)
+                    {
+                        var exchangeCount = count;
+                        <MudSelectItem T="int" Value="@exchangeCount">@exchangeCount</MudSelectItem>
+                    }
+                </MudSelect>
+            </div>
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="composer-disclaimer">
+                @L["Content is AI-generated for reference only and may not be fully accurate."]
+            </MudText>
         </div>
     </EditForm>
 </main>

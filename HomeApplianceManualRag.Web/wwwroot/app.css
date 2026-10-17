@@ -211,8 +211,10 @@ body {
     grid-column: 1;
     width: min(100%, 52rem);
     justify-self: center;
+    min-width: 0;
     min-height: 0;
     overflow-y: auto;
+    overflow-x: hidden;
     overscroll-behavior: contain;
     display: flex;
     flex-direction: column;
@@ -224,6 +226,7 @@ body {
     display: flex;
     flex-direction: column;
     max-width: min(85%, 42rem);
+    min-width: 0;
 }
 
 .chat-message-user {
@@ -236,7 +239,10 @@ body {
 }
 
 .chat-bubble {
+    max-width: 100%;
+    min-width: 0;
     white-space: pre-wrap;
+    overflow-wrap: anywhere;
     border-radius: 1rem !important;
 }
 
@@ -259,11 +265,17 @@ body {
 .chat-citations {
     font-size: .8rem;
     padding: .4rem .75rem;
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .chat-citations ul {
     margin: .2rem 0 0;
     padding-left: 1.2rem;
+}
+
+.chat-citations li {
+    overflow-wrap: anywhere;
 }
 
 .chat-state {
@@ -294,10 +306,57 @@ body {
     padding-bottom: .25rem;
 }
 
-.chat-composer .mud-input-control {
-    border-radius: 1.5rem;
+.chat-input-bar {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    width: 100%;
+    min-width: 0;
+    padding: .25rem .35rem .25rem 1rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 999px;
     background: #fff;
-    box-shadow: 0 8px 24px rgb(15 23 42 / 8%);
+    box-shadow: 0 4px 12px rgb(15 23 42 / 8%);
+}
+
+.chat-input-bar:focus-within {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgb(37 99 235 / 20%);
+}
+
+.chat-input-field {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.chat-input-field .mud-input-control {
+    margin: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.chat-input-field .mud-input-root {
+    padding: .5rem 0;
+}
+
+.chat-input-field .mud-input-underline::before,
+.chat-input-field .mud-input-underline::after {
+    display: none;
+}
+
+.chat-send-button {
+    flex: 0 0 48px;
+    width: 48px;
+    min-width: 48px;
+    height: 48px;
+    min-height: 48px;
+    padding: 0;
+    border-radius: 50%;
+}
+
+.chat-send-button:focus-visible {
+    outline: 3px solid rgb(37 99 235 / 35%);
+    outline-offset: 2px;
 }
 
 .manual-chip-list {
@@ -314,21 +373,54 @@ body {
 }
 
 .manual-chip-list .mud-chip-content {
+    display: block;
     min-width: 0;
-    overflow-wrap: anywhere;
-    white-space: normal;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .chat-composer .mud-input-outlined-border {
     border-color: #cbd5e1;
 }
 
-.composer-actions {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 1rem;
+.composer-footer {
+    min-width: 0;
     margin-top: .5rem;
+}
+
+.composer-toolbar {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    min-width: 0;
+}
+
+.composer-search-scope {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.composer-conversation-count {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.composer-toolbar > .mud-select {
+    flex: 0 0 12rem;
+    width: 12rem;
+    min-width: 0;
+}
+
+.composer-context-select {
+    margin: 0;
+}
+
+.composer-disclaimer {
+    margin-top: .25rem;
 }
 
 .blazor-error-boundary {
@@ -400,9 +492,39 @@ body {
         max-width: 95%;
     }
 
-    .composer-actions {
-        align-items: end;
-        flex-direction: column;
+    .composer-toolbar {
+        gap: .375rem;
+    }
+
+    .composer-search-scope,
+    .composer-conversation-count {
+        font-size: .75rem;
+    }
+
+    .composer-toolbar > .mud-select {
+        flex-basis: 8rem;
+        width: 8rem;
+    }
+
+    .composer-disclaimer {
+        font-size: .75rem;
+        line-height: 1.35;
+    }
+
+    .chat-citations ul {
+        padding-left: 1rem;
+    }
+
+}
+
+@media (max-width: 359px) {
+    .composer-toolbar {
+        flex-wrap: wrap;
+    }
+
+    .composer-search-scope {
+        flex-basis: 100%;
+        order: -1;
     }
 
     .document-upload {
@@ -413,7 +535,7 @@ body {
 
 @media (pointer: coarse), (max-width: 576px) {
     .manual-chip-list .mud-chip,
-    .chat-composer .mud-button-root {
+    .chat-send-button {
         min-height: 44px;
     }
 }
