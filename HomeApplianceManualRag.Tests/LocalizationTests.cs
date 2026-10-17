@@ -54,6 +54,25 @@ public sealed class LocalizationTests
         Assert.Equal(english.Order(), traditionalChinese.Order());
     }
 
+    [Theory]
+    [InlineData("en", "All 3 manuals", "Selected 2 of 3 manuals")]
+    [InlineData("zh-Hant", "全部 3 本手冊", "已選 2/3 本手冊")]
+    public void Manual_selector_summary_formats_all_and_partial_selection(
+        string cultureName,
+        string expectedAll,
+        string expectedPartial)
+    {
+        var manager = new ResourceManager(
+            "HomeApplianceManualRag.Web.Resources.SharedResource",
+            typeof(SharedResource).Assembly);
+        var culture = CultureInfo.GetCultureInfo(cultureName);
+
+        Assert.Equal(expectedAll, string.Format(culture, manager.GetString("All {0} manuals", culture)!, 3));
+        Assert.Equal(
+            expectedPartial,
+            string.Format(culture, manager.GetString("Selected {0} of {1} manuals", culture)!, 2, 3));
+    }
+
     [Fact]
     public void Mud_localizer_uses_project_translations_and_framework_fallback()
     {

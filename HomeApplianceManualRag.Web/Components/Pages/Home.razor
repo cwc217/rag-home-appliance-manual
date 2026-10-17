@@ -97,8 +97,7 @@
     </section>
 
     <EditForm Model="form" OnValidSubmit="Ask" class="chat-composer">
-        <MudStack Row="true" Spacing="0" Class="manual-chip-list"
-                  aria-label="@L["Select manuals for this answer"]">
+        <div class="manual-selector-host">
             @if (manualsLoading)
             {
                 <MudChip T="string" Disabled="true" Variant="Variant.Outlined">@L["Loading manuals…"]</MudChip>
@@ -118,24 +117,41 @@
             }
             else
             {
-                @foreach (var manual in availableManuals)
-                {
-                    var isSelected = selectedManualIds.Contains(manual.ApplianceId);
-                    <MudChip T="Guid" @key="manual.ApplianceId" Value="@manual.ApplianceId"
-                             OnClick="@(() => ToggleManual(manual.ApplianceId))"
-                             Color="@(isSelected ? Color.Primary : Color.Default)"
-                             Variant="@(isSelected ? Variant.Filled : Variant.Outlined)"
-                             Disabled="@busy"
-                             UserAttributes="@(new Dictionary<string, object>
-                             {
-                                 ["aria-label"] = ManualLabelFormatter.Format(manual),
-                                 ["aria-pressed"] = isSelected
-                             })">
-                        @(isSelected ? "✓ " : "")@ManualLabelFormatter.Format(manual)
-                    </MudChip>
-                }
+                <details class="manual-selector">
+                    <summary class="manual-selector-summary">
+                        <span class="manual-selector-count">
+                            @if (selectedManualIds.Count == 0 || selectedManualIds.Count == availableManuals.Count)
+                            {
+                                @L["All {0} manuals", availableManuals.Count]
+                            }
+                            else
+                            {
+                                @L["Selected {0} of {1} manuals", selectedManualIds.Count, availableManuals.Count]
+                            }
+                        </span>
+                    </summary>
+                    <MudStack Row="true" Spacing="0" Class="manual-chip-list"
+                              aria-label="@L["Select manuals for this answer"]">
+                        @foreach (var manual in availableManuals)
+                        {
+                            var isSelected = selectedManualIds.Contains(manual.ApplianceId);
+                            <MudChip T="Guid" @key="manual.ApplianceId" Value="@manual.ApplianceId"
+                                     OnClick="@(() => ToggleManual(manual.ApplianceId))"
+                                     Color="@(isSelected ? Color.Primary : Color.Default)"
+                                     Variant="@(isSelected ? Variant.Filled : Variant.Outlined)"
+                                     Disabled="@busy"
+                                     UserAttributes="@(new Dictionary<string, object>
+                                     {
+                                         ["aria-label"] = ManualLabelFormatter.Format(manual),
+                                         ["aria-pressed"] = isSelected
+                                     })">
+                                @(isSelected ? "✓ " : "")@ManualLabelFormatter.Format(manual)
+                            </MudChip>
+                        }
+                    </MudStack>
+                </details>
             }
-        </MudStack>
+        </div>
         <div class="chat-input-bar">
             <MudTextField T="string" @bind-Value="form.Question" Variant="Variant.Text"
                           Placeholder="@L["How do I clean the filter?"]" Lines="1"

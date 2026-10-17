@@ -44,6 +44,8 @@
   <data name="Select manuals for this answer" xml:space="preserve"><value>選擇本次回答使用的手冊</value></data>
   <data name="Loading manuals…" xml:space="preserve"><value>正在載入手冊…</value></data>
   <data name="Manuals unavailable" xml:space="preserve"><value>手冊目前無法使用</value></data>
+  <data name="All {0} manuals" xml:space="preserve"><value>全部 {0} 本手冊</value></data>
+  <data name="Selected {0} of {1} manuals" xml:space="preserve"><value>已選 {0}/{1} 本手冊</value></data>
   <data name="Question" xml:space="preserve"><value>問題</value></data>
   <data name="How do I clean the filter?" xml:space="preserve"><value>如何清潔濾網？</value></data>
   <data name="Prior Q&amp;A pairs" xml:space="preserve"><value>納入先前問答</value></data>
