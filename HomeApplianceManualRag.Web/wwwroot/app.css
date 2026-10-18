@@ -444,6 +444,7 @@ body {
     display: block;
     min-width: 0;
     overflow: hidden;
+    text-align: center;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
