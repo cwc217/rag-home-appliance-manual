@@ -130,23 +130,18 @@
                             }
                         </span>
                     </summary>
-                    <MudStack Row="true" Spacing="0" Class="manual-chip-list"
+                    <MudStack Row="true" Spacing="0" Class="manual-selection-list"
                               aria-label="@L["Select manuals for this answer"]">
                         @foreach (var manual in availableManuals)
                         {
                             var isSelected = selectedManualIds.Contains(manual.ApplianceId);
-                            <MudChip T="Guid" @key="manual.ApplianceId" Value="@manual.ApplianceId"
-                                     OnClick="@(() => ToggleManual(manual.ApplianceId))"
-                                     Color="@(isSelected ? Color.Primary : Color.Default)"
-                                     Variant="@(isSelected ? Variant.Filled : Variant.Outlined)"
-                                     Disabled="@busy"
-                                     UserAttributes="@(new Dictionary<string, object>
-                                     {
-                                         ["aria-label"] = ManualLabelFormatter.Format(manual),
-                                         ["aria-pressed"] = isSelected
-                                     })">
-                                @(isSelected ? "✓ " : "")@ManualLabelFormatter.Format(manual)
-                            </MudChip>
+                            <label @key="manual.ApplianceId"
+                                   class="manual-selection-item @(isSelected ? "is-selected" : null)">
+                                <input type="checkbox" checked="@isSelected" disabled="@busy"
+                                       @onchange="@((ChangeEventArgs _) => ToggleManual(manual.ApplianceId))" />
+                                <span>@ManualLabelFormatter.Format(manual)</span>
+                                <span aria-hidden="true"></span>
+                            </label>
                         }
                     </MudStack>
                 </details>
