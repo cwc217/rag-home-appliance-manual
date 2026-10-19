@@ -8,6 +8,11 @@ body {
     background: #f8fafc;
 }
 
+html:has(.chat-shell),
+body:has(.chat-shell) {
+    overflow: hidden;
+}
+
 .app-layout {
     min-height: 100dvh;
 }
