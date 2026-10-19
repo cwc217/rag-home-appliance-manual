@@ -117,34 +117,26 @@
             }
             else
             {
-                <details class="manual-selector">
-                    <summary class="manual-selector-summary">
-                        <span class="manual-selector-count">
-                            @if (selectedManualIds.Count == 0 || selectedManualIds.Count == availableManuals.Count)
-                            {
-                                @L["All {0} manuals", availableManuals.Count]
-                            }
-                            else
-                            {
-                                @L["Selected {0} of {1} manuals", selectedManualIds.Count, availableManuals.Count]
-                            }
-                        </span>
-                    </summary>
-                    <MudStack Row="true" Spacing="0" Class="manual-selection-list"
-                              aria-label="@L["Select manuals for this answer"]">
-                        @foreach (var manual in availableManuals)
-                        {
-                            var isSelected = selectedManualIds.Contains(manual.ApplianceId);
-                            <label @key="manual.ApplianceId"
-                                   class="manual-selection-item @(isSelected ? "is-selected" : null)">
-                                <input type="checkbox" checked="@isSelected" disabled="@busy"
-                                       @onchange="@((ChangeEventArgs _) => ToggleManual(manual.ApplianceId))" />
-                                <span>@ManualLabelFormatter.Format(manual)</span>
-                                <span aria-hidden="true"></span>
-                            </label>
-                        }
-                    </MudStack>
-                </details>
+                <MudButton ButtonType="ButtonType.Button" Variant="Variant.Outlined" Color="Color.Primary"
+                           Disabled="@busy" OnClick="OpenManualSelector" Class="manual-selector-trigger"
+                           aria-label="@L["Select manuals for this answer"]">
+                    <span>@ManualSelectionSummary</span>
+                    <MudIcon Icon="@Icons.Material.Filled.MenuBook" />
+                </MudButton>
+                <MudStack Row="true" Spacing="0" Class="manual-selection-list manual-selection-desktop"
+                          aria-label="@L["Select manuals for this answer"]">
+                    @foreach (var manual in availableManuals)
+                    {
+                        var isSelected = selectedManualIds.Contains(manual.ApplianceId);
+                        <label @key="manual.ApplianceId"
+                               class="manual-selection-item @(isSelected ? "is-selected" : null)">
+                            <input type="checkbox" checked="@isSelected" disabled="@busy"
+                                   @onchange="@((ChangeEventArgs _) => ToggleManual(manual.ApplianceId))" />
+                            <span>@ManualLabelFormatter.Format(manual)</span>
+                            <span aria-hidden="true"></span>
+                        </label>
+                    }
+                </MudStack>
             }
         </div>
         <div class="chat-input-bar">
@@ -211,6 +203,42 @@
             </MudText>
         </div>
     </EditForm>
+    @if (!manualsLoading && string.IsNullOrWhiteSpace(manualsError) && availableManuals.Count > 0)
+    {
+        <MudDrawer @bind-Open="manualSelectorOpen" Anchor="Anchor.Bottom" Variant="DrawerVariant.Temporary"
+                   OverlayAutoClose="true" Class="manual-selector-drawer" Elevation="8">
+            <div class="manual-selector-sheet">
+                <div class="manual-selector-sheet-header">
+                    <div>
+                        <MudText Typo="Typo.h6">@L["Select manuals for this answer"]</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@ManualSelectionSummary</MudText>
+                    </div>
+                    <MudIconButton Icon="@Icons.Material.Filled.Close" OnClick="CloseManualSelector"
+                                   aria-label="@L["Close"]" title="@L["Close"]" />
+                </div>
+                <MudStack Row="true" Spacing="0" Class="manual-selection-list manual-selector-sheet-options"
+                          aria-label="@L["Select manuals for this answer"]">
+                    @foreach (var manual in availableManuals)
+                    {
+                        var isSelected = selectedManualIds.Contains(manual.ApplianceId);
+                        <label @key="manual.ApplianceId"
+                               class="manual-selection-item @(isSelected ? "is-selected" : null)">
+                            <input type="checkbox" checked="@isSelected" disabled="@busy"
+                                   @onchange="@((ChangeEventArgs _) => ToggleManual(manual.ApplianceId))" />
+                            <span>@ManualLabelFormatter.Format(manual)</span>
+                            <span aria-hidden="true"></span>
+                        </label>
+                    }
+                </MudStack>
+                <div class="manual-selector-sheet-footer">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CloseManualSelector"
+                               Class="manual-selector-done">
+                        @L["Done"]
+                    </MudButton>
+                </div>
+            </div>
+        </MudDrawer>
+    }
 </main>
 
 @code {
@@ -227,6 +255,7 @@
     private bool conversationCountLoaded;
     private int contextExchangeCount = ChatHistoryService.DefaultContextExchangeCount;
     private bool contextExchangeCountLoaded;
+    private bool manualSelectorOpen;
     private Guid? selectedConversationId;
     private string? anonymousAccessKey;
     private readonly List<ChatConversation> rooms = [];
@@ -235,6 +264,11 @@
     private bool manualsLoading = true;
     private bool manualsLoaded;
     private string? manualsError;
+
+    private string ManualSelectionSummary =>
+        selectedManualIds.Count == 0 || selectedManualIds.Count == availableManuals.Count
+            ? L["All {0} manuals", availableManuals.Count]
+            : L["Selected {0} of {1} manuals", selectedManualIds.Count, availableManuals.Count];
 
     [SupplyParameterFromQuery(Name = "conversationId")]
     private Guid? ConversationId { get; set; }
@@ -406,6 +440,10 @@
         if (!selectedManualIds.Add(documentId))
             selectedManualIds.Remove(documentId);
     }
+
+    private void OpenManualSelector() => manualSelectorOpen = true;
+
+    private void CloseManualSelector() => manualSelectorOpen = false;
 
     private async Task LoadSelected()
     {

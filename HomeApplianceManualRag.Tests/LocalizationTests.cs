@@ -73,6 +73,18 @@ public sealed class LocalizationTests
             string.Format(culture, manager.GetString("Selected {0} of {1} manuals", culture)!, 2, 3));
     }
 
+    [Theory]
+    [InlineData("en", "Done")]
+    [InlineData("zh-Hant", "完成")]
+    public void Manual_selector_done_action_is_localized(string cultureName, string expected)
+    {
+        var manager = new ResourceManager(
+            "HomeApplianceManualRag.Web.Resources.SharedResource",
+            typeof(SharedResource).Assembly);
+
+        Assert.Equal(expected, manager.GetString("Done", CultureInfo.GetCultureInfo(cultureName)));
+    }
+
     [Fact]
     public void Mud_localizer_uses_project_translations_and_framework_fallback()
     {

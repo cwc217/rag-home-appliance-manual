@@ -46,6 +46,7 @@
   <data name="Manuals unavailable" xml:space="preserve"><value>Manuals unavailable</value></data>
   <data name="All {0} manuals" xml:space="preserve"><value>All {0} manuals</value></data>
   <data name="Selected {0} of {1} manuals" xml:space="preserve"><value>Selected {0} of {1} manuals</value></data>
+  <data name="Done" xml:space="preserve"><value>Done</value></data>
   <data name="Question" xml:space="preserve"><value>Question</value></data>
   <data name="How do I clean the filter?" xml:space="preserve"><value>How do I clean the filter?</value></data>
   <data name="Prior Q&amp;A pairs" xml:space="preserve"><value>Prior Q&amp;A pairs</value></data>
