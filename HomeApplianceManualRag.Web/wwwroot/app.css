@@ -530,6 +530,25 @@ body {
     margin-top: .25rem;
 }
 
+.composer-disclaimer-track {
+    display: block;
+    width: fit-content;
+}
+
+.composer-disclaimer-track > span {
+    display: inline;
+}
+
+.composer-disclaimer-track > span + span {
+    display: none;
+}
+
+@keyframes composer-disclaimer-marquee {
+    to {
+        transform: translateX(-50%);
+    }
+}
+
 .blazor-error-boundary {
     background: #b91c1c;
     padding: 1rem 1rem 1rem 3.7rem;
@@ -631,8 +650,90 @@ body {
     }
 
     .composer-disclaimer {
+        grid-column: 1;
+        grid-row: 1;
+        min-width: 0;
+        margin: 0;
+        overflow: hidden;
         font-size: .75rem;
         line-height: 1.35;
+        white-space: nowrap;
+    }
+
+    .composer-footer {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: .5rem;
+    }
+
+    .composer-toolbar {
+        grid-column: 2;
+        grid-row: 1;
+        justify-content: flex-end;
+    }
+
+    .composer-toolbar > .mud-select {
+        flex: 0 0 8rem;
+        width: 8rem;
+    }
+
+    .composer-disclaimer-track {
+        display: flex;
+        width: max-content;
+        animation: composer-disclaimer-marquee 18s linear infinite;
+    }
+
+    .composer-disclaimer-track > span {
+        flex: 0 0 auto;
+        padding-right: 2rem;
+    }
+
+    .composer-disclaimer:hover .composer-disclaimer-track,
+    .composer-disclaimer:focus-within .composer-disclaimer-track {
+        animation-play-state: paused;
+    }
+
+    .composer-disclaimer-track > span + span {
+        display: inline;
+    }
+
+    .composer-disclaimer > .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+
+    .composer-disclaimer-track > span {
+        display: block;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .composer-disclaimer-track {
+            display: block;
+            width: 100%;
+            overflow: hidden;
+            animation: none;
+            text-overflow: ellipsis;
+        }
+
+        .composer-disclaimer-track > span {
+            display: block;
+            overflow: hidden;
+            padding: 0;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .composer-disclaimer-track > span + span {
+            display: none;
+        }
     }
 
     .chat-citations ul {

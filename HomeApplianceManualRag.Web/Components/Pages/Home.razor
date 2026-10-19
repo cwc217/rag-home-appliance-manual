@@ -199,7 +199,13 @@
                 </MudSelect>
             </div>
             <MudText Typo="Typo.caption" Color="Color.Secondary" Class="composer-disclaimer">
-                @L["Content is AI-generated for reference only and may not be fully accurate."]
+                <span class="composer-disclaimer-track" aria-hidden="true">
+                    <span>@L["Content is AI-generated for reference only and may not be fully accurate."]</span>
+                    <span>@L["Content is AI-generated for reference only and may not be fully accurate."]</span>
+                </span>
+                <span class="sr-only">
+                    @L["Content is AI-generated for reference only and may not be fully accurate."]
+                </span>
             </MudText>
         </div>
     </EditForm>
