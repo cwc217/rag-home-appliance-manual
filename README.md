@@ -107,7 +107,7 @@ docker compose down
 Configure the Compose services using `.env.example`, then set the host app's database connection and secrets with User Secrets:
 
 ```powershell
-dotnet user-secrets set "ConnectionStrings:Default" "Host=localhost;Port=5432;Database=manuals;Username=postgres;Password=<password>" --project HomeApplianceManualRag.Web
+dotnet user-secrets set "ConnectionStrings:Default" "Host=localhost;Port=8580;Database=manuals;Username=postgres;Password=<password>" --project HomeApplianceManualRag.Web
 dotnet user-secrets set "SeedAdmin:Email" "admin@example.invalid" --project HomeApplianceManualRag.Web
 dotnet user-secrets set "SeedAdmin:Password" "<development-password>" --project HomeApplianceManualRag.Web
 dotnet user-secrets set "Docling:ServiceUrl" "http://localhost:5001" --project HomeApplianceManualRag.Web
@@ -128,7 +128,7 @@ dotnet test HomeApplianceManualRag.Tests\HomeApplianceManualRag.Tests.csproj
 PostgreSQL/pgvector integration tests are opt-in and require a dedicated PostgreSQL 17 test database. They create a temporary database, apply migrations, run retrieval tests, and drop the temporary database afterward. The configured role must be allowed to create and drop databases. **Never use a production database.**
 
 ```powershell
-$env:POSTGRES_INTEGRATION_TEST_CONNECTION_STRING = "Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=<password>"
+$env:POSTGRES_INTEGRATION_TEST_CONNECTION_STRING = "Host=localhost;Port=8580;Database=postgres;Username=postgres;Password=<password>"
 dotnet test HomeApplianceManualRag.Tests\HomeApplianceManualRag.Tests.csproj --filter FullyQualifiedName~PostgresIntegrationTests
 Remove-Item Env:POSTGRES_INTEGRATION_TEST_CONNECTION_STRING
 ```

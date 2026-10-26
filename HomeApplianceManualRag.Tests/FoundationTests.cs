@@ -163,7 +163,7 @@ public sealed class ConfigurationValidationTests
         var connectionString = configuration.GetConnectionString("Default");
 
         Assert.NotNull(azure);
-        Assert.Equal("Host=localhost;Port=5432;Database=manuals;Username=postgres;Password=postgres", connectionString);
+        Assert.Equal("Host=localhost;Port=8580;Database=manuals;Username=postgres;Password=postgres", connectionString);
         Assert.Equal("development-chat", azure.ChatDeployment);
         Assert.Equal(1536, azure.EmbeddingDimensions);
         Assert.True(configuration.GetValue<bool>("HttpsRedirection:Enabled"));
